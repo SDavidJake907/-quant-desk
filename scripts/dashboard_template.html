@@ -1,0 +1,508 @@
+<meta charset="utf-8">
+<title>S&amp;P 1500 relative strength</title>
+
+<style>
+  :root {
+    color-scheme: light;
+    --plane:        #f9f9f7;
+    --surface:      #fcfcfb;
+    --ink:          #0b0b0b;
+    --ink-2:        #52514e;
+    --muted:        #898781;
+    --hairline:     #e1e0d9;
+    --rule:         #c3c2b7;
+    --ring:         rgba(11, 11, 11, 0.10);
+
+    /* Diverging scale: blue = outperforming, red = lagging, gray = matched.
+       Blue/red rather than the conventional green/red because the map is
+       almost entirely colour, and red/green is the one pair ~8% of men
+       cannot separate. Both arms are lightness-monotonic and mirror-matched
+       to within 0.04 OKLCH L. */
+    --div-0:        #f0efec;
+    --div-pos-1:    #cde2fb;
+    --div-pos-2:    #9ec5f4;
+    --div-pos-3:    #5598e7;
+    --div-pos-4:    #2a78d6;
+    --div-pos-5:    #1c5cab;
+    --div-neg-1:    #fbd5d4;
+    --div-neg-2:    #f4a9a8;
+    --div-neg-3:    #e87473;
+    --div-neg-4:    #d03b3b;
+    --div-neg-5:    #a52727;
+    --on-deep:      #ffffff;
+    --on-shallow:   #0b0b0b;
+
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --plane:      #0d0d0d;
+      --surface:    #1a1a19;
+      --ink:        #ffffff;
+      --ink-2:      #c3c2b7;
+      --muted:      #898781;
+      --hairline:   #2c2c2a;
+      --rule:       #383835;
+      --ring:       rgba(255, 255, 255, 0.10);
+      --div-0:      #383835;
+      --div-pos-1:  #104281;
+      --div-pos-2:  #1c5cab;
+      --div-pos-3:  #2a78d6;
+      --div-pos-4:  #5598e7;
+      --div-pos-5:  #86b6ef;
+      --div-neg-1:  #7a1f1f;
+      --div-neg-2:  #a52727;
+      --div-neg-3:  #d03b3b;
+      --div-neg-4:  #e87473;
+      --div-neg-5:  #f4a9a8;
+      --on-deep:    #0b0b0b;
+      --on-shallow: #ffffff;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:      #0d0d0d;
+    --surface:    #1a1a19;
+    --ink:        #ffffff;
+    --ink-2:      #c3c2b7;
+    --muted:      #898781;
+    --hairline:   #2c2c2a;
+    --rule:       #383835;
+    --ring:       rgba(255, 255, 255, 0.10);
+    --div-0:      #383835;
+    --div-pos-1:  #104281;
+    --div-pos-2:  #1c5cab;
+    --div-pos-3:  #2a78d6;
+    --div-pos-4:  #5598e7;
+    --div-pos-5:  #86b6ef;
+    --div-neg-1:  #7a1f1f;
+    --div-neg-2:  #a52727;
+    --div-neg-3:  #d03b3b;
+    --div-neg-4:  #e87473;
+    --div-neg-5:  #f4a9a8;
+    --on-deep:    #0b0b0b;
+    --on-shallow: #ffffff;
+  }
+
+  body {
+    margin: 0;
+    background: var(--plane);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 40px 24px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* ---- masthead ---- */
+  .masthead { display: flex; flex-direction: column; gap: 6px; }
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(24px, 3.2vw, 34px);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .standfirst {
+    margin: 2px 0 0;
+    color: var(--ink-2);
+    max-width: 64ch;
+  }
+
+  /* ---- stat row: summary before detail ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--hairline);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .stat { background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; }
+  .stat-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .stat-value { font-size: 25px; font-weight: 620; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .stat-note { font-size: 12px; color: var(--ink-2); }
+
+  /* ---- legend ---- */
+  .toolbar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 20px 28px; padding-bottom: 4px;
+  }
+  .legend { display: flex; align-items: center; gap: 10px; }
+  .legend-scale { display: flex; gap: 2px; }
+  .legend-swatch { width: 26px; height: 14px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--ring); }
+  .legend-cap { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .legend-key { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); }
+
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 550;
+    color: var(--ink); background: var(--surface);
+    border: 1px solid var(--rule); border-radius: 3px;
+    padding: 6px 13px; cursor: pointer;
+  }
+  .btn:hover { border-color: var(--ink-2); }
+  .btn:focus-visible { outline: 2px solid var(--div-pos-4); outline-offset: 2px; }
+
+  /* ---- sector blocks ---- */
+  .sectors { display: flex; flex-direction: column; gap: 22px; }
+  /* 1,500 cells is a lot of layout. Skip the work for blocks that are not on
+     screen; the reserved size keeps the scrollbar from jumping as they enter. */
+  .sector-block { content-visibility: auto; contain-intrinsic-size: auto 320px; }
+  .sector-head {
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 14px;
+    padding-bottom: 7px; margin-bottom: 9px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .sector-name { font-size: 14px; font-weight: 640; letter-spacing: -0.01em; }
+  .sector-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sector-median { margin-left: auto; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 2px; /* surface gap between fills */
+  }
+
+  .cell {
+    position: relative;
+    aspect-ratio: 5 / 3;
+    min-height: 30px;
+    border: 0; padding: 0; margin: 0;
+    border-radius: 2px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    cursor: default;
+    background: var(--div-0);
+    color: var(--on-shallow);
+  }
+  .cell:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; z-index: 3; }
+  .cell:hover { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink); z-index: 2; }
+
+  .d-zero { background: var(--div-0); box-shadow: inset 0 0 0 1px var(--ring); }
+  .d-pos-1 { background: var(--div-pos-1); }
+  .d-pos-2 { background: var(--div-pos-2); }
+  .d-pos-3 { background: var(--div-pos-3); }
+  .d-pos-4 { background: var(--div-pos-4); color: var(--on-deep); }
+  .d-pos-5 { background: var(--div-pos-5); color: var(--on-deep); }
+  .d-neg-1 { background: var(--div-neg-1); }
+  .d-neg-2 { background: var(--div-neg-2); }
+  .d-neg-3 { background: var(--div-neg-3); }
+  .d-neg-4 { background: var(--div-neg-4); color: var(--on-deep); }
+  .d-neg-5 { background: var(--div-neg-5); color: var(--on-deep); }
+
+  :root[data-theme="dark"] .d-pos-1, :root[data-theme="dark"] .d-pos-2,
+  :root[data-theme="dark"] .d-neg-1, :root[data-theme="dark"] .d-neg-2 { color: var(--on-shallow); }
+  :root[data-theme="dark"] .d-pos-4, :root[data-theme="dark"] .d-pos-5,
+  :root[data-theme="dark"] .d-neg-4, :root[data-theme="dark"] .d-neg-5 { color: var(--on-deep); }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .d-pos-1,
+    :root:where(:not([data-theme="light"])) .d-pos-2,
+    :root:where(:not([data-theme="light"])) .d-neg-1,
+    :root:where(:not([data-theme="light"])) .d-neg-2 { color: var(--on-shallow); }
+    :root:where(:not([data-theme="light"])) .d-pos-4,
+    :root:where(:not([data-theme="light"])) .d-pos-5,
+    :root:where(:not([data-theme="light"])) .d-neg-4,
+    :root:where(:not([data-theme="light"])) .d-neg-5 { color: var(--on-deep); }
+  }
+
+  /* No relative strength is a gap in the data, not an average result. */
+  .d-none {
+    background: repeating-linear-gradient(
+      135deg, transparent 0 4px, var(--hairline) 4px 5px
+    );
+    color: var(--muted);
+    box-shadow: inset 0 0 0 1px var(--hairline);
+  }
+
+  /* Passing every screen criterion is marked by form, not colour — colour is
+     already spent on relative strength. */
+  .passing::after {
+    content: "";
+    position: absolute; top: 2px; right: 2px;
+    width: 4px; height: 4px; border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* ---- tooltip ---- */
+  #tip {
+    position: fixed; z-index: 20; pointer-events: none;
+    opacity: 0; transition: opacity 90ms ease;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 4px;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.16);
+    padding: 10px 12px; min-width: 210px; max-width: 280px;
+    font-size: 12.5px; line-height: 1.45;
+  }
+  #tip[data-show="1"] { opacity: 1; }
+  #tip .t-sym { font-family: var(--mono); font-weight: 700; font-size: 13px; }
+  #tip .t-name { color: var(--ink-2); margin-bottom: 7px; }
+  #tip dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+  #tip dt { color: var(--muted); font-size: 11.5px; }
+  #tip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---- table view ---- */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--hairline); border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--surface); }
+  th, td { padding: 7px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--hairline); }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  th { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+  td { font-variant-numeric: tabular-nums; }
+  td.sym { font-family: var(--mono); font-weight: 600; }
+  tbody tr:hover td { background: var(--plane); }
+  [hidden] { display: none !important; }
+
+  /* ---- footer ---- */
+  .caveats { border-top: 1px solid var(--rule); padding-top: 18px; display: flex; flex-direction: column; gap: 9px; }
+  .caveats h2 { margin: 0; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .caveats p { margin: 0; font-size: 13px; color: var(--ink-2); max-width: 78ch; }
+  .caveats strong { color: var(--ink); font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 28px 14px 56px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); }
+  }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="eyebrow">S&amp;P Composite 1500 &middot; as of __AS_OF__</div>
+    <h1>Relative strength across the screening universe</h1>
+    <p class="standfirst">
+      Every cell is one company, shaded by how far its 12-1 momentum runs ahead of
+      or behind the S&amp;P 500 over the same window. This is a description of
+      today&rsquo;s measurable state &mdash; not a forecast, and not a buy list.
+    </p>
+  </header>
+
+  <section class="stats" id="stats"></section>
+
+  <div class="toolbar">
+    <div class="legend">
+      <span class="legend-cap" id="legend-min"></span>
+      <div class="legend-scale" id="legend-scale"></div>
+      <span class="legend-cap" id="legend-max"></span>
+    </div>
+    <div class="legend-key">
+      <span class="cell passing d-pos-2" style="width:22px;height:15px;min-height:0;aspect-ratio:auto"></span>
+      passes all six trend criteria
+    </div>
+    <div class="legend-key">
+      <span class="cell d-none" style="width:22px;height:15px;min-height:0;aspect-ratio:auto"></span>
+      too little history to rate
+    </div>
+    <button class="btn" id="toggle" type="button" aria-expanded="false">Show data table</button>
+  </div>
+
+  <section class="sectors" id="sectors"></section>
+
+  <section id="table-view" hidden>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Symbol</th><th scope="col">Company</th><th scope="col">Sector</th>
+            <th scope="col">Index</th><th scope="col">Rel. strength</th><th scope="col">12-1 mom.</th>
+            <th scope="col">Price</th><th scope="col">From 52w high</th><th scope="col">Criteria</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="caveats">
+    <h2>Read this before reading the map</h2>
+    <p>
+      <strong>Membership is today&rsquo;s.</strong> That is correct for a live view
+      and wrong for a backtest: a company only joins an index after it has already
+      run. The backtest path reconstructs point-in-time membership instead.
+    </p>
+    <p>
+      <strong>The scale clamps.</strong> Relative strength has a long right tail, and
+      a single name far out on it would flatten every other cell to the same tone.
+      Values past the ends of the legend are drawn at full intensity, so the extremes
+      are compressed &mdash; read rank, not distance, at the edges.
+    </p>
+    <p>
+      <strong>Relative strength describes the past year.</strong> 12-1 momentum
+      deliberately skips the most recent month. It is the best-supported number in
+      this system and it still says nothing about what happens next.
+    </p>
+    <p id="coverage"></p>
+  </footer>
+</div>
+
+<div id="tip" role="tooltip" aria-hidden="true"></div>
+
+<script>
+  const DATA = /*__DATA__*/null;
+
+  const pp = (v, digits = 1) =>
+    v === null || v === undefined ? "n/a" : `${v >= 0 ? "+" : ""}${v.toFixed(digits)}`;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  /* Mirrors scanner.heatmap.intensity — neutral band, then clamped arms. */
+  function bucket(rs) {
+    if (rs === null || rs === undefined) return "d-none";
+    if (Math.abs(rs) <= DATA.neutral) return "d-zero";
+    const step = Math.min(5, Math.ceil((Math.min(Math.abs(rs), DATA.clamp) / DATA.clamp) * 5));
+    return `${rs > 0 ? "d-pos-" : "d-neg-"}${step}`;
+  }
+
+  /* ---- summary ---- */
+  const s = DATA.summary;
+  const beatShare = s.rated ? Math.round((s.beating_index / s.rated) * 100) : 0;
+  document.getElementById("stats").innerHTML = [
+    ["Companies mapped", s.companies.toLocaleString(),
+     `${DATA.indices.length} ${DATA.indices.length === 1 ? "index" : "indices"}`],
+    ["Beating the index", `${beatShare}%`, `${s.beating_index.toLocaleString()} of ${s.rated.toLocaleString()} rated`],
+    ["Median rel. strength", `${pp(s.median_rs)}pp`, "vs S&P 500, 12-1 momentum"],
+    ["Passing all criteria", s.passing.toLocaleString(), "full trend screen"],
+    ["Benchmark momentum", `${pp(DATA.benchmark_momentum)}%`, "S&P 500, 12-1"],
+  ].map(([label, value, note]) => `
+    <div class="stat">
+      <div class="stat-label">${esc(label)}</div>
+      <div class="stat-value">${esc(value)}</div>
+      <div class="stat-note">${esc(note)}</div>
+    </div>`).join("");
+
+  /* ---- legend ---- */
+  document.getElementById("legend-min").textContent = `≤ −${DATA.clamp}pp`;
+  document.getElementById("legend-max").textContent = `≥ +${DATA.clamp}pp`;
+  document.getElementById("legend-scale").innerHTML =
+    ["d-neg-5", "d-neg-4", "d-neg-3", "d-neg-2", "d-neg-1", "d-zero", "d-pos-1", "d-pos-2", "d-pos-3", "d-pos-4", "d-pos-5"]
+      .map((c) => `<span class="legend-swatch ${c}"></span>`)
+      .join("");
+
+  /* ---- sector blocks ---- */
+  const all = [];
+  document.getElementById("sectors").innerHTML = DATA.sectors.map((block) => {
+    const cells = block.cells.map((c) => {
+      const i = all.push(c) - 1;
+      const pass = c.t > 0 && c.c === c.t ? " passing" : "";
+      return `<div class="cell ${bucket(c.rs)}${pass}" data-i="${i}" tabindex="0"
+        role="img" aria-label="${esc(c.s)}, ${esc(c.n)}, relative strength ${pp(c.rs)} points">${esc(c.s)}</div>`;
+    }).join("");
+    return `
+      <div class="sector-block">
+        <div class="sector-head">
+          <span class="sector-name">${esc(block.sector)}</span>
+          <span class="sector-meta">${block.cells.length} names &middot; ${block.passing} passing</span>
+          <span class="sector-median">median ${pp(block.median)}pp</span>
+        </div>
+        <div class="grid">${cells}</div>
+      </div>`;
+  }).join("");
+
+  document.getElementById("coverage").innerHTML =
+    `<strong>Coverage.</strong> ${s.companies.toLocaleString()} of ${DATA.requested.toLocaleString()} ` +
+    `index members had usable price history; ${DATA.missing.toLocaleString()} did not and are absent ` +
+    `from the map. ${s.unrated.toLocaleString()} more are drawn as gaps for want of a full year of bars.`;
+
+  /* ---- hover layer ----
+     Rewriting the tooltip and measuring it on every mousemove forces a
+     synchronous layout per pixel, and with 1,500 cells in the grid that is
+     enough to lock the renderer. So: rebuild only when the hovered cell
+     actually changes, cache the measurement, and move the tooltip on an
+     animation frame. */
+  const tip = document.getElementById("tip");
+  let hovered = null, tipW = 0, tipH = 0, frame = 0, mx = 0, my = 0;
+
+  function place() {
+    frame = 0;
+    tip.style.left = `${Math.max(8, Math.min(mx + 14, innerWidth - tipW - 10))}px`;
+    tip.style.top = `${Math.max(8, Math.min(my + 14, innerHeight - tipH - 10))}px`;
+  }
+
+  function showTip(cell, x, y) {
+    mx = x; my = y;
+    if (cell !== hovered) {
+      hovered = cell;
+      const c = all[+cell.dataset.i];
+      tip.innerHTML = `
+        <div class="t-sym">${esc(c.s)}</div>
+        <div class="t-name">${esc(c.n)} &middot; ${esc(c.i)}</div>
+        <dl>
+          <dt>Rel. strength</dt><dd>${pp(c.rs)}pp</dd>
+          <dt>12-1 momentum</dt><dd>${pp(c.m)}%</dd>
+          <dt>Price</dt><dd>${c.p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd>
+          <dt>From 52w high</dt><dd>${pp(c.h)}%</dd>
+          <dt>Criteria met</dt><dd>${c.c} of ${c.t}</dd>
+        </dl>`;
+      tip.dataset.show = "1";
+      tipW = tip.offsetWidth;   /* measured once per cell, not per pixel */
+      tipH = tip.offsetHeight;
+    }
+    if (!frame) frame = requestAnimationFrame(place);
+  }
+
+  const hide = () => { tip.dataset.show = "0"; hovered = null; };
+  const sectors = document.getElementById("sectors");
+
+  sectors.addEventListener("mouseover", (e) => {
+    const cell = e.target.closest(".cell");
+    if (cell) showTip(cell, e.clientX, e.clientY);
+  });
+  sectors.addEventListener("mousemove", (e) => {
+    const cell = e.target.closest(".cell");
+    if (cell) showTip(cell, e.clientX, e.clientY);
+    else hide();
+  });
+  sectors.addEventListener("mouseleave", hide);
+  sectors.addEventListener("focusin", (e) => {
+    const cell = e.target.closest(".cell");
+    if (!cell) return;
+    const r = cell.getBoundingClientRect();
+    showTip(cell, r.left, r.bottom - 14);
+  });
+  sectors.addEventListener("focusout", hide);
+
+  /* ---- table view ---- */
+  const view = document.getElementById("table-view");
+  const toggle = document.getElementById("toggle");
+  let built = false;
+  toggle.addEventListener("click", () => {
+    const open = view.hasAttribute("hidden");
+    if (open && !built) {
+      document.getElementById("table-body").innerHTML = DATA.sectors.flatMap((b) =>
+        b.cells.map((c) => `<tr>
+          <td class="sym">${esc(c.s)}</td><td>${esc(c.n)}</td><td>${esc(b.sector)}</td>
+          <td>${esc(c.i)}</td><td>${pp(c.rs)}pp</td><td>${pp(c.m)}%</td>
+          <td>${c.p.toFixed(2)}</td><td>${pp(c.h)}%</td><td>${c.c}/${c.t}</td>
+        </tr>`)).join("");
+      built = true;
+    }
+    view.toggleAttribute("hidden", !open);
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.textContent = open ? "Hide data table" : "Show data table";
+  });
+</script>
