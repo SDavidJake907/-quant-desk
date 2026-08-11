@@ -127,3 +127,184 @@ def test_sub_penny_prices_never_reach_the_broker():
     for price in (payload["limit_price"], payload["stop_loss"]["stop_price"],
                   payload["take_profit"]["limit_price"]):
         assert len(price.split(".")[1]) == 2
+
+
+def test_bracket_legs_must_survive_the_close():
+    """The bug this pins cost three positions their stops over a weekend.
+
+    `time_in_force` applies to the protective legs as well as the entry, so
+    `day` cancelled every stop and target at 16:00 and nothing errored — the
+    orders did exactly what `day` means. Only 54% of these setups resolve
+    inside one session, so roughly half of all positions were spending the
+    night unprotected while the backtest assumed a live stop.
+    """
+    from datetime import datetime, timezone
+
+    from scanner.execution.alpaca import bracket_payload
+    from scanner.execution.sizing import Sizing
+    from scanner.screens.smc import Setup
+
+    setup = Setup(
+        symbol="Q", trigger_index=10, sweep_index=4, sweep_price=130.0,
+        choch_index=6, choch_price=140.0, higher_low_index=8,
+        higher_low_price=133.59, entry_price=138.30, stop_price=133.59,
+        target_price=146.08,
+    )
+    sizing = Sizing(shares=143, risk_dollars=673.0,
+                    position_dollars=19776.0, limited_by="position cap")
+    payload = bracket_payload(setup, sizing, datetime.now(timezone.utc))
+
+    assert payload["time_in_force"] == "gtc", (
+        "day-order brackets lose their stop at the close; this strategy holds "
+        "positions overnight by design"
+    )
+    assert payload["order_class"] == "bracket"
+    assert payload["stop_loss"]["stop_price"] == "133.59"
+    assert payload["take_profit"]["limit_price"] == "146.08"
+
+
+# ---- reconciliation: does every position still have a stop? ------------
+#
+# The `gtc` fix above stops NEW orders losing their protection. It does
+# nothing for a position already naked, and nothing noticed for two whole
+# sessions that three of them were — because a cancelled stop is not an
+# error, it is an absence. These tests pin the detector for that absence.
+
+def test_a_position_with_no_orders_at_all_is_unprotected():
+    """The exact weekend state: stops cancelled at the close, book empty."""
+    from scanner.execution.alpaca import unprotected
+
+    naked = unprotected([{"symbol": "Q", "qty": "143"}], [])
+    assert [p.symbol for p in naked] == ["Q"]
+    assert naked[0].qty == 143
+
+
+def test_a_live_stop_leg_counts_as_protection():
+    """A bracket's legs arrive nested under the parent, not as top-level
+    orders. Reading only the top level would call every protected position
+    naked and re-arm a stop that is already there."""
+    from scanner.execution.alpaca import unprotected
+
+    orders = [{
+        "symbol": "Q", "side": "buy", "status": "filled", "legs": [
+            {"symbol": "Q", "side": "sell", "status": "held",
+             "qty": "143", "stop_price": "133.59"},
+            {"symbol": "Q", "side": "sell", "status": "held",
+             "qty": "143", "limit_price": "146.08"},
+        ],
+    }]
+    assert unprotected([{"symbol": "Q", "qty": "143"}], orders) == ()
+
+
+def test_a_leg_without_a_share_count_is_treated_as_no_cover():
+    """Fail towards the false alarm. An unreadable leg reported as covered
+    is the silence this whole check exists to break; reported as naked it
+    costs one needless warning.
+    """
+    from scanner.execution.alpaca import unprotected
+
+    orders = [{"symbol": "Q", "side": "buy", "status": "filled", "legs": [
+        {"symbol": "Q", "side": "sell", "status": "held", "stop_price": "133.59"},
+    ]}]
+    assert [p.symbol for p in unprotected([{"symbol": "Q", "qty": "143"}], orders)] == ["Q"]
+
+
+def test_a_cancelled_stop_leg_is_not_protection():
+    """Precisely the weekend failure: the leg exists in the order record,
+    with status `canceled`. Matching on presence rather than on status is
+    how a naked position reads as covered."""
+    from scanner.execution.alpaca import unprotected
+
+    orders = [{
+        "symbol": "Q", "side": "buy", "status": "filled", "legs": [
+            {"symbol": "Q", "side": "sell", "status": "canceled", "stop_price": "133.59"},
+            {"symbol": "Q", "side": "sell", "status": "expired", "limit_price": "146.08"},
+        ],
+    }]
+    assert [p.symbol for p in unprotected([{"symbol": "Q", "qty": "143"}], orders)] == ["Q"]
+
+
+def test_a_working_buy_order_does_not_protect_anything():
+    """A resting BUY is not a stop. Counting any open order for the symbol
+    as cover would have hidden this bug too."""
+    from scanner.execution.alpaca import unprotected
+
+    orders = [{"symbol": "Q", "side": "buy", "status": "new", "legs": []}]
+    assert [p.symbol for p in unprotected([{"symbol": "Q", "qty": "143"}], orders)] == ["Q"]
+
+
+def test_a_partial_stop_leaves_the_remainder_unprotected():
+    """A stop for 43 shares of a 143-share position covers 43 shares. The
+    other 100 are naked and must be reported as such."""
+    from scanner.execution.alpaca import unprotected
+
+    orders = [{"symbol": "Q", "side": "sell", "status": "new",
+               "qty": "43", "stop_price": "133.59", "legs": []}]
+    naked = unprotected([{"symbol": "Q", "qty": "143"}], orders)
+    assert [(p.symbol, p.qty) for p in naked] == [("Q", 100)]
+
+
+def test_only_the_naked_names_come_back():
+    from scanner.execution.alpaca import unprotected
+
+    positions = [{"symbol": "CEG", "qty": "73"}, {"symbol": "IP", "qty": "475"}]
+    orders = [{"symbol": "CEG", "side": "sell", "status": "new",
+               "qty": "73", "stop_price": "265.00", "legs": []}]
+    assert [p.symbol for p in unprotected(positions, orders)] == ["IP"]
+
+
+# ---- re-arming a naked position ---------------------------------------
+
+def test_protective_payload_is_a_gtc_oco_sell():
+    """Re-arming an ALREADY FILLED position cannot use a bracket — there is
+    no entry left to attach to. OCO is the exit-only form: two sells, either
+    one cancels the other.
+    """
+    from scanner.execution.alpaca import protective_payload
+
+    payload = protective_payload("Q", 143, stop=133.5925, target=146.08)
+    assert payload["order_class"] == "oco"
+    assert payload["side"] == "sell"
+    assert payload["qty"] == "143"
+    assert payload["time_in_force"] == "gtc", "the whole point of the fix"
+    assert payload["stop_loss"]["stop_price"] == "133.59"
+    assert payload["take_profit"]["limit_price"] == "146.08"
+
+
+def test_protective_payload_rounds_to_the_tick():
+    from scanner.execution.alpaca import protective_payload
+
+    payload = protective_payload("Q", 143, stop=133.59249, target=146.08001)
+    for price in (payload["stop_loss"]["stop_price"],
+                  payload["take_profit"]["limit_price"]):
+        assert len(price.split(".")[1]) == 2
+
+
+def test_protective_payload_refuses_an_inverted_stop():
+    """A stop above the target is a sign the caller mixed up its arguments.
+    Sent to the broker it would either reject or fill instantly at a loss."""
+    from scanner.execution.alpaca import protective_payload
+
+    with pytest.raises(ValueError):
+        protective_payload("Q", 143, stop=146.08, target=133.59)
+
+
+def test_trade_py_reconciles_protection_before_it_scans():
+    """The detector is only worth having if it actually runs.
+
+    Nothing in this repo looked for a missing stop, so three positions sat
+    naked for two sessions while every log line reported success. This pins
+    the call site, not just the function — deleting the check from trade.py
+    must fail a test rather than quietly restoring that silence.
+    """
+    from pathlib import Path
+
+    source = Path("scripts/trade.py").read_text(encoding="utf-8")
+    assert "unprotected_positions()" in source, (
+        "trade.py no longer reconciles open positions against live stops"
+    )
+    # It must run BEFORE sizing decides to add yet another position.
+    assert source.index("unprotected_positions()") < source.index("size_position("), (
+        "protection is reconciled after new positions are sized — a naked "
+        "position should be found before the scanner looks for more"
+    )

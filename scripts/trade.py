@@ -151,7 +151,40 @@ async def main(
             account = await broker.account()
             open_market = await broker.market_open()
             held = await broker.held_symbols()
+            # GTC brackets keep the stop alive overnight, and an unfilled
+            # ENTRY alive with it. A limit resting past its freshness window
+            # would fill on a setup the screen no longer produces, so it is
+            # cancelled first — before `pending_symbols` reads the book.
+            stale = await broker.cancel_stale_entries(
+                policy.fresh_bars * policy.interval_minutes
+            )
+            if stale:
+                print(f"{DIM}cancelled {len(stale)} stale entry order(s): "
+                      f"{', '.join(stale)}{RESET}")
             pending = await broker.pending_symbols()
+
+            # RECONCILE BEFORE SCANNING FOR ANYTHING NEW.
+            #
+            # A cancelled stop is not an error, it is an absence, and nothing
+            # here was looking for absences — so three positions worth 58,701
+            # dollars sat naked through a weekend and a full Monday session
+            # while every log line reported success.
+            #
+            # Finding new setups while an existing position has no floor
+            # under it is precisely the wrong order of business, so this runs
+            # first and says so in the loudest terms the terminal has.
+            naked = await broker.unprotected_positions()
+            if naked:
+                print(f"\n{RED}{BOLD}*** {len(naked)} UNPROTECTED POSITION(S) "
+                      f"— NO LIVE STOP ***{RESET}")
+                for p in naked:
+                    print(f"{RED}    {p.symbol:<6} {p.qty:>6} shares naked{RESET}")
+                print(f"{YELLOW}    re-arm with: python scripts/protect.py "
+                      f"--submit{RESET}\n")
+                for p in naked:
+                    record(TRADE, p.symbol, f"{p.qty} shares with no live stop",
+                           event="position_unprotected")
+
             sleeves = sleeve.split(
                 account.equity,
                 swing_allocation_pct=policy.swing_allocation_pct,

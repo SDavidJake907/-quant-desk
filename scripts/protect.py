@@ -1,0 +1,142 @@
+"""Re-arm open positions that have lost their protective stop.
+
+    python scripts/protect.py              # report only, send nothing
+    python scripts/protect.py --submit     # send the OCO orders
+
+WHY THIS SCRIPT EXISTS
+On 2026-08-07 every bracket was sent with `time_in_force="day"`. That applies
+to the protective legs as well as the entry, so at 20:01 UTC — one minute
+after the close — the broker cancelled all three stops and all three targets.
+Nothing errored, because the orders had done exactly what `day` means.
+
+Three positions worth 58,701 dollars then sat with no floor under them
+through the weekend and all of Monday's session. A power outage had stopped
+the scheduler, so nothing was even running to notice.
+
+`bracket_payload` now sends `gtc`, which stops this happening to any NEW
+order. It cannot help a position that is already naked — a bracket attaches
+protection to an entry, and these entries filled days ago. That is what this
+script is for: it reads the original stop and target back out of the audit
+log and re-arms each position with a standalone OCO.
+
+THE LEVELS COME FROM THE AUDIT LOG, NOT FROM TODAY'S PRICE
+Re-deriving a stop from the current chart would silently move the exit, and
+every R-multiple this project has recorded assumes the stop the setup was
+sized against. `size_position` chose the share count FROM that stop distance,
+so a different stop means the position is no longer risking what it was
+built to risk. The log is the only record of the original number, so the log
+is what this reads.
+
+WHAT IT WILL NOT DO
+It will not re-arm a position whose stop has already been breached. If the
+price traded through the stop while the position was unprotected, the exit
+the strategy called for has already happened in every sense except the
+broker's — re-arming it at the old level would be pretending otherwise, and
+would leave a stop sitting above the market where it fills instantly. Those
+are reported for a human to close deliberately.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+from datetime import datetime
+
+import httpx
+
+from scanner.config import settings
+from scanner.execution.alpaca import Alpaca, BrokerError, protective_payload
+from scanner.execution.audit import append_event, submitted_levels
+from scanner.models import AuditEvent
+
+BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
+GREEN, RED, YELLOW, CYAN = "\033[32m", "\033[31m", "\033[33m", "\033[36m"
+
+
+
+
+async def main(submit: bool) -> None:
+    async with httpx.AsyncClient() as client:
+        broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
+
+        naked = await broker.unprotected_positions()
+        if not naked:
+            print(f"{GREEN}every open position has a live stop.{RESET}")
+            return
+
+        levels = submitted_levels(settings.audit_log_path)
+        quotes = {
+            p["symbol"]: float(p["current_price"])
+            for p in await broker._get("/v2/positions")
+        }
+
+        print(f"\n{BOLD}{len(naked)} unprotected position(s){RESET}\n")
+        armable: list[tuple[str, int, float, float]] = []
+        for position in naked:
+            symbol, qty = position.symbol, position.qty
+            if symbol not in levels:
+                print(f"  {RED}{symbol:<6} no submission in the audit log — "
+                      f"cannot recover its stop; close or set one by hand{RESET}")
+                continue
+            stop, target = levels[symbol]
+            last = quotes.get(symbol, 0.0)
+
+            # A stop already below the market cannot be re-armed honestly.
+            if last and last <= stop:
+                print(f"  {RED}{symbol:<6} last {last:,.2f} is AT OR BELOW its "
+                      f"stop {stop:,.2f} — this trade was already over; "
+                      f"close it deliberately rather than re-arming{RESET}")
+                continue
+            if last and last >= target:
+                print(f"  {RED}{symbol:<6} last {last:,.2f} is AT OR ABOVE its "
+                      f"target {target:,.2f} — take the profit deliberately{RESET}")
+                continue
+
+            room = (last - stop) / last * 100 if last else 0.0
+            print(f"  {BOLD}{symbol:<6}{RESET} {qty:>6} sh   "
+                  f"stop {RED}{stop:>9,.2f}{RESET}   "
+                  f"target {GREEN}{target:>9,.2f}{RESET}   "
+                  f"{DIM}last {last:,.2f}, {room:.2f}% above stop{RESET}")
+            armable.append((symbol, qty, stop, target))
+
+        if not submit:
+            print(f"\n{YELLOW}report only — nothing sent. "
+                  f"Re-run with --submit to arm these.{RESET}")
+            return
+
+        print()
+        for symbol, qty, stop, target in armable:
+            payload = protective_payload(symbol, qty, stop=stop, target=target)
+            try:
+                order = await broker.submit(payload)
+                append_event(settings.audit_log_path, AuditEvent(
+                    event="protection_restored",
+                    at=datetime.now().astimezone(),
+                    symbol=symbol, order_id=str(order.get("id", "")),
+                    request_id=broker.last_request_id, stage="trade",
+                    reason=f"re-armed {qty} sh: stop {stop:.2f} target {target:.2f}",
+                ))
+                print(f"  {GREEN}armed{RESET} {symbol:<6} "
+                      f"{DIM}id {order.get('id', '?')}{RESET}")
+            except BrokerError as exc:
+                append_event(settings.audit_log_path, AuditEvent(
+                    event="protection_failed",
+                    at=datetime.now().astimezone(),
+                    symbol=symbol, request_id=broker.last_request_id,
+                    reason=str(exc), stage="trade",
+                ))
+                print(f"  {RED}FAILED{RESET} {symbol:<6} {exc}")
+
+        remaining = await broker.unprotected_positions()
+        if remaining:
+            print(f"\n{RED}{BOLD}still unprotected: "
+                  f"{', '.join(p.symbol for p in remaining)}{RESET}")
+        else:
+            print(f"\n{GREEN}{BOLD}every open position now has a live stop.{RESET}")
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser()
+    p.add_argument("--submit", action="store_true",
+                   help="actually send the OCO orders (default: report only)")
+    asyncio.run(main(p.parse_args().submit))
