@@ -39,6 +39,7 @@ from scanner.execution.guards import RiskLimits, check_account, check_symbol
 from scanner.execution.policy import CONFIRM, SCAN, TRADE, WATCH, Decision, TradingPolicy, rejections
 from scanner.execution.funnel import Funnel
 from scanner.execution.flatten import should_wind_down
+from scanner.execution.taper import deployment_for, position_cap_for
 from scanner.execution.session import crosses_session
 from scanner.execution.health import probe as probe_model
 from scanner.execution.news_gate import check as check_news
@@ -290,6 +291,12 @@ async def main(
             print(f"{YELLOW}winding down for the weekend — evaluating only, "
                   f"no new positions will be opened{RESET}")
             dry_run = True
+        elif policy.flat_before_weekend:
+            today = datetime.now().astimezone().date()
+            print(f"{DIM}capital budget today: "
+                  f"{deployment_for(today, policy):.0f}% of the swing sleeve "
+                  f"({position_cap_for(today, policy):.1f}% per position "
+                  f"across {policy.max_positions} slots){RESET}")
 
         universe = await composite.load_universe(client, INDEXES[index])
         symbols = tuple(m.symbol for m in universe)
@@ -433,10 +440,16 @@ async def main(
             equity = sleeves.swing_equity if account else 100_000.0
             power = min(account.buying_power, sleeves.swing_available) \
                 if account else 100_000.0
+            # The taper scales the position cap so a full book reaches the
+            # day's deployment target. It can only ever reduce the cap — see
+            # TradingPolicy.weekday_deployment_pct, which is a risk schedule
+            # and explicitly not a weekday edge.
+            day_cap = min(limits.max_position_pct,
+                          position_cap_for(datetime.now().astimezone().date(), policy))
             sizing = size_position(
                 equity, setup.entry_price, setup.stop_price,
                 risk_pct=limits.risk_pct,
-                max_position_pct=limits.max_position_pct,
+                max_position_pct=day_cap,
                 buying_power=power,
             )
             if not sizing.is_tradeable:

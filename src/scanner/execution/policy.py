@@ -140,6 +140,19 @@ class TradingPolicy(Frozen):
     #: operator judged an unmanageable weekend exposure worse than the cost.
     flat_before_weekend: bool = True
 
+    #: Share of equity that may be committed to NEW positions, by weekday
+    #: (Monday first). Falls toward the weekend and reaches zero where the
+    #: wind-down already refuses entries, so the two rules cannot disagree.
+    #:
+    #: NOT A WEEKDAY EDGE. Expectancy by trigger day measured Mon +0.539R,
+    #: Tue +0.054R, Wed -0.562R, Thu +0.780R, Fri +1.068R over 125 setups, and
+    #: a permutation test puts the chance of a random five-way split producing
+    #: a best day at least that good at 18.9%. Train and holdout disagree about
+    #: which day wins. This is a risk schedule, and since exposure and return
+    #: scale together here it costs return roughly in proportion.
+    weekday_deployment_pct: tuple[float, float, float, float, float] = (
+        50.0, 40.0, 30.0, 0.0, 0.0)
+
     #: Weekday from which no NEW positions are opened, Monday being 0.
     #: Thursday, because flattening on Friday alone still allows a position to
     #: be opened on Friday morning with hours left to go wrong. Existing
