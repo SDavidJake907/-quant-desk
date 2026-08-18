@@ -1,7 +1,7 @@
 # Evaluation window — FROZEN
 
     policy fingerprint   9fe7a6618823
-    build                9ea2d7d
+    build                180a117
     branch               momentum-swing-research
     started              2026-08-18, first scan 05:33 AK
     account              Alpaca paper, opened 2026-08-06 at $100,000
@@ -107,8 +107,39 @@ price a limit order may never get.
 
 ---
 
+## Restart, 2026-08-18
+
+The window was reopened the same day it started. Two bugs, both found before
+any trade was collected, so nothing was lost:
+
+1. **The Friday flatten had no timing guard.** `--only-if-closing-within` was
+   never actually in `scheduled_flatten.bat` — an earlier patch reported
+   success without checking the replacement matched. Both triggers ran
+   unconditionally, and the 08:45 AK one is 12:45 ET, so the whole book would
+   have been closed mid-session every Friday.
+2. **Trades closed outside their own bracket read as open forever.**
+   `flatten.py` closes with `DELETE /v2/positions`, which produces exactly that
+   shape, so every flattened trade would have been uncountable and the
+   100-trade stop rule unreachable.
+
+Either alone would have invalidated the window. This is what the build SHA is
+for: neither changed a policy field, and a fingerprint-only record would have
+pooled them with what came after.
+
+## DEPLOYMENT HAZARD — read before switching branches
+
+The scheduled tasks run `scripts\*.bat` from the **working directory**. There
+is no checkout step, so **whatever branch is checked out is what trades.**
+Leaving the tree on a research branch silently deploys research code.
+
+    git branch --show-current      # must be momentum-swing-research
+
+Check it after any research session. This is the one operational rule that no
+test can enforce.
+
 ## Window log
 
 | date | event | trades so far |
 |---|---|---|
 | 2026-08-18 | window opened at `9fe7a6618823` / `9ea2d7d` | 0 |
+| 2026-08-18 | **restarted** at `9fe7a6618823` / `180a117` — two bugs, 0 trades collected so nothing lost | 0 |
