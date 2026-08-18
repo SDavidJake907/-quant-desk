@@ -247,3 +247,34 @@ async def fetch_intraday(
     bars = resample(payload, symbol, minutes=minutes, alignment=alignment)
     cache_payload(symbol, range_, interval, payload)
     return bars
+
+
+def drop_incomplete(bars, *, minutes: int, now: datetime | None = None):
+    """Remove the final bar if its bucket has not closed yet.
+
+    WHY THIS IS NOT OPTIONAL FOR A LIVE SCAN
+    The bucketing above aggregates whatever the provider returns, and during
+    market hours that includes the bucket still forming. Scans run three
+    minutes past the half hour, so the newest bar a live scan saw was three
+    minutes old with twenty-seven left to change.
+
+    The measured strategy enters at the CLOSE OF THE TRIGGER BAR. A partial bar
+    has no close, only a current price, so entering on one is a different trade
+    at a different price from the one the holdout measured — and nothing in the
+    logs distinguishes them, because both are called "the close".
+
+    Comparison is in exchange time. The machine runs in Alaska and the bars are
+    Eastern; comparing a local clock against exchange timestamps would discard
+    four hours of finished bars.
+
+    A no-op on historical series, where every bucket closed long ago. Never
+    returns an empty series: a data quirk must not become a crash in every
+    caller that indexes [-1].
+    """
+    if len(bars) < 2 or not minutes:
+        return bars
+    moment = (now or datetime.now(tz=EXCHANGE_TZ)).astimezone(EXCHANGE_TZ)
+    last = bars.times[-1].astimezone(EXCHANGE_TZ)
+    if moment >= last + timedelta(minutes=minutes):
+        return bars
+    return bars.upto(len(bars) - 2)

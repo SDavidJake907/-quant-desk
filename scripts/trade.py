@@ -48,7 +48,9 @@ from scanner.execution import sleeve
 from scanner.execution.sizing import size_position
 from scanner.execution import watchlist
 from scanner.features import intraday_context
-from scanner.features.intraday import fetch_intraday, max_range, session_slot
+from scanner.features.intraday import (
+    drop_incomplete, fetch_intraday, max_range, session_slot,
+)
 from scanner.llm import ranking
 from scanner.screens.smc import is_live_setup, priority, scan
 from scanner.sources import calendar as event_calendar
@@ -320,6 +322,18 @@ async def main(
             *(fetch_intraday(s, client, minutes=minutes, range_=range_) for s in symbols),
             return_exceptions=True,
         )
+
+        # DROP THE BAR STILL FORMING. Scans run three minutes past the half
+        # hour, so the newest bucket is three minutes old with twenty-seven
+        # left to change. The measured strategy enters at the CLOSE of the
+        # trigger bar, and a partial bar has no close — only a current price.
+        # Acting on one is a different trade at a different price from the one
+        # the holdout measured, and nothing in the log would distinguish them.
+        loaded = [
+            b if isinstance(b, Exception)
+            else drop_incomplete(b, minutes=minutes)
+            for b in loaded
+        ]
 
         candidates = []
         volumes_by_symbol: dict[str, float] = {}
