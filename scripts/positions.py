@@ -23,6 +23,8 @@ import httpx
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.reconcile import (
+    CLOSED_FLAT,
+    CLOSED_OTHER,
     CLOSED_STOP,
     CLOSED_TARGET,
     EXPIRED,
@@ -41,9 +43,17 @@ STATE_LABEL = {
     FILLED_OPEN: (CYAN, "open"),
     CLOSED_TARGET: (GREEN, "target hit"),
     CLOSED_STOP: (RED, "stopped"),
+    CLOSED_OTHER: (DIM, "closed"),
+    CLOSED_FLAT: (CYAN, "flattened"),
     EXPIRED: (DIM, "expired"),
     REJECTED: (RED, "rejected"),
 }
+
+#: A state this report has never heard of must not take the report down. It
+#: was CLOSED_OTHER that was missing before CLOSED_FLAT existed, and the first
+#: non-bracket close would have crashed a script the operator runs to find out
+#: what the account is doing.
+UNKNOWN_STATE = (YELLOW, "?")
 
 
 def load_intents(path: str | Path) -> dict[str, dict]:
@@ -186,7 +196,7 @@ async def main(show_history: bool, as_json: bool, limit: int) -> None:
     if not closed:
         print(f"  {DIM}none yet{RESET}")
     for t in closed:
-        colour, label = STATE_LABEL[t.state]
+        colour, label = STATE_LABEL.get(t.state, UNKNOWN_STATE)
         r = t.r_multiple()
         print(f"  {BOLD}{t.symbol:<6}{RESET} {colour}{label:<11}{RESET} "
               f"in {t.entry_fill:>9,.2f}  out {t.exit_fill:>9,.2f}  "
