@@ -37,6 +37,8 @@ from scanner.execution.alpaca import Alpaca, BrokerError, bracket_payload
 from scanner.execution.audit import append_event
 from scanner.execution.guards import RiskLimits, check_account, check_symbol
 from scanner.execution.policy import CONFIRM, SCAN, TRADE, WATCH, Decision, TradingPolicy, rejections
+from scanner.execution.funnel import Funnel
+from scanner.execution.health import probe as probe_model
 from scanner.execution.news_gate import check as check_news
 from scanner.execution.safety import kill_switch_active
 from scanner.execution import sleeve
@@ -261,6 +263,20 @@ async def main(
             print(f"{DIM}ex-dividend calendar: {len(ex_dividends)} names with a "
                   f"declared ex-date ahead{RESET}")
 
+        # PROBE BEFORE ANY CANDIDATE EXISTS. A scan that finds nothing never
+        # calls the news gate, so per-candidate logging alone would stay silent
+        # through an outage on exactly the quiet days that look normal.
+        if news_gate:
+            health = await probe_model(client)
+            colour = DIM if health.ok else YELLOW
+            print(f"{colour}{health.banner()}{RESET}")
+            if not health.ok:
+                append_event(settings.audit_log_path, AuditEvent(
+                    event="news_gate_degraded", at=datetime.now().astimezone(),
+                    symbol="", stage="preflight", reason=health.banner(),
+                    policy=policy.fingerprint,
+                ))
+
         universe = await composite.load_universe(client, INDEXES[index])
         symbols = tuple(m.symbol for m in universe)
         sector_of = {m.symbol: m.sector for m in universe}
@@ -286,6 +302,8 @@ async def main(
 
         candidates = []
         volumes_by_symbol: dict[str, float] = {}
+        funnel = Funnel()
+        funnel.scanned(len(symbols))
         for symbol, bars in zip(symbols, loaded):
             if isinstance(bars, Exception) or not _liquid(bars):
                 continue
@@ -296,28 +314,40 @@ async def main(
                           require_rsi_context=rsi_context,
                           require_macd_context=macd_context)
             for setup in setups:
-                if (
-                    len(bars) - 1 - setup.trigger_index < fresh
-                    and is_live_setup(bars, setup)
-                ):
-                    # Shadow-log the RSI gate WITHOUT filtering on it. It
-                    # measured best of nine gates (+0.294R vs +0.218R) but was
-                    # picked from nine tries, so it needs forward evidence,
-                    # not promotion. Recording costs nothing and settles it in
-                    # three months on data nobody chose it from.
-                    at = bars.times[setup.trigger_index]
-                    slot = session_slot(at)
-                    weekday = at.strftime("%a")
-                    if skip_open and slot == "open":
-                        continue
-                    if weekday in skip_weekdays:
-                        continue
-                    shadow = intraday_context.passes(
-                        bars.upto(setup.trigger_index), require_rsi=True
-                    )
-                    candidates.append(
-                        (setup, bars.times[setup.trigger_index], shadow)
-                    )
+                funnel.setup_found()
+                # Same two conditions as before, evaluated separately only so
+                # the log can say WHICH one refused. The trading decision is
+                # unchanged: both must hold.
+                age = len(bars) - 1 - setup.trigger_index
+                if age >= fresh:
+                    funnel.dropped_as_stale(age=age, fresh_bars=fresh)
+                    continue
+                if not is_live_setup(bars, setup):
+                    funnel.dropped_as_not_live()
+                    continue
+                # Shadow-log the RSI gate WITHOUT filtering on it. It
+                # measured best of nine gates (+0.294R vs +0.218R) but was
+                # picked from nine tries, so it needs forward evidence,
+                # not promotion. Recording costs nothing and settles it in
+                # three months on data nobody chose it from.
+                at = bars.times[setup.trigger_index]
+                slot = session_slot(at)
+                weekday = at.strftime("%a")
+                if skip_open and slot == "open":
+                    funnel.dropped_by_slot()
+                    continue
+                if weekday in skip_weekdays:
+                    funnel.dropped_by_slot()
+                    continue
+                shadow = intraday_context.passes(
+                    bars.upto(setup.trigger_index), require_rsi=True
+                )
+                funnel.became_candidate()
+                candidates.append(
+                    (setup, bars.times[setup.trigger_index], shadow)
+                )
+
+        print(f"{DIM}{funnel.summary()}{RESET}")
 
         # Rank by what the study supported, not by which bar printed last.
         candidates.sort(key=lambda row: priority(row[0]), reverse=True)
