@@ -28,7 +28,7 @@ broker, so the plan can be printed and inspected before any order is sent.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from scanner.models import Frozen
 
@@ -90,3 +90,46 @@ def plan_flatten(*, positions, orders) -> FlattenPlan:
         if symbol and quantity != 0 and symbol not in close:
             close.append(symbol)
     return FlattenPlan(cancel_first=cancel, close=tuple(close))
+
+
+def is_flat(*, positions, orders) -> bool:
+    """Whether the account holds nothing and has nothing working.
+
+    Read from the BROKER's own records, never from what this process believes
+    it did. A close that was rejected, partially filled, or silently dropped
+    looks identical to a successful one from the sending side.
+
+    A resting entry order counts against flatness: unfilled, it can fill on
+    Monday morning into a book that is supposed to be empty.
+    """
+    for position in positions:
+        try:
+            if float(position.get("qty") or 0) != 0:
+                return False
+        except (TypeError, ValueError):
+            return False          # unparseable quantity is not proof of flat
+    return not any(
+        str(order.get("status", "")).lower() in WORKING for order in orders
+    )
+
+
+def closing_within(now: datetime, *, close_at: datetime | None,
+                   minutes: int) -> bool:
+    """Whether the session ends within `minutes` from `now`.
+
+    THE CASE THIS EXISTS FOR
+    US markets close at 13:00 ET on a handful of days — the Friday after
+    Thanksgiving, the sessions around Independence Day. A task pinned to 15:45
+    ET fires nearly three hours AFTER the bell on those days, finds the market
+    shut and cannot flatten anything. So the session end comes from the broker
+    calendar and the job decides for itself whether it is the run that should
+    act.
+
+    Already closed is deliberately NOT a closing window. It is a different
+    state — nothing can be flattened after the bell — and treating it as one
+    would let a too-late run report success by doing nothing.
+    """
+    if close_at is None:
+        return False
+    remaining = close_at - now
+    return timedelta(0) <= remaining <= timedelta(minutes=minutes)

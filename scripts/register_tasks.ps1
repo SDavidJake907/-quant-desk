@@ -76,8 +76,13 @@ Write-Output "registered stock-scanner-data   13:00 AK daily"
 # The wind-down that stops NEW positions from Thursday lives in TradingPolicy
 # (wind_down_from_weekday) and is enforced by trade.py, not here — so a missed
 # run of this task cannot also silently re-enable Thursday and Friday entries.
+# Two triggers. 08:45 AK = 12:45 ET catches a 13:00 ET early close; 11:45 AK =
+# 15:45 ET catches the normal bell. The script asks the broker calendar whether
+# the close is within 25 minutes and only the run in the window acts, so on a
+# normal Friday the early trigger exits having done nothing.
+$flatEarly = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Friday -At 8:45AM
 $flatTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Friday -At 11:45AM
 $flatSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
 $flatAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_flatten.bat" -WorkingDirectory $root
-Register-ScheduledTask -TaskName "stock-scanner-flatten" -Trigger $flatTrigger -Action $flatAction -Settings $flatSettings -Description "Close all positions before the weekend (Friday 11:45 AK = 15:45 ET)" -Force | Out-Null
-Write-Output "registered stock-scanner-flatten  Fridays 11:45 AK (15:45 ET)"
+Register-ScheduledTask -TaskName "stock-scanner-flatten" -Trigger @($flatEarly, $flatTrigger) -Action $flatAction -Settings $flatSettings -Description "Close all positions before the weekend (Friday 11:45 AK = 15:45 ET)" -Force | Out-Null
+Write-Output "registered stock-scanner-flatten  Fridays 08:45 + 11:45 AK (early + normal close)"

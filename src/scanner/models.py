@@ -77,6 +77,16 @@ class AuditEvent(Frozen):
     #: Which lifecycle stage this record belongs to: scan | watch | confirm |
     #: trade. A refusal says where it stopped.
     stage: str = ""
+    #: Short git SHA of the code that produced this record, `+dirty` when the
+    #: tree had uncommitted changes.
+    #:
+    #: The policy fingerprint answers "which RULES ran" and cannot answer
+    #: "which CODE ran". The partial-bar fix changed live entry prices and
+    #: touched no policy field; trades either side of it share a fingerprint
+    #: and are not the same experiment. An evaluation window is defined by
+    #: both, and a `+dirty` build is not reproducible from any commit.
+    build: str = ""
+
     #: Fingerprint of the TradingPolicy that produced this record.
     #:
     #: Without it a log is ambiguous about its own provenance. The rules here

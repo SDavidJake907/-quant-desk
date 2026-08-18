@@ -142,6 +142,7 @@ async def main(
         decisions.append(Decision(symbol=symbol, stage=stage, reason=reason))
         append_event(settings.audit_log_path, AuditEvent(
             event=event, at=datetime.now().astimezone(), symbol=symbol,
+            build=build_id(),
             intent=intent, reason=reason, stage=stage,
             policy=policy.fingerprint, order_id=order_id, request_id=request_id,
         ))
@@ -279,7 +280,7 @@ async def main(
                 append_event(settings.audit_log_path, AuditEvent(
                     event="news_gate_degraded", at=datetime.now().astimezone(),
                     symbol="", stage="preflight", reason=health.banner(),
-                    policy=policy.fingerprint,
+                    policy=policy.fingerprint, build=build_id(),
                 ))
 
         # WIND-DOWN. From Thursday no new positions are opened, so nothing is
@@ -543,7 +544,7 @@ async def main(
                 event="trade_intent", at=datetime.now().astimezone(),
                 symbol=setup.symbol, intent=intent,
                 stage=TRADE if not dry_run else WATCH,
-                policy=policy.fingerprint,
+                policy=policy.fingerprint, build=build_id(),
             ))
             print(f"  {BOLD}{setup.symbol:<6}{RESET} {sizing.shares:>5} sh @ "
                   f"{setup.entry_price:>9,.2f}   "
@@ -566,7 +567,7 @@ async def main(
                     symbol=setup.symbol, intent=intent,
                     order_id=str(order.get("id", "")),
                     request_id=broker.last_request_id,
-                    stage=TRADE, policy=policy.fingerprint,
+                    stage=TRADE, policy=policy.fingerprint, build=build_id(),
                 ))
                 print(f"         {GREEN}submitted{RESET} {DIM}id {order.get('id', '?')}{RESET}")
             except BrokerError as exc:
@@ -574,7 +575,7 @@ async def main(
                     event="order_rejected", at=datetime.now().astimezone(),
                     symbol=setup.symbol, intent=intent,
                     request_id=broker.last_request_id, reason=str(exc),
-                    stage=TRADE, policy=policy.fingerprint,
+                    stage=TRADE, policy=policy.fingerprint, build=build_id(),
                 ))
                 print(f"         {RED}not submitted: {exc}{RESET}")
 
