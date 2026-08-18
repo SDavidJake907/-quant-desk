@@ -1,7 +1,7 @@
 # Evaluation window — FROZEN
 
     policy fingerprint   9fe7a6618823
-    build                180a117
+    build                8947547
     branch               momentum-swing-research
     started              2026-08-18, first scan 05:33 AK
     account              Alpaca paper, opened 2026-08-06 at $100,000
@@ -143,3 +143,4 @@ test can enforce.
 |---|---|---|
 | 2026-08-18 | window opened at `9fe7a6618823` / `9ea2d7d` | 0 |
 | 2026-08-18 | **restarted** at `9fe7a6618823` / `180a117` — two bugs, 0 trades collected so nothing lost | 0 |
+| 2026-08-18 | **restarted** at `9fe7a6618823` / `8947547` — end-to-end sweep found two more, still 0 trades | 0 |
