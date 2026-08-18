@@ -111,6 +111,34 @@ class TradingPolicy(Frozen):
     max_daily_loss_pct: float = 3.0
     min_equity: float = 1_000.0
 
+    # --- when the market is shut --------------------------------------------
+    #: Refuse a setup whose trigger bar ended a session.
+    #:
+    #: NOT A PREDICTIVE FILTER, and adopted on the same grounds as the
+    #: ex-dividend gate: it corrects a modelling error rather than claiming an
+    #: edge. `fresh_bars` counts BARS, so overnight is one bar and seventeen
+    #: hours, and a setup from yesterday afternoon reads as fresh three minutes
+    #: after today's open. The backtest measured entry at the CLOSE OF THE
+    #: TRIGGER BAR; across a session boundary that price was never available,
+    #: because the market was shut. Measured on 60 days of 30m bars: entries
+    #: across the close are adverse 88% of the time, mean +0.785%, worst
+    #: +3.20% -- more than twice the 1.5% minimum stop consumed before the
+    #: position exists. trade.py already refuses these while the market is
+    #: closed; this extends the same refusal three minutes past the open.
+    block_overnight_entry: bool = True
+
+    #: Close every position at the last bar before the weekend.
+    #:
+    #: OFF, AND EXPENSIVE. This one is not a correction, it is a risk purchase
+    #: with a measured price: -0.213R per trade, taking expectancy from +0.447R
+    #: to +0.233R against a validated holdout of +0.218R. It consumes
+    #: essentially the whole edge, because max_hold_bars of 60 means 36% of
+    #: setups span a weekend. Weekend gaps are ALREADY modelled -- a bar that
+    #: opens through the stop fills at the open -- so this does not fix an
+    #: unpriced risk; it removes an exposure no stop can cover, at that price.
+    #: Turning it on is a deliberate choice, never a default.
+    flat_before_weekend: bool = False
+
     # --- how it ends --------------------------------------------------------
     max_hold_bars: int = 60
 

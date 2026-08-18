@@ -38,6 +38,7 @@ from scanner.execution.audit import append_event
 from scanner.execution.guards import RiskLimits, check_account, check_symbol
 from scanner.execution.policy import CONFIRM, SCAN, TRADE, WATCH, Decision, TradingPolicy, rejections
 from scanner.execution.funnel import Funnel
+from scanner.execution.session import crosses_session
 from scanner.execution.health import probe as probe_model
 from scanner.execution.news_gate import check as check_news
 from scanner.execution.safety import kill_switch_active
@@ -324,6 +325,12 @@ async def main(
                     continue
                 if not is_live_setup(bars, setup):
                     funnel.dropped_as_not_live()
+                    continue
+                # The trigger bar ended a session, so its close was never a
+                # price anyone could have traded — the market was shut. See
+                # TradingPolicy.block_overnight_entry.
+                if policy.block_overnight_entry and crosses_session(bars, setup.trigger_index):
+                    funnel.dropped_as_overnight()
                     continue
                 # Shadow-log the RSI gate WITHOUT filtering on it. It
                 # measured best of nine gates (+0.294R vs +0.218R) but was

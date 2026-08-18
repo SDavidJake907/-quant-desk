@@ -28,6 +28,7 @@ class Funnel:
     setups: int = 0
     dropped_stale: int = 0
     dropped_not_live: int = 0
+    dropped_overnight: int = 0
     dropped_slot: int = 0
     candidates: int = 0
     #: Age in bars of the freshest setup that was still refused as stale. If
@@ -56,6 +57,10 @@ class Funnel:
     def passed_live(self) -> None:
         """See `passed_freshness`."""
 
+    def dropped_as_overnight(self) -> None:
+        """Trigger bar ended a session, so its close was never tradeable."""
+        self.dropped_overnight += 1
+
     def dropped_by_slot(self) -> None:
         self.dropped_slot += 1
 
@@ -69,6 +74,7 @@ class Funnel:
             f"setups {self.setups}",
             f"stale {self.dropped_stale}",
             f"not live {self.dropped_not_live}",
+            f"overnight {self.dropped_overnight}",
             f"slot/weekday {self.dropped_slot}",
             f"candidates {self.candidates}",
         ]

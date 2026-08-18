@@ -101,3 +101,30 @@ class TestModelHealth:
     def test_the_banner_is_a_single_line_for_the_scheduled_log(self):
         for h in (ModelHealth(True, True, "m"), ModelHealth(False, False, "m")):
             assert "\n" not in h.banner()
+
+
+class TestFunnelFieldsAndMethodsDoNotCollide:
+    """A counter and the method that increments it shared a name once, so the
+    method shadowed the field and the summary printed a bound method into the
+    scheduled log. Cheap to pin, invisible until read."""
+
+    def test_every_counter_is_an_integer_after_use(self):
+        f = Funnel()
+        f.scanned(10)
+        f.setup_found()
+        f.dropped_as_stale(age=5, fresh_bars=2)
+        f.dropped_as_not_live()
+        f.dropped_as_overnight()
+        f.dropped_by_slot()
+        f.became_candidate()
+        for name in ("symbols", "setups", "dropped_stale", "dropped_not_live",
+                     "dropped_overnight", "dropped_slot", "candidates"):
+            assert isinstance(getattr(f, name), int), f"{name} is not an int"
+
+    def test_the_summary_contains_no_object_repr(self):
+        f = Funnel()
+        f.scanned(1)
+        f.setup_found()
+        f.dropped_as_overnight()
+        assert "<" not in f.summary() and "0x" not in f.summary()
+        assert "overnight 1" in f.summary()
