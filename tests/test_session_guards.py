@@ -97,10 +97,12 @@ class TestPolicy:
         lost in a later edit -- the cost is the reason it needs pinning."""
         assert TradingPolicy().flat_before_weekend is True
 
-    def test_the_wind_down_starts_on_thursday(self):
-        """Flattening on Friday alone still allows a position to be opened on
-        Friday morning with hours left to go wrong."""
-        assert TradingPolicy().wind_down_from_weekday == 3
+    def test_the_wind_down_is_friday_only(self):
+        """Thursday trades; Friday does not. On arithmetic, not on a weekday
+        edge: a Thursday entry has ~17 bars before the flatten against a ~20
+        bar mean hold, a Friday entry has ~11. The weekday expectancy
+        differences are noise; bars available is not."""
+        assert TradingPolicy().wind_down_from_weekday == 4
 
     def test_each_rule_changes_the_fingerprint(self):
         """Two runs under different rules must never share a fingerprint, or
@@ -108,4 +110,4 @@ class TestPolicy:
         base = TradingPolicy()
         assert base.fingerprint != TradingPolicy(block_overnight_entry=False).fingerprint
         assert base.fingerprint != TradingPolicy(flat_before_weekend=False).fingerprint
-        assert base.fingerprint != TradingPolicy(wind_down_from_weekday=4).fingerprint
+        assert base.fingerprint != TradingPolicy(wind_down_from_weekday=3).fingerprint

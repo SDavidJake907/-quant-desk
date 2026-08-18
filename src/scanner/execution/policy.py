@@ -172,13 +172,30 @@ class TradingPolicy(Frozen):
     #: which day wins. This is a risk schedule, and since exposure and return
     #: scale together here it costs return roughly in proportion.
     weekday_deployment_pct: tuple[float, float, float, float, float] = (
-        50.0, 40.0, 30.0, 0.0, 0.0)
+        50.0, 40.0, 30.0, 20.0, 0.0)
 
     #: Weekday from which no NEW positions are opened, Monday being 0.
     #: Thursday, because flattening on Friday alone still allows a position to
     #: be opened on Friday morning with hours left to go wrong. Existing
     #: positions keep their brackets and are closed by scripts/flatten.py.
-    wind_down_from_weekday: int = 3
+    #: FRIDAY ONLY, on arithmetic rather than on a weekday edge.
+    #:
+    #: Measured bars available before the Friday flatten, against a ~20 bar
+    #: mean hold:
+    #:
+    #:     Mon 63   Tue 50   Wed 37   Thu 17   Fri 11
+    #:
+    #: Mon-Wed have more room than the strategy needs, so the flatten costs
+    #: them nothing. Thursday is just short — the flatten costs it -0.313R and
+    #: it still lands at +0.467R, above the overall average, so it trades.
+    #: Friday has about half the time it needs and the flatten takes it from
+    #: +1.068R to +0.247R.
+    #:
+    #: The weekday EXPECTANCY differences are noise (18.9% on a permutation
+    #: test, and train and holdout disagree about which day wins). Bars
+    #: available is not — it is arithmetic, true every week whatever the
+    #: sample size. This rule rests on the second thing, not the first.
+    wind_down_from_weekday: int = 4
 
     # --- how it ends --------------------------------------------------------
     max_hold_bars: int = 60

@@ -34,12 +34,17 @@ class TestSchedule:
         wed = deployment_for(date(2026, 8, 19), p)
         assert mon > tue > wed
 
-    def test_thursday_and_friday_deploy_nothing_new(self):
-        """The wind-down already refuses new positions from Thursday; the
-        taper must agree with it rather than quietly contradict it."""
+    def test_thursday_still_trades_and_friday_does_not(self):
+        """The taper must agree with the wind-down rather than contradict it.
+
+        Thursday trades on arithmetic: ~17 bars before the Friday flatten
+        against a ~20 bar mean hold, costing -0.313R and still landing above
+        the overall average. Friday has ~11 bars and loses most of its value
+        to the flatten, so it opens nothing.
+        """
         p = TradingPolicy()
-        assert deployment_for(date(2026, 8, 20), p) == 0.0
-        assert deployment_for(date(2026, 8, 21), p) == 0.0
+        assert deployment_for(date(2026, 8, 20), p) == 20.0   # Thursday
+        assert deployment_for(date(2026, 8, 21), p) == 0.0    # Friday
 
     def test_the_schedule_is_a_policy_field(self):
         p = TradingPolicy(weekday_deployment_pct=(80.0, 60.0, 40.0, 0.0, 0.0))
@@ -69,16 +74,19 @@ class TestPositionCap:
         assert position_cap_for(date(2026, 8, 17), p) == pytest.approx(20.0)
 
     def test_a_zero_day_gives_a_zero_cap(self):
+        """Friday, the only day that now deploys nothing."""
         p = TradingPolicy()
-        assert position_cap_for(date(2026, 8, 20), p) == 0.0
+        assert position_cap_for(date(2026, 8, 21), p) == 0.0
 
 
 class TestPolicy:
     def test_the_default_schedule_tapers_toward_the_weekend(self):
+        """Monotonically down Monday to Thursday, and zero on Friday — the one
+        day the flatten leaves too little room to work in."""
         schedule = TradingPolicy().weekday_deployment_pct
         assert len(schedule) == 5
-        assert schedule[0] >= schedule[1] >= schedule[2]
-        assert schedule[3] == 0.0 and schedule[4] == 0.0
+        assert schedule[0] >= schedule[1] >= schedule[2] >= schedule[3] > 0.0
+        assert schedule[4] == 0.0
 
     def test_the_schedule_changes_the_fingerprint(self):
         base = TradingPolicy()
