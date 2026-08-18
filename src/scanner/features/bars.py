@@ -6,8 +6,10 @@ day. A 500-name universe would burn that budget in one run, so:
   - concurrency is capped by a semaphore
   - a re-run on the same day costs zero requests
 
-We store ADJUSTED closes. Unadjusted prices make a 4:1 split look like a 75%
-crash, which would poison every moving average and momentum figure downstream.
+We store ADJUSTED prices — open, high, low and close alike. Unadjusted prices
+make a 4:1 split look like a 75% crash, which would poison every moving average
+and momentum figure downstream. Adjusting only the close is worse still: it
+leaves two scales inside one bar. See `_adjustment_ratio`.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import json
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 import httpx
 
@@ -33,11 +36,63 @@ class BarsError(RuntimeError):
     """Raised when price history cannot be obtained."""
 
 
+class Row(NamedTuple):
+    """One parsed bar, already on the adjusted scale."""
+
+    date: date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+def _adjustment_ratio(raw_close: float | None, adjusted_close: float) -> float | None:
+    """Factor that carries a raw quoted price onto the adjusted scale.
+
+    Yahoo adjusts only the close. Open, high and low arrive raw, so a series
+    with any dividend or split holds two scales at once — on MO, that puts the
+    close outside its own high/low on 95% of five years of daily bars.
+
+    The consequence is not cosmetic. `backtest.setups.resolve` decides a trade
+    by testing a stop and a target against `lows` and `highs`. Levels derived
+    from an adjusted close, checked against raw highs, sit below almost every
+    bar: the backtest fills the target immediately and reports an edge that is
+    nothing but a unit mismatch.
+
+    One ratio per bar, applied to all four prices, keeps each bar's proportions
+    intact — so ATR and every other high-minus-low measure stay meaningful.
+    Returns None when the raw close is missing or zero. The scale of that bar
+    cannot be established, and there is no safe guess: keeping the raw high and
+    low beside an adjusted close rebuilds the very inconsistency this removes.
+    Such a bar is dropped, which is a data defect losing one bar rather than
+    silently poisoning the series.
+    """
+    if not raw_close:
+        return None
+    return float(adjusted_close) / float(raw_close)
+
+
+def _scaled(price: float | None, fallback: float | None, ratio: float) -> float:
+    """A raw price carried onto the adjusted scale, or the bar's close if the
+    field is missing. The fallback is scaled too — an unscaled one would
+    reintroduce exactly the inconsistency this function exists to remove."""
+    value = price if price is not None else fallback
+    return float(value or 0.0) * ratio
+
+
 class Bars(Frozen):
-    """One symbol's daily history, oldest first. Adjusted closes."""
+    """One symbol's daily history, oldest first.
+
+    ALL FOUR PRICES ARE ON THE ADJUSTED SCALE. Yahoo returns two scales in one
+    response — `adjclose` corrected for splits and dividends, `quote` raw — and
+    this object used to take its closes from the first and its highs and lows
+    from the second. See `_adjust` for why that is not a rounding detail.
+    """
 
     symbol: str
     dates: tuple[date, ...]
+    opens: tuple[float, ...]
     closes: tuple[float, ...]
     volumes: tuple[float, ...]
     highs: tuple[float, ...]
@@ -57,6 +112,7 @@ class Bars(Frozen):
         return Bars(
             symbol=self.symbol,
             dates=self.dates[:stop],
+            opens=self.opens[:stop],
             closes=self.closes[:stop],
             volumes=self.volumes[:stop],
             highs=self.highs[:stop],
@@ -89,31 +145,42 @@ def parse_chart(payload: dict, symbol: str) -> Bars:
     if not timestamps or not closes:
         raise BarsError(f"{symbol}: no usable price series")
 
+    # The raw close is what open/high/low are quoted against, so it is the
+    # denominator of the adjustment ratio — never the adjusted close.
+    raw_closes = quote.get("close") or closes
     volumes = quote.get("volume") or [0] * len(timestamps)
-    highs = quote.get("high") or closes
-    lows = quote.get("low") or closes
+    opens = quote.get("open") or raw_closes
+    highs = quote.get("high") or raw_closes
+    lows = quote.get("low") or raw_closes
 
-    rows = [
-        (
-            datetime.fromtimestamp(ts, timezone.utc).date(),
-            float(c),
-            float(v or 0),
-            float(h if h is not None else c),
-            float(low if low is not None else c),
-        )
-        for ts, c, v, h, low in zip(timestamps, closes, volumes, highs, lows)
-        if c is not None
-    ]
+    rows: list[Row] = []
+    for ts, adj, raw, volume, open_, high, low in zip(
+        timestamps, closes, raw_closes, volumes, opens, highs, lows
+    ):
+        if adj is None:
+            continue
+        ratio = _adjustment_ratio(raw, adj)
+        if ratio is None:
+            continue
+        rows.append(Row(
+            date=datetime.fromtimestamp(ts, timezone.utc).date(),
+            open=_scaled(open_, raw, ratio),
+            high=_scaled(high, raw, ratio),
+            low=_scaled(low, raw, ratio),
+            close=float(adj),
+            volume=float(volume or 0),
+        ))
     if len(rows) < 2:
         raise BarsError(f"{symbol}: fewer than 2 valid bars")
 
     return Bars(
         symbol=symbol,
-        dates=tuple(r[0] for r in rows),
-        closes=tuple(r[1] for r in rows),
-        volumes=tuple(r[2] for r in rows),
-        highs=tuple(r[3] for r in rows),
-        lows=tuple(r[4] for r in rows),
+        dates=tuple(r.date for r in rows),
+        opens=tuple(r.open for r in rows),
+        highs=tuple(r.high for r in rows),
+        lows=tuple(r.low for r in rows),
+        closes=tuple(r.close for r in rows),
+        volumes=tuple(r.volume for r in rows),
     )
 
 

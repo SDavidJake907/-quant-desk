@@ -25,6 +25,7 @@ def _bars(closes: list[float], symbol: str = "TEST") -> Bars:
     return Bars(
         symbol=symbol,
         dates=tuple(start + timedelta(days=i) for i in range(n)),
+        opens=tuple(closes),
         closes=tuple(closes),
         volumes=tuple(1_000_000.0 for _ in range(n)),
         highs=tuple(c * 1.01 for c in closes),
