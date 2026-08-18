@@ -124,3 +124,37 @@ def took_out(low: float, prior: Swing | None) -> bool:
 def broke_above(high: float, prior: Swing | None) -> bool:
     """Whether a high traded through a prior swing high."""
     return prior is not None and prior.kind == HIGH and high > prior.price
+
+
+def equal_levels(
+    points: Sequence[Swing],
+    reference: float,
+    kind: str,
+    *,
+    tolerance_pct: float,
+) -> int:
+    """How many pivots of `kind` sit within a band around `reference`.
+
+    WHAT THIS IS FOR
+    `swings` refuses ties on purpose: a bar matching its neighbours is not a
+    pivot, and admitting ties turns flat congestion into imaginary structure.
+    The cost of that choice is that a run of roughly equal lows -- the shape
+    that actually holds a cluster of resting stops -- is invisible downstream.
+    This counts the cluster without loosening the pivot rule that keeps the
+    rest of the structure honest.
+
+    The band is a PERCENTAGE of the reference, not an absolute distance: ten
+    cents apart means the same thing on a $100 stock that four dollars does on
+    a $5,000 one. Two swing lows a few basis points apart hold the same stops,
+    so exact ties are the wrong test.
+
+    Returns a count INCLUDING the level itself, so one means an isolated level
+    and two or more means a pool. Zero only when there is nothing to count.
+    """
+    if tolerance_pct < 0:
+        raise ValueError("tolerance_pct must not be negative")
+    if reference <= 0:
+        return 0
+    band = reference * tolerance_pct / 100.0
+    return sum(1 for s in points
+               if s.kind == kind and abs(s.price - reference) <= band)

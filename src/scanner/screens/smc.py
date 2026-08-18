@@ -38,10 +38,17 @@ from scanner.features.structure import (
     HIGH,
     LOW,
     Swing,
+    equal_levels,
     known_at,
     swings,
 )
 from scanner.models import Frozen
+
+#: How close two swing lows must be to be holding the same resting stops.
+#: Ten basis points: wide enough that a few ticks of noise does not split one
+#: pool into two, narrow enough that separate levels stay separate. Exposed
+#: here rather than buried so a backtest can measure the sensitivity.
+EQUAL_LEVEL_TOLERANCE_PCT = 0.10
 
 #: Pivots older than this many bars are treated as irrelevant structure.
 DEFAULT_LOOKBACK = 60
@@ -79,6 +86,12 @@ class Setup(Frozen):
     stop_price: float
     target_price: float
 
+    #: How many roughly-equal swing lows the sweep cleared, counting the swept
+    #: level itself. One is an isolated low; two or more is a liquidity pool.
+    #: RECORDED, NEVER FILTERED ON -- it exists so the question can be settled
+    #: on measurement rather than on how convincing the idea sounds.
+    swept_equal_lows: int = 1
+
     @property
     def risk(self) -> float:
         return self.entry_price - self.stop_price
@@ -113,6 +126,7 @@ def detect(
     min_reward_risk: float = MIN_REWARD_RISK,
     min_risk_pct: float = 0.0,
     points: tuple[Swing, ...] | None = None,
+    equal_tolerance_pct: float = EQUAL_LEVEL_TOLERANCE_PCT,
 ) -> Setup | None:
     """Test whether bar `index` completes the pattern. Point-in-time.
 
@@ -141,6 +155,12 @@ def detect(
     sweep, prior_low = lows[-2], lows[-3]
     if not sweep.price < prior_low.price:
         return None
+    # How much rested at the level that was taken out. Counted among the lows
+    # standing BEFORE the sweep, so it is what a trader could have seen.
+    pool = equal_levels(
+        [low for low in lows if low.index < sweep.index],
+        prior_low.price, LOW, tolerance_pct=equal_tolerance_pct,
+    )
     if not higher_low.price > sweep.price:
         return None
 
@@ -177,6 +197,7 @@ def detect(
         entry_price=entry,
         stop_price=stop,
         target_price=target,
+        swept_equal_lows=pool,
     )
     if setup.reward_risk < min_reward_risk:
         return None
@@ -257,6 +278,7 @@ def scan(
     require_trend_context: bool = False,
     require_rsi_context: bool = False,
     require_macd_context: bool = False,
+    equal_tolerance_pct: float = EQUAL_LEVEL_TOLERANCE_PCT,
 ) -> tuple[Setup, ...]:
     """Every trigger across the series, one per pattern instance.
 
@@ -272,7 +294,7 @@ def scan(
         setup = detect(
             bars, index, k=k, lookback=lookback,
             min_reward_risk=min_reward_risk, min_risk_pct=min_risk_pct,
-            points=points,
+            points=points, equal_tolerance_pct=equal_tolerance_pct,
         )
         if setup is None:
             continue
