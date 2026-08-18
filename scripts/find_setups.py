@@ -47,7 +47,8 @@ INDEXES = {"sp500": (SP500,), "sp400": (SP400,), "sp600": (SP600,),
 
 #: Day-trading practicality. A setup you cannot get filled on is not a setup.
 MIN_PRICE = 5.0
-MIN_DOLLAR_VOLUME = 5_000_000.0   # average per bar
+#: From the policy, not a local copy — see scripts/trade.py.
+MIN_DOLLAR_VOLUME = TradingPolicy().min_dollar_volume
 MIN_RANGE_PCT = 0.4               # average bar range, as % of price
 
 

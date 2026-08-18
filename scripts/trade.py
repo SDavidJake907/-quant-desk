@@ -67,7 +67,10 @@ INDEXES = {"sp500": (SP500,), "sp400": (SP400,), "sp600": (SP600,),
            "all": COMPOSITE_1500}
 
 MIN_PRICE = 5.0
-MIN_DOLLAR_VOLUME = 5_000_000.0
+#: Read from the policy so this cannot drift from what was measured.
+#: It did drift: this file carried its own 5M constant while the policy
+#: said something else, so changing the policy changed nothing live.
+MIN_DOLLAR_VOLUME = TradingPolicy().min_dollar_volume
 
 
 async def _sector_standing(client, universe) -> dict[str, float]:

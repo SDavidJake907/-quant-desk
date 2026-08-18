@@ -1,7 +1,7 @@
 # Evaluation window — FROZEN
 
-    policy fingerprint   9fe7a6618823
-    build                8947547
+    policy fingerprint   347ff1e34122
+    build                (see window log)
     branch               momentum-swing-research
     started              2026-08-18, first scan 05:33 AK
     account              Alpaca paper, opened 2026-08-06 at $100,000
@@ -49,6 +49,11 @@ At roughly 2 setups a day across the index, ~40% average deployment, a
 Thursday–Friday wind-down and `fresh_bars = 2` currently admitting almost
 nothing, the live rate has been about **0.6 orders a day**. At that rate 100
 completed trades is on the order of **eight months**.
+
+**The 20M liquidity floor roughly halves that again.** The scan went from 130
+setups to 69 the day it landed, so expect closer to **sixteen months** for 100
+completed trades. That is the price of trading only the tier where the edge was
+measured, and it was accepted knowingly.
 
 That is the honest number and it is uncomfortable. It is also why the
 `fresh_bars` investigation in `WORKLIST.md` §8 matters — not to loosen the gate
@@ -144,3 +149,4 @@ test can enforce.
 | 2026-08-18 | window opened at `9fe7a6618823` / `9ea2d7d` | 0 |
 | 2026-08-18 | **restarted** at `9fe7a6618823` / `180a117` — two bugs, 0 trades collected so nothing lost | 0 |
 | 2026-08-18 | **restarted** at `9fe7a6618823` / `8947547` — end-to-end sweep found two more, still 0 trades | 0 |
+| 2026-08-18 | **restarted** at `347ff1e34122` — liquidity floor raised 5M -> 20M on a 2.2% permutation result; first change made for an EDGE reason rather than a bug | 0 |

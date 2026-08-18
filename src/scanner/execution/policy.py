@@ -70,7 +70,28 @@ class TradingPolicy(Frozen):
 
     # --- what is tradeable ------------------------------------------------
     min_price: float = 5.0
-    min_dollar_volume: float = 5_000_000.0
+    #: Liquidity floor, in dollars traded per bar.
+    #:
+    #: RAISED FROM 5M TO 20M ON MEASUREMENT. This strategy trades liquidity
+    #: SWEEPS — price running through a level where stops are clustered. In a
+    #: thinly traded name there are not enough resting orders for a sweep to
+    #: mean anything, so the pattern matches noise instead of an event.
+    #:
+    #: Measured over 125 setups, split at the repo's own existing tier
+    #: boundary rather than one chosen after looking:
+    #:
+    #:     below 20M   n=62   +0.114R   (train -0.152R, holdout +0.508R)
+    #:     at/above    n=63   +0.776R   (train +0.673R, holdout +1.053R)
+    #:
+    #: Same direction and similar size on both splits, and a permutation test
+    #: puts the chance of a gap that large from a random split at 2.2% — the
+    #: strongest result this project has produced. Against 18.9% for the
+    #: weekday claim and 25.1% for time of day, both of which were noise.
+    #:
+    #: The cost is real: it removes 263 of 499 symbols and halves the setup
+    #: count, so evidence accumulates at half the rate. That is a deliberate
+    #: trade of quantity for quality.
+    min_dollar_volume: float = 20_000_000.0
 
     # --- what stops a trade -----------------------------------------------
     block_structural_news: bool = True

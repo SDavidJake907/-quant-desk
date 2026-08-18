@@ -126,3 +126,32 @@ def test_every_entry_point_defaults_to_the_validated_configuration():
                 f"{name}.py {flag} defaults to {default!r}, not the policy — "
                 f"evidence and execution can drift apart"
             )
+
+
+def test_the_liquidity_floor_is_read_from_the_policy_not_copied():
+    """`trade.py` and `find_setups.py` each carried their own
+    MIN_DOLLAR_VOLUME = 5_000_000.0 while TradingPolicy held the real value.
+
+    That is precisely the drift this object exists to prevent, and it was
+    silent: raising the policy floor would have changed nothing live, and a
+    backtest run from the policy would have measured a configuration the
+    scanner never traded. The existing drift test did not cover this field.
+    """
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    expected = TradingPolicy().min_dollar_volume
+
+    for name in ("trade", "find_setups"):
+        source = (root / "scripts" / f"{name}.py").read_text(encoding="utf-8")
+        assert "MIN_DOLLAR_VOLUME = 5_000_000.0" not in source, (
+            f"scripts/{name}.py has re-hardcoded the liquidity floor")
+        assert "TradingPolicy().min_dollar_volume" in source, (
+            f"scripts/{name}.py must read the floor from the policy")
+
+    assert expected == 20_000_000.0, (
+        "the floor was raised to 20M on measurement: below it the strategy "
+        "earned +0.114R and above it +0.776R, with a 2.2% permutation test"
+    )
