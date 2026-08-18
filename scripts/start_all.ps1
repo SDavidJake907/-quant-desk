@@ -59,7 +59,7 @@ if ($tags) { $have = @($tags.models | Where-Object { $_.name -eq $wanted }).Coun
 Report $have "model $wanted" $(if ($have) { "present" } else { "MISSING - news gate will pass everything" })
 
 # --- 3. Scheduled tasks ---------------------------------------------------
-foreach ($name in "stock-scanner-scan", "stock-scanner-data") {
+foreach ($name in "stock-scanner-scan", "stock-scanner-data", "stock-scanner-flatten", "stock-scanner-outcomes") {
     $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
     if ($task) {
         $info = Get-ScheduledTaskInfo -TaskName $name
