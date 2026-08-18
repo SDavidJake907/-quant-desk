@@ -27,7 +27,7 @@ import httpx
 from scanner.backtest import engine
 from scanner.features.bars import fetch_bars, fetch_many, range_start
 from scanner.features.technicals import Features
-from scanner.screens import coiled, trend
+from scanner.screens import coiled, momentum_factor, trend
 from scanner.screens.trend import Candidate
 from scanner.sources import index_history
 from scanner.sources.constituents import load
@@ -45,7 +45,8 @@ def _random_screen(f: Features, rs: float | None) -> Candidate:
     )
 
 
-SCREENS = {"trend": trend.evaluate, "coiled": coiled.evaluate, "random": _random_screen}
+SCREENS = {"momentum": momentum_factor.evaluate, "trend": trend.evaluate,
+           "coiled": coiled.evaluate, "random": _random_screen}
 
 
 def _report(name: str, result: engine.BacktestResult) -> None:
