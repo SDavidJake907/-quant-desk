@@ -26,16 +26,21 @@ Status key: `[ ]` open · `[x]` done · `[~]` partly done
 
 ## 1. Freeze the policy — do this before anything else
 
-- [ ] Stop changing `TradingPolicy`. Fingerprint moved **three times today**
+**DONE — see `FREEZE.md`.** Window opened 2026-08-18 at policy
+`9fe7a6618823`, build `9ea2d7d`. Stop rule: 100 completed scanner trades AND
+12 calendar weeks, checkpoint at 30 for reporting only, no optional stopping.
+
+- [x] Stop changing `TradingPolicy`. Fingerprint moved **three times today**
       (`3195873fc5b6` → `cfd459a03db3` → `dcdf791c3035` → `9fe7a6618823`), so
       the trades already collected cannot be pooled.
-- [ ] Declare an evaluation window with a start date and a minimum trade count,
-      not a calendar length. ~2 setups/day across the index and a taper to 40%
-      average deployment makes trades scarce; a week may produce single digits.
-- [ ] Report results **grouped by fingerprint**. `positions.py` currently pools
-      everything; it should split.
-- [ ] Write the frozen fingerprint and window start into `HANDOFF.md` so a
-      future session cannot silently reopen it.
+- [x] Declare an evaluation window with **both** a minimum trade count and a
+      minimum calendar duration. At the observed ~0.6 orders/day, 100 completed
+      trades is roughly **eight months** — stated in `FREEZE.md` because it is
+      uncomfortable and needs to be seen before it is agreed to.
+- [ ] Report results **grouped by `(policy, build)`**. `positions.py` pools
+      everything and mixes in the five manual trades. Needed before the
+      30-trade checkpoint.
+- [x] Frozen fingerprint, build and window rules written to `FREEZE.md`.
 
 **Note:** the partial-bar fix above changes behaviour but not the fingerprint —
 it is a data-layer correctness fix, like the adjusted-price bug. Freeze *after*
@@ -46,8 +51,13 @@ it lands, which is now.
 - [ ] Write realized R and exit reason back to `logs/trading_audit.jsonl`. It
       records what was decided and never what happened; realized R is recomputed
       on demand from Alpaca's order history, which is not permanent.
-- [ ] Confirm every record carries the policy fingerprint (preflight and
-      flatten records now do; check the rest).
+- [x] Every audit record now carries the policy fingerprint **and a build SHA**
+      (`+dirty` when the tree is edited). A fingerprint alone cannot separate
+      trades made before and after a data or execution fix — the partial-bar
+      change proved that.
+- [ ] Append a `trade_outcome` event linked by a permanent `trade_id`. **Never
+      rewrite an earlier JSONL record**; the log is append-only and its value
+      is that it cannot be revised after the fact.
 - [ ] **Eight shadow dimensions are unredeemable without this**: RSI gate,
       session slot, weekday, LLM ranking, `swept_equal_lows`, and the
       uncapped-exit candidate.
@@ -90,6 +100,26 @@ it lands, which is now.
 
 - [ ] Monthly rebalance loop, equal weight, no stops. `sizing.py` cannot size
       it — with no stop there is no input.
+
+## 6b. Friday flatten safety — mostly done
+
+- [x] Cancel every unfilled entry order before closing positions
+- [x] Cancel bracket legs first — a resting leg reserves the shares, so a close
+      underneath one can be rejected for insufficient quantity
+- [x] Query broker quantities; never trust local state
+- [x] Close with `DELETE /v2/positions/{symbol}` so quantities are the broker's
+- [x] Idempotent — a second `--submit` cannot open a short (pinned by test,
+      including the short-position case)
+- [x] Poll until positions **and** working orders are both zero, 45s budget
+- [x] Friday entries blocked by `wind_down_from_weekday`, independently of this
+      job, so a missed flatten cannot re-enable them
+- [x] Alpaca market calendar for holidays and early closes — two triggers
+      (08:45 + 11:45 AK), each acts only if the bell is within 25 minutes
+- [x] Loud alert and non-zero exit if not flat
+- [ ] Record realized R, fill price and remaining quantity in the
+      `weekend_flatten` record (currently records counts and what is stuck)
+- [ ] **Watch the first live run**, Friday 2026-08-21. First time this code
+      sends closing orders on a schedule.
 
 ## 7. News gate — decide the failure direction before live
 
