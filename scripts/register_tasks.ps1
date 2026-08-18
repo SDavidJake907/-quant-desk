@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
 if ($Remove) {
-    foreach ($name in "stock-scanner-scan", "stock-scanner-data", "stock-scanner-flatten") {
+    foreach ($name in "stock-scanner-scan", "stock-scanner-data", "stock-scanner-flatten", "stock-scanner-outcomes") {
         try {
             Unregister-ScheduledTask -TaskName $name -Confirm:$false
             Write-Output "removed $name"
@@ -86,3 +86,17 @@ $flatSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoin
 $flatAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_flatten.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-flatten" -Trigger @($flatEarly, $flatTrigger) -Action $flatAction -Settings $flatSettings -Description "Close all positions before the weekend (Friday 11:45 AK = 15:45 ET)" -Force | Out-Null
 Write-Output "registered stock-scanner-flatten  Fridays 08:45 + 11:45 AK (early + normal close)"
+
+# --- outcome recording -----------------------------------------------------
+# Writes back what each closed trade actually produced. The audit log records
+# what was DECIDED and never what came of it, and realized R is otherwise
+# recomputed from Alpaca's order history, which the broker prunes.
+#
+# Read-mostly and outside the frozen trading path: it places no order and
+# touches no policy, so it cannot influence a decision. Idempotent, so a missed
+# day is picked up by the next run.
+$outTrigger = New-ScheduledTaskTrigger -Daily -At 1:30PM
+$outSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$outAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_outcomes.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-outcomes" -Trigger $outTrigger -Action $outAction -Settings $outSettings -Description "Append realized outcomes to the audit log" -Force | Out-Null
+Write-Output "registered stock-scanner-outcomes 13:30 AK daily"

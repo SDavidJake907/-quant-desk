@@ -64,6 +64,33 @@ class TradeIntent(Frozen):
     liquidity_tier: str = ""     # 5-20M | 20-50M | over-50M
 
 
+class TradeOutcome(Frozen):
+    """What a closed trade actually produced.
+
+    Lives here with the other domain models rather than in `execution.outcomes`,
+    which needs `Frozen` from this module — defining it there and importing it
+    back created a genuine circular import that only failed when
+    `execution.outcomes` was imported first.
+
+    Realized figures come from the FILLS, not from what was intended. A stop
+    that filled a third of an R better than its level did not lose 1.00R, and
+    recording the intended outcome would launder execution quality out of the
+    evidence.
+    """
+
+    client_order_id: str
+    symbol: str
+    exit_reason: str
+    entry_fill: float
+    exit_fill: float
+    shares: int
+    realized_r: float
+    realized_dollars: float
+    intended_entry: float
+    intended_stop: float
+    intended_target: float
+
+
 class AuditEvent(Frozen):
     """Append-only record of a decision, refusal, submission, or fill."""
 
@@ -86,6 +113,12 @@ class AuditEvent(Frozen):
     #: and are not the same experiment. An evaluation window is defined by
     #: both, and a `+dirty` build is not reproducible from any commit.
     build: str = ""
+
+    #: What the trade actually produced, appended as its own record once the
+    #: position closes. Never written by editing the original intent: an
+    #: outcome folded into the decision that preceded it would be
+    #: indistinguishable from a decision that had always claimed it.
+    outcome: TradeOutcome | None = None
 
     #: Fingerprint of the TradingPolicy that produced this record.
     #:
