@@ -31,6 +31,9 @@ FILLED_OPEN = "open"
 CLOSED_TARGET = "target"
 CLOSED_STOP = "stop"
 CLOSED_OTHER = "closed"
+#: Closed by an order that was not a leg of its own bracket — a replacement
+#: bracket, a manual sale, or the Friday flatten's DELETE /v2/positions.
+CLOSED_FLAT = "flattened"
 EXPIRED = "expired"
 REJECTED = "rejected"
 
@@ -72,7 +75,8 @@ class LiveTrade(Frozen):
 
     @property
     def is_closed(self) -> bool:
-        return self.state in {CLOSED_TARGET, CLOSED_STOP, CLOSED_OTHER}
+        return self.state in {CLOSED_TARGET, CLOSED_STOP, CLOSED_OTHER,
+                              CLOSED_FLAT}
 
     @property
     def filled(self) -> bool:
@@ -181,8 +185,90 @@ def reconcile(
             state=REJECTED,
         ))
 
+    trades = _attach_unattached_closes(trades, orders)
     trades.sort(key=lambda t: t.submitted_at, reverse=True)
     return tuple(trades)
+
+
+def _closing_kind(order: dict) -> tuple[str, float | None]:
+    """How an unattached sell closed a position, and at what price.
+
+    A replacement bracket carries its own legs, so the filled leg names the
+    reason. A bare market or limit sale has none and is read from its own type.
+    """
+    for leg in order.get("legs") or []:
+        fill = _number(leg.get("filled_avg_price"))
+        if fill is None:
+            continue
+        leg_type = str(leg.get("type") or "").lower()
+        if "stop" in leg_type:
+            return CLOSED_STOP, fill
+        if "limit" in leg_type:
+            return CLOSED_TARGET, fill
+    fill = _number(order.get("filled_avg_price"))
+    order_type = str(order.get("type") or "").lower()
+    if "stop" in order_type:
+        return CLOSED_STOP, fill
+    if "limit" in order_type:
+        return CLOSED_TARGET, fill
+    return CLOSED_FLAT, fill
+
+
+def _attach_unattached_closes(trades: list[LiveTrade], orders) -> list[LiveTrade]:
+    """Pair still-open trades with sells that were not their own bracket legs.
+
+    THE BUG THIS FIXES
+    `classify` looks only inside `order["legs"]`. A position closed by anything
+    else — a replacement bracket, a manual sale, or flatten.py's
+    DELETE /v2/positions — leaves the entry's own legs expired or cancelled, so
+    the trade reads open forever. Four such trades were sitting in the live
+    account while the broker held nothing.
+
+    It matters more now than it did: the Friday flatten produces exactly this
+    shape, so without it every flattened trade would be uncountable and the
+    evaluation window would only ever see the trades that closed cleanly
+    through their bracket — the biased subset.
+
+    Matching is by symbol and chronology, and each closing order is consumed
+    once so two entries in one name cannot both claim the same sale. Trades
+    with no candidate are left open, because a genuinely open position must not
+    be closed by bookkeeping.
+    """
+    def _has_fill(order: dict) -> bool:
+        """A replacement bracket's PARENT is often cancelled while one of its
+        legs fills — that is what a stop doing its job looks like. Requiring a
+        parent fill misses exactly those, which is how IP stayed open against
+        a broker holding nothing."""
+        if _number(order.get("filled_avg_price")) is not None:
+            return True
+        return any(_number(leg.get("filled_avg_price")) is not None
+                   for leg in order.get("legs") or [])
+
+    sells = sorted(
+        (o for o in orders
+         if str(o.get("side") or "").startswith("sell") and _has_fill(o)),
+        key=lambda o: str(o.get("filled_at") or o.get("submitted_at") or ""),
+    )
+    used: set[int] = set()
+    resolved: list[LiveTrade] = []
+    for trade in sorted(trades, key=lambda t: t.submitted_at):
+        if trade.state != FILLED_OPEN or not trade.tracked:
+            resolved.append(trade)
+            continue
+        for index, sell in enumerate(sells):
+            if index in used:
+                continue
+            if str(sell.get("symbol") or "") != trade.symbol:
+                continue
+            when = str(sell.get("filled_at") or sell.get("submitted_at") or "")
+            if when <= trade.submitted_at:
+                continue          # sold before this entry: closed something else
+            state, fill = _closing_kind(sell)
+            used.add(index)
+            trade = trade.model_copy(update={"state": state, "exit_fill": fill})
+            break
+        resolved.append(trade)
+    return resolved
 
 
 class Summary(Frozen):
