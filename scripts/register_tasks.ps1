@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
 if ($Remove) {
-    foreach ($name in "stock-scanner-scan", "stock-scanner-data") {
+    foreach ($name in "stock-scanner-scan", "stock-scanner-data", "stock-scanner-flatten") {
         try {
             Unregister-ScheduledTask -TaskName $name -Confirm:$false
             Write-Output "removed $name"
@@ -60,3 +60,24 @@ $dataSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeL
 $dataAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_data.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-data" -Trigger $dataTrigger -Action $dataAction -Settings $dataSettings -Description "Grow 30m bar history past Yahoo's 60-day window" -Force | Out-Null
 Write-Output "registered stock-scanner-data   13:00 AK daily"
+
+# --- Friday close-out ------------------------------------------------------
+# 11:45 Alaska = 15:45 Eastern, fifteen minutes before the bell. Late enough
+# that the day has had its chance, early enough that a market order fills and
+# a failure still leaves time to close by hand.
+#
+# This is the only scheduled task that SUBMITS orders to close. It is not
+# supervised by watchdog.py, which refuses order submission outright: a process
+# that may have reached the broker and died before reading the response has
+# unknown position state, and restarting it could sell twice. flatten.py is
+# instead safe to re-run by hand, because an already-closed position counts as
+# success.
+#
+# The wind-down that stops NEW positions from Thursday lives in TradingPolicy
+# (wind_down_from_weekday) and is enforced by trade.py, not here — so a missed
+# run of this task cannot also silently re-enable Thursday and Friday entries.
+$flatTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Friday -At 11:45AM
+$flatSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
+$flatAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_flatten.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-flatten" -Trigger $flatTrigger -Action $flatAction -Settings $flatSettings -Description "Close all positions before the weekend (Friday 11:45 AK = 15:45 ET)" -Force | Out-Null
+Write-Output "registered stock-scanner-flatten  Fridays 11:45 AK (15:45 ET)"

@@ -136,8 +136,15 @@ class TradingPolicy(Frozen):
     #: setups span a weekend. Weekend gaps are ALREADY modelled -- a bar that
     #: opens through the stop fills at the open -- so this does not fix an
     #: unpriced risk; it removes an exposure no stop can cover, at that price.
-    #: Turning it on is a deliberate choice, never a default.
-    flat_before_weekend: bool = False
+    #: Turning it on is a deliberate choice, and it has been made: the
+    #: operator judged an unmanageable weekend exposure worse than the cost.
+    flat_before_weekend: bool = True
+
+    #: Weekday from which no NEW positions are opened, Monday being 0.
+    #: Thursday, because flattening on Friday alone still allows a position to
+    #: be opened on Friday morning with hours left to go wrong. Existing
+    #: positions keep their brackets and are closed by scripts/flatten.py.
+    wind_down_from_weekday: int = 3
 
     # --- how it ends --------------------------------------------------------
     max_hold_bars: int = 60

@@ -38,6 +38,7 @@ from scanner.execution.audit import append_event
 from scanner.execution.guards import RiskLimits, check_account, check_symbol
 from scanner.execution.policy import CONFIRM, SCAN, TRADE, WATCH, Decision, TradingPolicy, rejections
 from scanner.execution.funnel import Funnel
+from scanner.execution.flatten import should_wind_down
 from scanner.execution.session import crosses_session
 from scanner.execution.health import probe as probe_model
 from scanner.execution.news_gate import check as check_news
@@ -277,6 +278,18 @@ async def main(
                     symbol="", stage="preflight", reason=health.banner(),
                     policy=policy.fingerprint,
                 ))
+
+        # WIND-DOWN. From Thursday no new positions are opened, so nothing is
+        # bought that would have to be closed within a day or held over the
+        # weekend. Existing positions keep their brackets and are flattened by
+        # scripts/flatten.py before the Friday bell.
+        if policy.flat_before_weekend and should_wind_down(
+            datetime.now().astimezone().date(),
+            from_weekday=policy.wind_down_from_weekday,
+        ):
+            print(f"{YELLOW}winding down for the weekend — evaluating only, "
+                  f"no new positions will be opened{RESET}")
+            dry_run = True
 
         universe = await composite.load_universe(client, INDEXES[index])
         symbols = tuple(m.symbol for m in universe)

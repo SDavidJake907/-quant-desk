@@ -90,15 +90,22 @@ class TestPolicy:
         ex-dividend gate it is modelled on."""
         assert TradingPolicy().block_overnight_entry is True
 
-    def test_the_weekend_flat_rule_is_off_by_default(self):
-        """It costs -0.213R per trade against a +0.218R measured edge. Turning
-        it on is a deliberate choice to buy protection at that price, not a
-        default anyone should inherit silently."""
-        assert TradingPolicy().flat_before_weekend is False
+    def test_the_weekend_flat_rule_is_on(self):
+        """Costs -0.213R per trade against a +0.218R measured edge, and was
+        turned on anyway: the operator judged an exposure they cannot manage
+        worse than the price of removing it. Pinned so the decision cannot be
+        lost in a later edit -- the cost is the reason it needs pinning."""
+        assert TradingPolicy().flat_before_weekend is True
+
+    def test_the_wind_down_starts_on_thursday(self):
+        """Flattening on Friday alone still allows a position to be opened on
+        Friday morning with hours left to go wrong."""
+        assert TradingPolicy().wind_down_from_weekday == 3
 
     def test_each_rule_changes_the_fingerprint(self):
         """Two runs under different rules must never share a fingerprint, or
         the audit log cannot say which rules produced a result."""
         base = TradingPolicy()
         assert base.fingerprint != TradingPolicy(block_overnight_entry=False).fingerprint
-        assert base.fingerprint != TradingPolicy(flat_before_weekend=True).fingerprint
+        assert base.fingerprint != TradingPolicy(flat_before_weekend=False).fingerprint
+        assert base.fingerprint != TradingPolicy(wind_down_from_weekday=4).fingerprint
