@@ -1,7 +1,7 @@
 # Evaluation window — FROZEN
 
     policy fingerprint   347ff1e34122
-    build                (see window log)
+    build                a8acc1d
     branch               momentum-swing-research
     started              2026-08-18, first scan 05:33 AK
     account              Alpaca paper, opened 2026-08-06 at $100,000
@@ -150,3 +150,4 @@ test can enforce.
 | 2026-08-18 | **restarted** at `9fe7a6618823` / `180a117` — two bugs, 0 trades collected so nothing lost | 0 |
 | 2026-08-18 | **restarted** at `9fe7a6618823` / `8947547` — end-to-end sweep found two more, still 0 trades | 0 |
 | 2026-08-18 | **restarted** at `347ff1e34122` — liquidity floor raised 5M -> 20M on a 2.2% permutation result; first change made for an EDGE reason rather than a bug | 0 |
+| 2026-08-18 05:27 AK | **window open and running** at `347ff1e34122` / `a8acc1d`; all four tasks Ready, first scan 05:33 | 0 |
