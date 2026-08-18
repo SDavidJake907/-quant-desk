@@ -17,7 +17,7 @@ between two prices, not the reason it was.
 from __future__ import annotations
 
 from typing import Protocol
-from datetime import datetime
+from datetime import date, datetime
 
 #: Monday is 0.
 FRIDAY = 4
@@ -77,3 +77,28 @@ def bars_until_weekend(bars: Timed, index: int) -> int | None:
         if is_last_bar_before_weekend(bars, i):
             return i - index
     return None
+
+
+def is_stale_session(bars: Timed, index: int, *, session: date) -> bool:
+    """Whether bar `index` belongs to an earlier session than `session`.
+
+    WHY `crosses_session` IS NOT ENOUGH ON A LIVE SCAN
+    That predicate asks whether the market closed between bar i and bar i+1,
+    which needs an i+1 to exist. Live, the still-forming bar used to supply
+    one — so a setup on yesterday's final bar was refused. `drop_incomplete`
+    then removed the partial bar, correctly, and yesterday's final bar became
+    the last in the series. With no successor the guard returned False and the
+    setup read age 0, fresh and tradeable: the EXPE entry, eighteen hours after
+    its trigger, would have been possible again.
+
+    Two fixes, each right on its own, reopening between them the hole either
+    was meant to close.
+
+    The question a live scan actually needs is not about a later bar at all. It
+    is whether this bar belongs to the session being traded, and that cannot be
+    read off the array — so the session is passed in. Both predicates are
+    checked together at the call site; each catches a case the other does not.
+    """
+    if index < 0 or index >= len(bars):
+        return False
+    return bars.times[index].date() != session

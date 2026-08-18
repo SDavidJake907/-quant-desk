@@ -37,10 +37,11 @@ from scanner.execution.alpaca import Alpaca, BrokerError, bracket_payload
 from scanner.execution.audit import append_event
 from scanner.execution.guards import RiskLimits, check_account, check_symbol
 from scanner.execution.policy import CONFIRM, SCAN, TRADE, WATCH, Decision, TradingPolicy, rejections
+from scanner.execution.provenance import build_id
 from scanner.execution.funnel import Funnel
 from scanner.execution.flatten import should_wind_down
 from scanner.execution.taper import deployment_for, position_cap_for
-from scanner.execution.session import crosses_session
+from scanner.execution.session import crosses_session, is_stale_session
 from scanner.execution.health import probe as probe_model
 from scanner.execution.news_gate import check as check_news
 from scanner.execution.safety import kill_switch_active
@@ -49,7 +50,7 @@ from scanner.execution.sizing import size_position
 from scanner.execution import watchlist
 from scanner.features import intraday_context
 from scanner.features.intraday import (
-    drop_incomplete, fetch_intraday, max_range, session_slot,
+    EXCHANGE_TZ, drop_incomplete, fetch_intraday, max_range, session_slot,
 )
 from scanner.llm import ranking
 from scanner.screens.smc import is_live_setup, priority, scan
@@ -336,6 +337,11 @@ async def main(
             for b in loaded
         ]
 
+        # Exchange time, not local. The machine runs in Alaska; comparing an
+        # Alaska date against Eastern bar timestamps would call the whole
+        # morning stale.
+        session_today = datetime.now(tz=EXCHANGE_TZ).date()
+
         candidates = []
         volumes_by_symbol: dict[str, float] = {}
         funnel = Funnel()
@@ -364,7 +370,17 @@ async def main(
                 # The trigger bar ended a session, so its close was never a
                 # price anyone could have traded — the market was shut. See
                 # TradingPolicy.block_overnight_entry.
-                if policy.block_overnight_entry and crosses_session(bars, setup.trigger_index):
+                # BOTH predicates, because each misses a case the other
+                # catches. crosses_session needs a later bar to exist, and
+                # drop_incomplete removes the one that used to supply it —
+                # leaving yesterday's final bar looking fresh with no
+                # successor. is_stale_session answers the question a live scan
+                # actually has: is this bar from today's session at all.
+                if policy.block_overnight_entry and (
+                    crosses_session(bars, setup.trigger_index)
+                    or is_stale_session(bars, setup.trigger_index,
+                                        session=session_today)
+                ):
                     funnel.dropped_as_overnight()
                     continue
                 # Shadow-log the RSI gate WITHOUT filtering on it. It
