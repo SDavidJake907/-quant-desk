@@ -81,9 +81,18 @@ ollama pull gemma3:12b
 ollama pull nomic-embed-text
 ```
 
-Gemma is configured with Ollama `keep_alive=-1`, so it remains loaded between
-news-review calls. Set `SCANNER_LLM_KEEP_ALIVE=5m` in `.env` if you need Ollama
-to release its memory when idle.
+Gemma is held with Ollama `keep_alive=45m`, which outlives the 30-minute scan
+cadence — so the model stays resident through a whole session and never
+reloads mid-run, then releases once scanning stops. `-1` would pin ~9.6GB of
+VRAM around the clock for a model used for a few seconds every half hour.
+Override with `SCANNER_LLM_KEEP_ALIVE` in `.env`.
+
+**`nomic-embed-text` is not optional.** `embed_model` named it for the
+project's entire life and it had never been pulled, so every embedding call
+returned "model not found", the news pipeline took its documented fallback,
+and **dedup silently never ran once**. Nothing in the fingerprint or the build
+SHA could show it, which is why the model environment is now a third recorded
+identifier.
 
 Alpaca handles execution. Create an account, generate **paper** keys from the
 dashboard, and put them in `.env`:
@@ -126,9 +135,18 @@ python scripts/test_divergence.py                   # RSI divergence at the swee
 python scripts/test_bearish_exit.py                 # bearish divergence as an exit
 python scripts/test_tp_ladder.py                    # scale-out vs holding to target
 python scripts/test_accumulation.py                 # rising OBV as a filter
+python scripts/what_works.py                        # join decisions to outcomes
+python scripts/replay_slate.py --validate           # check replay against known trades
+python scripts/shadow_test.py                       # do the shadow dimensions predict?
+python scripts/stale_setup_test.py                  # is a stale setup still worth taking?
+python scripts/bench_triage.py                      # the PRODUCTION prompt, not a proxy
+python scripts/gemma_view.py --quotes               # what the model sees, on demand
+python scripts/market_calendar.py                   # closures nobody will flatten
+python scripts/manage_positions.py                  # anything past max_hold_bars
+python scripts/protect.py                           # positions with no live stop
 powershell -File scripts/register_tasks.ps1         # market-hours scheduler
 python scripts/trade.py --swing-allocation 66.7 --swing-cap 66000  # two sleeves
-python -m pytest -q                                 # 449 tests
+python -m pytest -q                                 # 801 tests
 ```
 
 Price bars cache to `data/` keyed by symbol, **range and interval**, so re-runs
@@ -622,15 +640,79 @@ Payout ratio is deliberately absent: it needs earnings data this project does
 not carry, and a payout ratio computed from a bad EPS figure is worse than none
 because it looks authoritative.
 
+## The evaluation window — read `FREEZE.md` before changing anything
+
+This project is inside a **frozen evaluation window**. The rules that decide
+what trades, and the code that carries them out, do not change while one is
+open — and if one of them must, the window ends and is reported as truncated.
+
+    window               5
+    policy fingerprint   5b091652a8ab
+    opened               2026-09-25
+    ends                 2026-12-04, fixed in advance
+
+The end date is the last session before 23x5 trading begins on 2026-12-06. It
+was fixed from a published exchange schedule before a single trade existed,
+which is what makes it a boundary rather than a decision: it cannot move, and
+no result can bring it closer. Stopping when the numbers look good is how a
+random walk becomes a strategy.
+
+**Every record carries three identifiers**, because each has caught something
+the others could not:
+
+- the **policy fingerprint** says which RULES ran
+- the **build SHA** says which CODE ran — the partial-bar fix changed live
+  entry prices and touched no policy field
+- the **model environment** says which MODELS were installed — `embed_model`
+  named a model that had never been pulled, so dedup silently never ran
+
+`FREEZE.md` holds the stop rules, the list of files that must not change, and
+a log of every window and why each ended. `WORKLIST.md` holds what is open and
+what has been measured and closed.
+
+### Expect this to be slow
+
+Across 114 scans the funnel has produced **11 candidates from 8,479 setups**.
+That is not a defect: 99.7% are rejected as stale, and `fresh_bars = 2` was
+measured and left alone — see `WORKLIST.md` §8. A single bar of delay
+disqualifies more than half of all setups on the policy's own risk geometry.
+
+Scarcity is the honest output of this strategy. The window will end on its
+date with roughly twenty trades, and that is stated up front rather than
+discovered in December.
+
 ## Running unattended
 
     powershell -ExecutionPolicy Bypass -File scripts/register_tasks.ps1
     powershell -ExecutionPolicy Bypass -File scripts/register_tasks.ps1 -Remove
 
-Two Windows tasks:
+Four Windows tasks:
 
-    stock-scanner-scan   05:33-12:03 AK, every 30 min   scan + paper orders
-    stock-scanner-data   13:00 AK daily                 grow 30m bar history
+    stock-scanner-scan       05:33-12:03 AK, every 30 min   scan + paper orders
+    stock-scanner-data       13:00 AK daily                 grow 30m bar history
+    stock-scanner-outcomes   13:30 AK daily                 write realized R back
+    stock-scanner-flatten    Fri 08:45 + 11:45 AK           close before the weekend
+
+The flatten has two triggers because a 13:00 ET early close needs one at 12:45
+and a normal bell needs one at 15:45. Each asks the broker calendar whether
+the close is within 25 minutes, so on a normal Friday the early one exits
+having done nothing.
+
+### The scan is three stages, in this order
+
+    protect.py --submit         re-arm any position with no live stop
+    manage_positions.py --exec  close anything past max_hold_bars
+    trade.py --submit-paper     scan, size, send
+
+Order matters. A naked position is the most urgent thing in the account, so
+it is handled before anything else. The hold limit runs next because the
+backtest frees the slot at the same bar it exits, so closing first lets this
+cycle reuse it — which is what was measured. New entries come last.
+
+Both of the first two were written long before they were scheduled, and
+neither ran: `max_hold_bars = 60` is how +0.218R was measured, 5.6% of
+holdout trades exited on it, and **not one live trade ever did**. A limit
+declared in policy and enforced nowhere is not a limit.
 
 05:30 Alaska is 09:30 Eastern, and both zones observe DST together, so the
 4-hour offset holds year-round with no seasonal correction.
@@ -907,10 +989,22 @@ threshold chosen by looking at those same trades.
 - [ ] **Verify the paper account actually credits dividends.** The `DIV`
       activity endpoint works and is empty; until a payer is held through an
       ex-date, the income sleeve is untested. This gates the rest of it.
-- [ ] Write outcomes back to the audit log. It records what was decided and
-      never what happened; realized R is recomputed on demand from Alpaca's
-      order history, which is not permanent. Eight shadow dimensions are
-      unredeemable without it.
+- [x] Write outcomes back to the audit log — `trade_outcome` records realized
+      R and exit reason, linked by `client_order_id`.
+- [x] Shadow dimensions answered, and **none survives**. They were being
+      measured on 99 decisions when each is arithmetic over bars already held;
+      `shadow_test.py` evaluates them over 191 historical setups instead.
+      Weekday p=0.517, liquidity tier p=0.798, session slot groups too small.
+      The RSI gate could not be chosen on train at all and its holdout gap is
+      confounded with time — 13 of 15 failures fall in two months.
+- [x] Record the candidates that were NOT bought (`candidate_slate`). Without
+      it the model's ranking is unfalsifiable by any amount of live trading:
+      its third-choice calls never become orders, so they never become
+      evidence. `replay_slate.py` scores them against bars already held.
+- [x] Persist the headlines the model was shown (`news_store`). `fetched_at`
+      was documented as a point-in-time stamp for backtests and nothing wrote
+      one to disk, so a prompt change could not be tested against the past.
+      Written from 2026-09-25 forward; nothing recovers what was discarded.
 - [ ] Retrace entry as a backtest variant — enter on a return to the order
       block rather than at the trigger-bar close. Train split first, holdout
       once. The only untested idea likely to move the number.
