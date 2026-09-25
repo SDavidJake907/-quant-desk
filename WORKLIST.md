@@ -58,9 +58,32 @@ it lands, which is now.
 - [ ] Append a `trade_outcome` event linked by a permanent `trade_id`. **Never
       rewrite an earlier JSONL record**; the log is append-only and its value
       is that it cannot be revised after the fact.
-- [ ] **Eight shadow dimensions are unredeemable without this**: RSI gate,
-      session slot, weekday, LLM ranking, `swept_equal_lows`, and the
-      uncapped-exit candidate.
+- [x] **The shadow dimensions were redeemable all along — offline.** They
+      were being written onto DECISIONS, of which there are 99, and
+      `rsi_gate_passed` is True on 97. Comparing a 98% group to a 2% group
+      needs thousands of trades; at 0.3 a day that is never. But each one is
+      arithmetic over bars already held, so `scripts/shadow_test.py` computes
+      them for 191 historical setups instead.
+
+      **Nothing survives.** Split chosen on train, applied unchanged to
+      holdout, four questions asked so the threshold is 0.05/4 = 0.013:
+
+          weekday          Fri vs Wed        -0.359R  p=0.517
+          liquidity_tier   over-50M vs 20-50M +0.142R  p=0.798
+          session_slot     holdout groups too small to test
+
+      `rsi_gate` could not be chosen on train at all — only 2 False cases —
+      and its holdout gap (+0.533R on 51 vs -0.562R on 13) is **confounded
+      with time**: 13 of its 15 False cases fall in August and September, so
+      the split is mostly "recent" versus "not recent". It is unresolvable
+      from this sample rather than positive or negative, and the tempting
+      1.1R gap is exactly the kind of number this project has been burned by.
+
+      LLM ranking stays genuinely unanswerable from history: it reads
+      headlines, and nothing persisted them before 2026-09-25.
+
+- [ ] Re-run `shadow_test.py` as the store deepens. Three dimensions are
+      null on 191 setups, which is not the same as null.
 
 ## 3. Parquet/DuckDB storage
 
