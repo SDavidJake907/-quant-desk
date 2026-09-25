@@ -2,7 +2,7 @@
 
     window               4
     policy fingerprint   fb709122e949
-    code build           ed1c645  — the last commit that can change behaviour
+    code build           c3d336a  — the last commit that can change behaviour
     llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
     branch               momentum-swing-research
     started              2026-09-25, first scan 05:33 AK
@@ -617,4 +617,4 @@ costs a real sample.
 | 2026-09-24 | **window 2 superseded** before its first scan — `nomic-embed-text` was never installed, so dedup had never run. Pulled; dedup now collapses duplicate stories | 0, no scans |
 | 2026-09-25 | **window 3 opened** at `fb709122e949` / `935c721`, gemma3:12b + nomic-embed-text. Same hard end 2026-12-04 | 0 |
 | 2026-09-24 | **window 3 superseded** before its first scan — only bought symbols were recorded, leaving the model's ranking unfalsifiable. `candidate_slate` now records the untaken candidates too | 0, no scans |
-| 2026-09-25 | **window 4 opened** at `fb709122e949` / `ed1c645`. Same hard end 2026-12-04 | 0 |
+| 2026-09-25 | **window 4 opened** at `fb709122e949` / `c3d336a`, after an end-to-end audit closed six gaps. Same hard end 2026-12-04 | 0 |
