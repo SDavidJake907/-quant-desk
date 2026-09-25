@@ -2,7 +2,7 @@
 
     window               2
     policy fingerprint   fb709122e949
-    build                935c721
+    code build           935c721  — the last commit that can change behaviour
     branch               momentum-swing-research
     started              2026-09-25, first scan 05:33 AK
     first entry possible 2026-09-28  (Friday takes no entries)
@@ -12,6 +12,15 @@
 
 Window 1 ran 2026-08-18 to 2026-09-24 and was **truncated at 3 trades**. Its
 closing record is below; its trades do not pool with these.
+
+**On the build SHA.** Audit records carry whatever `HEAD` is when the scan
+runs, so a documentation commit moves the recorded SHA without changing a line
+of executed code. `935c721` is the last commit that touched anything the
+trading path can reach; SHAs after it that differ only in documentation pool
+with it. When grouping results, check what actually changed between two SHAs
+rather than treating every difference as a separate experiment — the point of
+recording the build was to catch code changes a fingerprint misses, not to
+split the sample every time a file is edited.
 
 Both identifiers matter. The fingerprint says which **rules** ran; the build SHA
 says which **code** ran. They come apart: the partial-bar fix (`f19aeff`)
