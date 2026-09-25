@@ -106,6 +106,7 @@ Report at minimum:
 - realized dollars, scanner trades only
 - fill rate — the number the backtest could not measure
 - mean slippage, entry and stop, versus intended
+- **news gate status per trade** — this sample is not uniformly gated
 
 Against the benchmark of a **+0.218R validated holdout**. Live expectancy
 sitting below that is the expected outcome, not a failure: paper fills have been
@@ -191,6 +192,42 @@ way, with the same extension.
 
 ---
 
+## News gate coverage is not uniform across this window
+
+The gate consults a local Ollama instance. Ollama does **not** start on boot —
+no Run key, nothing in the Startup folder — so after any reboot it is down
+until started by hand, and `news_gate.py` fails **open**: every name passes the
+news check unrefused. The scan says so loudly (`news_gate_degraded`) and then
+trades anyway. LLM triage and dedup fail the same way and are advisory, so they
+cost nothing but noise.
+
+This has not been constant. Of the three trades in this window:
+
+| day | trade | news gate |
+|---|---|---|
+| 2026-08-18 | ACN | degraded — failing open |
+| 2026-08-20 | APP | working |
+| 2026-09-24 | PSX | degraded — failing open |
+
+**Two of the three in-window trades were taken with no news protection.** Any
+report of this sample has to say that, rather than describing a gated strategy.
+It is a second reason — beyond n=3 — that these trades cannot yet be read as
+evidence about the policy as designed.
+
+Ollama was started by hand on 2026-09-24 and is up now, so scans are gated
+until the next reboot. It was deliberately **left on manual start**: automating
+it would change the effective filter mid-window, and `WORKLIST.md` §7 already
+holds that failing open is acceptable while this is paper, precisely because
+the point is to observe the behaviour rather than paper over it. The decision
+that actually matters — fail open or fail closed, as a `TradingPolicy` field so
+it lands in the fingerprint — belongs before real funds, not here.
+
+This does **not** restart the window. Ollama's availability is not a policy
+field and no code changed; the gate behaved exactly as written in both states.
+What changes is the reporting obligation, not the experiment.
+
+---
+
 ## Window log
 
 | date | event | trades so far |
@@ -202,3 +239,4 @@ way, with the same extension.
 | 2026-08-18 05:27 AK | **window open and running** at `347ff1e34122` / `a8acc1d`; all four tasks Ready, first scan 05:33 | 0 |
 | 2026-08-18 | **restarted** at `fb709122e949` — Thursday reopened for entries; Friday still closed. Arithmetic, not weekday edge | 0 |
 | 2026-08-24 → 09-24 | **scheduler blackout**, host off, 21 trading days missed. No restart — no policy or build change. Calendar clock extended to 2026-12-10 | 2 before, 3 now |
+| 2026-09-24 | news gate coverage recorded as **mixed** — 2 of 3 in-window trades taken ungated. Ollama left on manual start. No restart | 3 |
