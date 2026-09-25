@@ -184,8 +184,13 @@ market.
 
 `wind_down_from_weekday` blocks Friday entries; both flatten triggers are
 Friday-only. When Friday is a holiday, Thursday is the last session before a
-multi-day close and neither rule notices. Hits **2026-12-24** and
-**2026-12-31**, both four-day gaps. Full table in `FREEZE.md`.
+multi-day close and neither rule notices.
+
+Four dates in the next twelve months: **2026-12-24**, **2026-12-31**,
+**2027-03-25**, **2027-06-17**, every one a four-day gap. It recurs whenever a
+holiday lands on a Friday, so this is permanent until fixed rather than a
+December quirk. `MARKET_CALENDAR.md` has the table, generated from the broker
+by `scripts/market_calendar.py`.
 
 - [ ] Replace the weekday test in `should_wind_down` with "is this the last
       session before a gap of N+ days", read from the broker calendar. The
@@ -195,7 +200,11 @@ multi-day close and neither rule notices. Hits **2026-12-24** and
       close, not Friday alone.
 - [ ] Account for early closes in the bars-available arithmetic. The Thursday
       decision assumes 17 bars; a 13:00 close leaves about seven.
-- [ ] Pin both December dates in a test before changing behaviour.
+- [x] Dates pinned in `tests/test_market_calendar.py`, with Thanksgiving as
+      the control case that the Friday-only flatten does cover.
+- [x] `sources/market_calendar.py` answers "is this the last session before a
+      multi-day close" from the broker payload. Pure, tested, and imported by
+      nothing on the frozen path, so it changes no live behaviour.
 
 **Touches `policy.py` and `flatten.py`, so it ends the window.** Until then the
 mitigation is manual: run `scripts/flatten.py --submit` by hand on 2026-12-24
