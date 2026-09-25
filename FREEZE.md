@@ -1,10 +1,17 @@
 # Evaluation window — FROZEN
 
+    window               2
     policy fingerprint   fb709122e949
-    build                cf0ca28  (window opened at a8acc1d; see the window log)
+    build                935c721
     branch               momentum-swing-research
-    started              2026-08-18, first scan 05:33 AK
+    started              2026-09-25, first scan 05:33 AK
+    first entry possible 2026-09-28  (Friday takes no entries)
+    ends                 2026-12-04, fixed in advance — see the stop rules
     account              Alpaca paper, opened 2026-08-06 at $100,000
+                         equity $101,862.13 at window open, flat
+
+Window 1 ran 2026-08-18 to 2026-09-24 and was **truncated at 3 trades**. Its
+closing record is below; its trades do not pool with these.
 
 Both identifiers matter. The fingerprint says which **rules** ran; the build SHA
 says which **code** ran. They come apart: the partial-bar fix (`f19aeff`)
@@ -15,16 +22,37 @@ part of this experiment only if it carries **both** values.
 
 ## Stop rules, declared in advance
 
-The window ends when **both** are satisfied:
+The window ends at **whichever comes first**:
 
-- **100 completed scanner trades** — entered and exited, attributed to this
-  system by `client_order_id`. Manual trades in the same account do not count.
-- **12 calendar weeks**, so the sample spans more than one market condition.
-  Extended to **2026-12-10** by the 2026-08-24 scheduler blackout — see that
-  section. Dark days do not count toward this rule.
+- **2026-12-04**, the last session before 23x5 trading begins on 2026-12-06.
+  A hard end, fixed now, before a single trade is collected.
+- **100 completed scanner trades** AND **10 calendar weeks** — the original
+  pair of rules, kept so a window that somehow fills early still has to span
+  time and not only count.
 
 A **checkpoint at 30 trades** is for reporting only. Looking is allowed;
 stopping is not.
+
+### Why a fixed end date is not optional stopping
+
+The market changes on 2026-12-06 and a sample spanning it pools two different
+environments under one fingerprint. The boundary is therefore a property of the
+world, not of the results: it was chosen from a published exchange schedule
+before any trade existed, it cannot move, and no outcome can bring it closer.
+That is the opposite of stopping when the numbers look good.
+
+### This window will almost certainly end on the date, not the count
+
+2026-12-04 is ten weeks after the first scan. At the rate actually observed —
+3 completed trades across 7 scanned days — ten weeks of trading days is on the
+order of **20 trades**. That is a checkpoint-sized sample, not an expectancy
+measurement, and it is accepted in advance rather than discovered later.
+
+So this window's purpose is narrower than window 1's. It is to collect one
+clean, uninterrupted, fully-gated stretch of the current policy in the current
+market, and to hand the 23x5 era a known starting point. **It is not expected
+to settle whether the strategy works.** Reporting it as though it could would
+repeat the error the whole document exists to prevent.
 
 ### Optional stopping is forbidden
 
@@ -62,6 +90,15 @@ That is the honest number and it is uncomfortable. It is also why the
 for more trades, but to find out whether the scarcity is real. If it is, this
 strategy simply produces evidence slowly and no amount of impatience changes
 that.
+
+**This is why window 2 does not chase 100 trades.** The arithmetic above says
+that target is a year or more away, and 2026-12-06 is ten weeks away. Rather
+than pretend a ten-week window can reach a sixteen-month goal, window 2 sets
+the date as its end and accepts the ~20 trades that come with it. The 100-trade
+rule is retained only so it can still bind if the rate turns out far higher
+than measured.
+
+The real answer to scarcity is §8, not a longer window.
 
 ---
 
@@ -107,7 +144,8 @@ Report at minimum:
 - fill rate — the number the backtest could not measure
 - mean slippage, entry and stop, versus intended
 - **news gate status per trade** — this sample is not uniformly gated
-- **split at 2026-12-06** — trades either side of the 23x5 change do not pool
+- window 2 ends before 2026-12-06 by design, so no trade in it spans the
+  23x5 change. If that boundary is ever crossed, split the report there.
 
 Against the benchmark of a **+0.218R validated holdout**. Live expectancy
 sitting below that is the expected outcome, not a failure: paper fills have been
@@ -279,12 +317,17 @@ The window is **not** ended for it. But the reporting obligation grows:
   overnight gap distribution may no longer describe live conditions. Comparing
   post-2026-12-06 live results against it is comparing across a regime break.
 
-Three dates now sit close together and should be read as one sequence:
+These dates sit close together and should be read as one sequence:
 
+    2026-12-04   window 2 ends, by prior declaration
     2026-12-06   23x5 trading begins
-    2026-12-10   this window's calendar clock reaches 12 weeks
     2026-12-24   Thursday early close, four-day gap, no flatten (below)
     2026-12-31   Thursday close, four-day gap, no flatten (below)
+
+Window 2 is deliberately placed to end before the first of these rather than
+across them. The two December Thursdays fall after it closes, so they are an
+operational obligation — flatten by hand — and not a contaminant in the
+sample.
 
 ---
 
@@ -337,6 +380,47 @@ so it cannot land until this window closes.
 
 ---
 
+## Window 1 — closed 2026-09-24, TRUNCATED at 3 trades
+
+Ran 2026-08-18 to 2026-09-24 at policy `fb709122e949`, builds `cf0ca28`
+through `935c721`. It is reported as **truncated**, per the rule above that an
+early end is recorded with its reason and its trade count.
+
+**Result, for the record and not for inference:**
+
+| date | symbol | exit | R | news gate |
+|---|---|---|---|---|
+| 2026-08-18 | ACN | target | +2.163 | degraded |
+| 2026-08-20 | APP | stop | −0.363 | working |
+| 2026-09-24 | PSX | stop | −0.471 | degraded |
+
+Mean +0.443R on **n=3**. The standard error on three trades is larger than the
+effect being measured, so this number says nothing whatever about the strategy
+and must not be quoted as though it did. It is here because the rule says to
+report what the window collected, not because it is evidence.
+
+**Why it ended.** No single cause; three that compound:
+
+1. **The host was dark for 30 days** (2026-08-24 to 09-24), 21 trading days
+   missed. Recorded below. The calendar clock was extended to compensate,
+   which was the right call for that window and is moot now that it is closed.
+2. **Two of the three trades were taken with no news protection**, because
+   Ollama does not start on boot. A three-trade sample that is also not
+   uniformly gated has two independent defects, not one.
+3. **23x5 trading begins 2026-12-06**, inside what remained of the window. It
+   would have spanned a regime change, and split-reporting a sample this small
+   would leave two useless halves instead of one useless whole.
+
+Any one of these would have been survivable. Together they mean the window
+could not produce what it was opened to produce, and continuing it would have
+spent months accumulating trades into a record already known to be unpoolable.
+
+**Nothing was lost by closing it.** No policy field changed, so window 2 runs
+the same rules; the three trades keep their own `(policy, build)` attribution
+in the audit log and remain readable as what they are.
+
+---
+
 ## Window log
 
 | date | event | trades so far |
@@ -349,3 +433,5 @@ so it cannot land until this window closes.
 | 2026-08-18 | **restarted** at `fb709122e949` — Thursday reopened for entries; Friday still closed. Arithmetic, not weekday edge | 0 |
 | 2026-08-24 → 09-24 | **scheduler blackout**, host off, 21 trading days missed. No restart — no policy or build change. Calendar clock extended to 2026-12-10 | 2 before, 3 now |
 | 2026-09-24 | news gate coverage recorded as **mixed** — 2 of 3 in-window trades taken ungated. Ollama left on manual start. No restart | 3 |
+| 2026-09-24 | **window 1 CLOSED, truncated** — 30-day blackout, 2 of 3 trades ungated, and 23x5 landing inside the remaining term | 3, final |
+| 2026-09-25 | **window 2 opened** at `fb709122e949` / `935c721`; hard end 2026-12-04, the last session before 23x5. First entry possible Mon 09-28 | 0 |
