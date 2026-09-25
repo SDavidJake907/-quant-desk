@@ -107,6 +107,7 @@ Report at minimum:
 - fill rate — the number the backtest could not measure
 - mean slippage, entry and stop, versus intended
 - **news gate status per trade** — this sample is not uniformly gated
+- **split at 2026-12-06** — trades either side of the 23x5 change do not pool
 
 Against the benchmark of a **+0.218R validated holdout**. Live expectancy
 sitting below that is the expected outcome, not a failure: paper fills have been
@@ -225,6 +226,106 @@ it lands in the fingerprint — belongs before real funds, not here.
 This does **not** restart the window. Ollama's availability is not a policy
 field and no code changed; the gate behaved exactly as written in both states.
 What changes is the reporting obligation, not the experiment.
+
+---
+
+## The market itself changes on 2026-12-06, and this window spans it
+
+The SEC approved Nasdaq's move from 16 to **23 hours a day, five days a week**
+in April 2026, with a one-hour break 20:00–21:00 ET for clearing. NYSE Arca and
+24X have preliminary approval on the same schedule. It begins **2026-12-06**.
+Alpaca already runs its own 24/5 overnight session (20:00–04:00 ET, Blue Ocean
+ATS) ahead of it.
+
+**No configuration in this repo is stale because of it.** Regular hours remain
+09:30–16:00; the 23-hour day adds sessions *around* the regular session rather
+than moving it. `SESSION_OPEN`/`SESSION_CLOSE`, the calendar lookups and the
+early-close logic were all checked against the live API and are correct. The
+scan window, the bar source (Yahoo, regular hours) and `/v2/clock` are
+unaffected — verified at 00:29 ET mid-overnight-session, where the clock still
+reports `is_open: false` and `next_open 09:30`.
+
+### The exposure is on overnight holds, and it cannot be configured away
+
+Alpaca's overnight session supports **limit orders only**. Stops are not
+offered, so a bracket's `stop_loss` leg cannot act between 20:00 and 04:00.
+This is a broker limitation, not a setting left switched off — there is no
+value we can change that buys overnight protection.
+
+`bracket_payload` already records that only 54% of these setups resolve inside
+one session, so **about half of all positions are held overnight by design**.
+Before 2026-12-06 that meant a dark gap: no trading, price discovery resuming
+at the bell. After it, those positions sit through ~23 hours of continuous
+trading with a stop that is structurally unable to fire until 09:30.
+
+Turning on `extended_hours` would make this worse rather than better: it adds
+no protection, and it lets *entries* fill overnight in thin liquidity with no
+stop attached. It is deliberately left `False`.
+
+### What this does to the experiment
+
+The policy will not change on 2026-12-06 and neither will the build. The
+**market** will. Neither identifier in this document captures that, which is
+the same class of problem the build SHA was introduced to solve — a change that
+moves results while the fingerprint sits still.
+
+The window is **not** ended for it. But the reporting obligation grows:
+
+- **Trades are reported split at 2026-12-06**, the same way they are grouped by
+  `(policy, build)`. Trades either side of that date were taken in structurally
+  different markets and do not pool.
+- The **+0.218R holdout benchmark predates the change**. It was measured on
+  Yahoo regular-hours bars in a market where overnight was dark, so its
+  overnight gap distribution may no longer describe live conditions. Comparing
+  post-2026-12-06 live results against it is comparing across a regime break.
+
+Three dates now sit close together and should be read as one sequence:
+
+    2026-12-06   23x5 trading begins
+    2026-12-10   this window's calendar clock reaches 12 weeks
+    2026-12-24   Thursday early close, four-day gap, no flatten (below)
+    2026-12-31   Thursday close, four-day gap, no flatten (below)
+
+---
+
+## Holiday-shortened weeks: the flatten does not run
+
+Two rules are each correct alone and wrong together:
+
+- `wind_down_from_weekday = 4` blocks new entries on **Friday only**, so
+  Thursday trades. Its docstring reasons that "Thursday is Thursday whatever
+  the month" — deliberately a weekday rule, not a date rule.
+- Both flatten triggers are registered **Friday-only** (`DaysOfWeek : 32`,
+  confirmed against the live task).
+
+When Friday is a holiday, Thursday is the last session before a multi-day close
+and nothing knows it:
+
+| date | day | close | next session | gap | entries | flatten |
+|---|---|---|---|---|---|---|
+| 2026-11-27 | Fri | 13:00 ET | Mon 11-30 | 3d | blocked | **yes**, 08:45 AK trigger |
+| 2026-12-24 | Thu | **13:00 ET** | Mon 12-28 | **4d** | **allowed** | **no** |
+| 2026-12-31 | Thu | 16:00 ET | Mon 01-04 | **4d** | **allowed** | **no** |
+
+Thanksgiving week is handled correctly — the early-close trigger exists for
+exactly that case. The two December Thursdays are not: the system may open
+positions on the last session before a four-day close and carry them through
+unflattened, which is the precise exposure the flatten was built to prevent.
+
+2026-12-24 is the worse of the two. The decision to let Thursday trade rests on
+stated arithmetic — 17 bars available, the flatten costing it −0.313R and it
+still landing at +0.467R. On a 13:00 close Thursday has roughly **seven** bars,
+so the arithmetic the rule is justified by does not hold that day.
+
+Live code cannot catch this by itself. `is_last_bar_before_weekend` infers the
+gap from bar timestamps, which only exist after the close; nothing
+forward-looking consults the calendar.
+
+**Mitigation without touching the frozen path:** run `scripts/flatten.py
+--submit` by hand on 2026-12-24 and 2026-12-31, after 09:00 AK and before the
+bell. It is idempotent and safe to re-run. A calendar-aware wind-down is the
+real fix and is `WORKLIST.md` §10 — it changes `policy.py` and `flatten.py`,
+so it cannot land until this window closes.
 
 ---
 

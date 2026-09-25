@@ -152,6 +152,57 @@ proved wrong: all 133 setups are visible at age 0. Do not re-derive it.
 
 ---
 
+## 9. Overnight holds after 2026-12-06 — measure before deciding
+
+23x5 trading begins 2026-12-06 (SEC approved Nasdaq's proposal April 2026;
+NYSE Arca and 24X preliminary). Alpaca's own 24/5 overnight session already
+runs 20:00–04:00 ET on Blue Ocean. `FREEZE.md` has the detail.
+
+The exposure: **Alpaca supports limit orders only overnight**, so a bracket's
+stop cannot fire between 20:00 and 04:00, and ~46% of these setups are held
+overnight by design. No config changes this — the broker does not offer
+overnight stops.
+
+- [ ] Re-measure the overnight gap distribution **on data that includes
+      overnight prints**. Yahoo regular-hours bars cannot see them, so the
+      current numbers describe a market that stops existing on 2026-12-06.
+      Alpaca's `boats`/`overnight` feed is the source.
+- [ ] Quantify what a stop that cannot act until 09:30 costs, against the
+      backtest's assumption of a stop that was always live.
+- [ ] **Only then** decide between: accept the exposure, size down overnight
+      holds, or stop holding overnight at all. Each is a policy change and
+      cannot land inside the current window.
+- [ ] Do **not** set `extended_hours = True` as a response. It adds no
+      protection and lets entries fill overnight unprotected in thin
+      liquidity. It is strictly worse than the present state.
+
+This gates any read of live results after 2026-12-06, because the +0.218R
+holdout was measured before the regime change and does not describe the same
+market.
+
+## 10. Calendar-aware wind-down — the flatten misses holiday weeks
+
+`wind_down_from_weekday` blocks Friday entries; both flatten triggers are
+Friday-only. When Friday is a holiday, Thursday is the last session before a
+multi-day close and neither rule notices. Hits **2026-12-24** and
+**2026-12-31**, both four-day gaps. Full table in `FREEZE.md`.
+
+- [ ] Replace the weekday test in `should_wind_down` with "is this the last
+      session before a gap of N+ days", read from the broker calendar. The
+      docstring's "Thursday is Thursday whatever the month" is exactly the
+      assumption that fails.
+- [ ] Give the flatten a trigger on every session that precedes a multi-day
+      close, not Friday alone.
+- [ ] Account for early closes in the bars-available arithmetic. The Thursday
+      decision assumes 17 bars; a 13:00 close leaves about seven.
+- [ ] Pin both December dates in a test before changing behaviour.
+
+**Touches `policy.py` and `flatten.py`, so it ends the window.** Until then the
+mitigation is manual: run `scripts/flatten.py --submit` by hand on 2026-12-24
+and 2026-12-31. Idempotent, safe to re-run.
+
+---
+
 ## Explicitly not doing
 
 - **Merging to `master`.** Not until §1–§5 are done.
