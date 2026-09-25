@@ -35,6 +35,7 @@ import httpx
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError, bracket_payload
 from scanner.execution.audit import append_event
+from scanner.execution import continuity
 from scanner.execution.guards import RiskLimits, check_account, check_symbol
 from scanner.execution.policy import CONFIRM, SCAN, TRADE, WATCH, Decision, TradingPolicy, rejections
 from scanner.execution.provenance import build_id
@@ -119,6 +120,52 @@ def _liquidity_tier(dollar_volume: float) -> str:
     return "5-20M"
 
 
+def _record_slate(candidates, ranks, llm_rank, llm_order, volumes, sectors,
+                  policy) -> int:
+    """Write every ranked candidate, taken or not. Returns how many.
+
+    A function rather than an inline block so it can be exercised by a test
+    without running a whole scan. The version that shipped inline had never
+    once executed — every scan that day found zero candidates — which is
+    exactly the shape of code that fails first on an unattended schedule.
+    """
+    if not candidates:
+        return 0
+    slate = tuple(
+        SlateEntry(
+            symbol=setup.symbol,
+            priority_rank=ranks.get(setup.symbol, 0),
+            priority_score=round(priority(setup), 2),
+            llm_rank=llm_rank.get(setup.symbol, 0),
+            llm_conviction=(llm_order[setup.symbol].conviction
+                            if setup.symbol in llm_order else ""),
+            llm_driver=(llm_order[setup.symbol].driver
+                        if setup.symbol in llm_order else ""),
+            llm_concern=(llm_order[setup.symbol].concern
+                         if setup.symbol in llm_order else ""),
+            entry_price=setup.entry_price,
+            stop_price=setup.stop_price,
+            target_price=setup.target_price,
+            reward_risk=setup.reward_risk,
+            dollar_volume=round(volumes.get(setup.symbol, 0.0), 2),
+            liquidity_tier=_liquidity_tier(volumes.get(setup.symbol, 0.0)),
+            sector=sectors.get(setup.symbol, ""),
+            rsi_gate_passed=bool(rsi_shadow),
+            trigger_at=at.isoformat(),
+            trigger_slot=session_slot(at),
+            trigger_weekday=at.strftime("%a"),
+        )
+        for setup, at, rsi_shadow in candidates
+    )
+    append_event(settings.audit_log_path, AuditEvent(
+        event="candidate_slate", at=datetime.now().astimezone(),
+        symbol="", slate=slate, stage=SCAN,
+        policy=policy.fingerprint, build=build_id(),
+        reason=f"{len(slate)} candidate(s) ranked",
+    ))
+    return len(slate)
+
+
 def _liquid(bars, window: int = 20) -> bool:
     """Tradeability, not signal. A floor that says "you could actually get
     filled here" is a different thing from one that claims liquid names
@@ -151,6 +198,36 @@ async def main(
             intent=intent, reason=reason, stage=stage,
             policy=policy.fingerprint, order_id=order_id, request_id=request_id,
         ))
+
+    # SAY SO IF THIS SYSTEM STOPPED RUNNING.
+    #
+    # The host was off from 2026-08-24 to 09-24. Nothing failed — the four
+    # scheduled tasks were never reached, so there was no error, no non-zero
+    # exit and nothing in any log but an absence. A human found it a month
+    # later by reading timestamps.
+    #
+    # Absence cannot be reported while it is happening. It CAN be reported the
+    # moment the system comes back, which is most of the value: this would
+    # have announced the blackout on the first scan of 09-24 rather than
+    # leaving it to be noticed.
+    #
+    # Recorded as well as printed, because the terminal is not read at 05:33.
+    try:
+        gap = continuity.check(settings.audit_log_path)
+        if gap is not None and gap.is_alerting:
+            print(f"{RED}{BOLD}*** GAP IN COVERAGE ***{RESET}")
+            print(f"{RED}    {gap.describe()}{RESET}")
+            print(f"{YELLOW}    Trades either side of a gap were taken in "
+                  f"different market conditions. FREEZE.md records how the "
+                  f"last one was handled.{RESET}\n")
+            append_event(settings.audit_log_path, AuditEvent(
+                event="pipeline_gap", at=datetime.now().astimezone(),
+                symbol="", stage=SCAN, policy=policy.fingerprint,
+                build=build_id(), reason=gap.describe(),
+            ))
+    except Exception as exc:                          # noqa: BLE001
+        # Diagnostics must never stop a scan.
+        print(f"{DIM}! continuity check skipped: {type(exc).__name__}{RESET}")
 
     async with httpx.AsyncClient() as client:
         broker = None
@@ -480,40 +557,26 @@ async def main(
         # Written BEFORE the send loop deliberately. A slate written afterwards
         # would be missing exactly on the runs that failed partway, which are
         # the runs worth reading.
-        if candidates:
-            slate = tuple(
-                SlateEntry(
-                    symbol=setup.symbol,
-                    priority_rank=ranks.get(setup.symbol, 0),
-                    priority_score=round(priority(setup), 2),
-                    llm_rank=llm_rank.get(setup.symbol, 0),
-                    llm_conviction=(llm_order[setup.symbol].conviction
-                                    if setup.symbol in llm_order else ""),
-                    llm_driver=(llm_order[setup.symbol].driver
-                                if setup.symbol in llm_order else ""),
-                    llm_concern=(llm_order[setup.symbol].concern
-                                 if setup.symbol in llm_order else ""),
-                    entry_price=setup.entry_price,
-                    stop_price=setup.stop_price,
-                    target_price=setup.target_price,
-                    reward_risk=setup.reward_risk,
-                    dollar_volume=round(volumes_by_symbol.get(setup.symbol, 0.0), 2),
-                    liquidity_tier=_liquidity_tier(
-                        volumes_by_symbol.get(setup.symbol, 0.0)),
-                    sector=sector_of.get(setup.symbol, ""),
-                    rsi_gate_passed=bool(rsi_shadow),
-                    trigger_at=at.isoformat(),
-                    trigger_slot=session_slot(at),
-                    trigger_weekday=at.strftime("%a"),
-                )
-                for setup, at, rsi_shadow in candidates[:show]
-            )
-            append_event(settings.audit_log_path, AuditEvent(
-                event="candidate_slate", at=datetime.now().astimezone(),
-                symbol="", slate=slate, stage=SCAN,
-                policy=policy.fingerprint, build=build_id(),
-                reason=f"{len(slate)} candidate(s) ranked",
-            ))
+        # NEVER let recording a slate stop a trade.
+        #
+        # This is evidence ABOUT a decision, not an input to it — the same
+        # reasoning `news_store` is built on, and it was missing here. The
+        # block sits between the funnel and the send loop, so an exception
+        # raised while building it would kill the scan AFTER finding setups
+        # and BEFORE sending orders: trading would stop and the log would show
+        # a scan that simply ended.
+        #
+        # That is the failure `test_no_undefined_names` was written for —
+        # a branch that only runs under a condition the tests never reach,
+        # firing on an unattended schedule. Slate recording had never once
+        # executed when it shipped, because every scan that day found zero
+        # candidates.
+        try:
+            _record_slate(candidates[:show], ranks, llm_rank, llm_order,
+                          volumes_by_symbol, sector_of, policy)
+        except Exception as exc:                      # noqa: BLE001
+            print(f"  {YELLOW}! slate not recorded: "
+                  f"{type(exc).__name__}: {exc}{RESET}")
 
         room = limits.max_positions - len(held)
         sent = 0

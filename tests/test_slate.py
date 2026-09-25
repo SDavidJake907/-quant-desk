@@ -113,3 +113,61 @@ def test_ordinary_records_still_have_no_slate(tmp_path):
     ))
     row = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
     assert row["slate"] is None
+
+
+# --- the writer itself, which had never executed when it shipped ---------
+
+def test_record_slate_writes_every_candidate(tmp_path, monkeypatch):
+    """Exercises the real function, not a hand-built AuditEvent. The inline
+    version this replaced had never run: every scan that day found zero
+    candidates, so the only code path that matters was never taken."""
+    import importlib, sys
+    sys.path.insert(0, "scripts")
+    trade = importlib.import_module("trade")
+
+    log = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(trade.settings, "audit_log_path", str(log))
+    monkeypatch.setattr(trade, "priority", lambda s: 12.5)
+
+    class _Setup:
+        def __init__(self, symbol):
+            self.symbol = symbol
+            self.entry_price, self.stop_price = 100.0, 98.0
+            self.target_price, self.reward_risk = 106.0, 3.0
+
+    class _Op:
+        conviction, driver, concern = "weak", "company", "merger"
+
+    at = datetime(2026, 9, 25, 13, 30, tzinfo=timezone.utc)
+    candidates = [(_Setup("ACN"), at, True), (_Setup("PSX"), at, False)]
+
+    written = trade._record_slate(
+        candidates,
+        ranks={"ACN": 1, "PSX": 2},
+        llm_rank={"ACN": 2, "PSX": 1},
+        llm_order={"ACN": _Op()},
+        volumes={"ACN": 61_000_000.0, "PSX": 25_000_000.0},
+        sectors={"ACN": "Information Technology"},
+        policy=trade.TradingPolicy(),
+    )
+    assert written == 2
+
+    row = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+    assert row["event"] == "candidate_slate"
+    entries = {e["symbol"]: e for e in row["slate"]}
+    assert entries["PSX"]["llm_rank"] == 1          # untaken, still recorded
+    assert entries["ACN"]["priority_rank"] == 1     # ranks kept apart
+    assert entries["ACN"]["llm_conviction"] == "weak"
+    assert entries["PSX"]["llm_conviction"] == ""   # no opinion, not invented
+    assert entries["ACN"]["liquidity_tier"] == "over-50M"
+    assert entries["PSX"]["rsi_gate_passed"] is False
+
+
+def test_record_slate_on_an_empty_slate_writes_nothing(tmp_path, monkeypatch):
+    import importlib, sys
+    sys.path.insert(0, "scripts")
+    trade = importlib.import_module("trade")
+    log = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(trade.settings, "audit_log_path", str(log))
+    assert trade._record_slate([], {}, {}, {}, {}, {}, trade.TradingPolicy()) == 0
+    assert not log.exists()
