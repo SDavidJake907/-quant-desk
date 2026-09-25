@@ -58,7 +58,10 @@ import httpx
 from scanner.backtest.setups import STOP, TARGET, TIMEOUT, Report, resolve
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.session import crosses_session
-from scanner.features.intraday import fetch_intraday, max_range
+from scanner.features import history
+from scanner.features.intraday import (
+    SESSION_ALIGNED, fetch_intraday, max_range,
+)
 from scanner.screens.smc import scan
 from scanner.sources import composite
 from scanner.sources.index_history import COMPOSITE_1500, SP400, SP500, SP600
@@ -84,11 +87,34 @@ def _delayed(bars, setup, delay: int, max_bars: int):
     index = setup.trigger_index + delay
     if index >= len(bars) - 1:
         return None
+    entry = bars.closes[index]
+
+    # RE-APPLY THE POLICY AT THE PRICE ACTUALLY PAID.
+    #
+    # `scan` enforces min_risk_pct and min_reward_risk at the TRIGGER price.
+    # Delaying the entry moves the price and leaves the stop where it was, so
+    # both can quietly stop holding — and the first version of this test did
+    # not re-check them.
+    #
+    # The damage is not subtle. As a delayed entry drifts toward the stop the
+    # risk denominator shrinks toward zero and R explodes: LITE resolved at
+    # -135R on a $0.33 risk against an $866 stock, and HOOD at +82R on $0.07.
+    # Those are not trades that went badly or well, they are trades the live
+    # scanner would REFUSE, and averaging them measured a strategy nobody
+    # runs. A single one of them moved a holdout column by more than a full R.
+    risk = entry - setup.stop_price
+    if risk <= 0:
+        return None
+    if (risk / entry) * 100.0 < VALIDATED.min_risk_pct:
+        return None
+    if (setup.target_price - entry) / risk < VALIDATED.min_reward_risk:
+        return None
+
     return resolve(
         bars,
         symbol=setup.symbol,
         entry_index=index,
-        entry_price=bars.closes[index],
+        entry_price=entry,
         stop_price=setup.stop_price,
         target_price=setup.target_price,
         max_bars=max_bars,
@@ -156,13 +182,42 @@ async def main(index: str, minutes: int, k: int, delays: tuple[int, ...],
         symbols = [m.symbol for m in universe]
         if limit:
             symbols = symbols[:limit]
-        print(f"{DIM}fetching {len(symbols)} symbols, {minutes}m bars, "
-              f"{range_}{RESET}")
-        frames = await asyncio.gather(
-            *(fetch_intraday(s, client, minutes=minutes, range_=range_)
-              for s in symbols),
-            return_exceptions=True,
-        )
+
+        # PREFER THE ACCUMULATED STORE.
+        #
+        # Yahoo serves ~60 days of 30m bars on a rolling window; the store
+        # holds every day it has ever been fed, currently about 96 sessions.
+        # Re-fetching therefore throws away a third of the history that was
+        # collected specifically so it would not be lost — "the days it
+        # misses are gone for good" is the collector's own warning, and a
+        # research script that re-fetches is ignoring it.
+        #
+        # `history.accumulated()` was written for exactly this and had no
+        # callers. Fetch is the fallback for symbols never collected.
+        frames = []
+        from_store = fetched = 0
+        missing = []
+        for symbol in symbols:
+            stored = history.accumulated(symbol, minutes, SESSION_ALIGNED)
+            if stored is not None and len(stored) >= 60:
+                frames.append(stored)
+                from_store += 1
+            else:
+                missing.append(symbol)
+        if missing:
+            fresh = await asyncio.gather(
+                *(fetch_intraday(s, client, minutes=minutes, range_=range_)
+                  for s in missing),
+                return_exceptions=True,
+            )
+            frames.extend(fresh)
+            fetched = len(missing)
+
+        depth = max((len(f) for f in frames
+                     if not isinstance(f, Exception)), default=0)
+        print(f"{DIM}{from_store} symbol(s) from the store, {fetched} fetched"
+              f" — deepest series {depth} bars "
+              f"(~{depth / SESSION_BARS:.0f} sessions){RESET}")
 
     print(f"{DIM}policy: {VALIDATED.describe()}{RESET}")
     print(f"{DIM}one session = {SESSION_BARS} bars; live gate is "

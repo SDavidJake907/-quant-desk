@@ -133,68 +133,82 @@ it lands, which is now.
         news protection.
 - [ ] Make it a `TradingPolicy` field so the choice is in the fingerprint.
 
-## 8. `fresh_bars = 2` — ANSWERED 2026-09-25. Leave it alone.
+## 8. `fresh_bars = 2` — investigated, and the first answer was WRONG
 
-**Measured, `scripts/stale_setup_test.py`, S&P 500, 119 setups.** Each setup
-re-entered N bars after its trigger at that bar's close, keeping the stop and
-target it was built with, so the cost of delay falls out of the arithmetic
-rather than needing a slippage model.
+**Leave the gate alone. But not for the reason first published.**
 
-HOLDOUT expectancy decays monotonically, and crosses zero exactly where the
-live gate sits:
+### The first result was contaminated, and this is the correction
+
+The first pass re-entered each setup N bars late at that bar's close and kept
+the original stop — and never re-checked the policy at the price actually
+paid. `scan` enforces `min_risk_pct` and `min_reward_risk` at the TRIGGER
+price; a delayed entry moves the price, leaves the stop, and both can quietly
+stop holding.
+
+As a delayed entry drifts toward its stop the risk denominator shrinks toward
+zero and R explodes. LITE resolved at **-135R on a $0.33 risk** against an
+$866 stock; HOOD at **+82R on $0.07**. Those are not trades that went badly
+or well — they are trades the live scanner would REFUSE, and averaging them
+measured a strategy nobody runs. One of them moved a holdout column by more
+than a full R.
+
+That produced a clean monotonic decay and p-values of 0.005. It was an
+artifact. Re-applying `min_risk_pct` and `min_reward_risk` at the delayed
+entry, on the full ~96-session store:
 
         delay      holdout      takeable
-        0 bars *   +0.141R       90%
-        1 bar  *   +0.072R       90%
-        2 bars *   +0.029R       88%
-        3 bars     -0.052R       80%
-        5 bars     -0.081R       82%
-        8 bars     -0.409R       82%
-        13 bars    -0.555R       65%
-        20 bars    -0.960R       55%
-        * admitted by fresh_bars = 2
+        0 bars *   +0.248R       94%
+        1 bar  *   +0.300R       45%
+        2 bars *   +0.190R       40%
+        3 bars     +0.420R       37%
+        5 bars     +0.208R       38%
+        8 bars     +0.319R       32%
+        13 bars    -0.358R       18%
+        20 bars    -0.322R       14%
 
-Paired randomisation on the same setups fresh versus stale — paired because
-every column holds the SAME setups at different entry points, so a two-group
-test would overstate its confidence the way the clustered t in §5 does:
+        paired randomisation, 0 vs stale
+        TRAIN    8 bars p=0.419 · 13 p=0.836 · 20 p=0.633
+        HOLDOUT  8 bars p=0.731 · 13 p=0.046 · 20 p=0.755
 
-        HOLDOUT  0 vs  8 bars  n=33  +0.560R  p=0.005
-        HOLDOUT  0 vs 13 bars  n=26  +0.579R  p=0.010
-        HOLDOUT  0 vs 20 bars  n=22  +0.773R  p=0.027
+**Delay does not significantly hurt expectancy out to ~8 bars.** Five of six
+paired tests are null, and the one that is not has n=12. The earlier claim
+that widening would buy negative-expectancy trades is withdrawn.
 
-**So the gate is correctly placed and widening it would buy trades with
-negative expectancy.** Trade scarcity is the honest output of this strategy,
-exactly as this section anticipated. 8,455 of 8,479 setups rejected as stale
-is arithmetic, not a defect.
+### Why the gate still should not move
+
+`takeable` is the answer, and it was the column nobody was looking at.
+**A single bar of delay disqualifies more than half of all setups** — 94% to
+45%. Price moves one bar, the stop stays, and either the risk falls under the
+1.5% floor or the reward:risk falls under 1.5. Both directions disqualify:
+drift down shrinks the risk, drift up shrinks the reward.
+
+So the freshness gate and the policy's own risk floor are largely redundant.
+Widening `fresh_bars` would not release the flood of trades the scarcity
+numbers imply, because most of those 8,455 stale setups would fail the risk
+floor at today's price regardless. The gate is not what is starving this
+strategy — the entry geometry is.
 
 - [x] Outcomes by age bucket
-- [x] Entry slippage — implicit: a later entry widens risk against the same
-      stop, so the same move earns less R
-- [x] Count surviving each successive gate — the `takeable` column, and note
-      it stays above 80% out to 8 bars. Setups do not EXPIRE quickly; they
-      stop being profitable long before they stop being enterable, which is
-      why a survival-based gate would have been the wrong instrument.
-- [ ] Setup age histogram — not needed for the decision and not done.
+- [x] Count surviving each successive gate — and this turned out to be the
+      finding rather than a supporting detail
+- [ ] Setup age histogram — still not needed
+- [ ] **Re-test with a re-derived stop.** Every delayed entry here keeps the
+      original stop, which is what makes it stop qualifying. A setup re-sized
+      from its structure at the later price might stay valid and stay
+      profitable. That is a different experiment and the honest next one.
 
-### The uncomfortable part
+### What has NOT changed
 
-Holdout expectancy at delay 0 is **+0.141R**, and at the gate's own edge —
-delay 2, which the scanner trades — it is **+0.029R**. The benchmark this
-project quotes is a validated **+0.218R**.
+Holdout expectancy at delay 0 is **+0.248R** on 61 setups, against the quoted
+**+0.218R**. Closer than the contaminated 60-day pass suggested (+0.141R), and
+no longer evidence that the edge is thinner than advertised. Different sample,
+still not subtractable, but the earlier worry is withdrawn too.
 
-Different sample (60 days of 30m bars here, against the original 86-day
-study) so these are not the same measurement and should not be subtracted
-from one another. But the direction is unwelcome and it is not noise: the
-edge measured on data nothing was chosen from is thinner than the number
-being planned against.
-
-**This does not change the policy.** It is recorded because the next person
-to quote +0.218R should see it.
+**No policy field changes.** The gate stays at 2 because nothing here is
+evidence for moving it, not because moving it was proven harmful.
 
 My first theory here — that detection lagged the trigger — was measured and
 proved wrong: all 133 setups are visible at age 0. Do not re-derive it.
-
----
 
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
