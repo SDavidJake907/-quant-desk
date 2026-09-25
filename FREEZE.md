@@ -1,8 +1,9 @@
 # Evaluation window — FROZEN
 
-    window               2
+    window               3
     policy fingerprint   fb709122e949
     code build           935c721  — the last commit that can change behaviour
+    llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
     branch               momentum-swing-research
     started              2026-09-25, first scan 05:33 AK
     first entry possible 2026-09-28  (Friday takes no entries)
@@ -11,7 +12,9 @@
                          equity $101,862.13 at window open, flat
 
 Window 1 ran 2026-08-18 to 2026-09-24 and was **truncated at 3 trades**. Its
-closing record is below; its trades do not pool with these.
+closing record is below; its trades do not pool with these. Window 2 was
+declared and superseded the same evening, before its first scan ever ran — no
+scans, no trades, nothing lost.
 
 **On the build SHA.** Audit records carry whatever `HEAD` is when the scan
 runs, so a documentation commit moves the recorded SHA without changing a line
@@ -100,9 +103,9 @@ for more trades, but to find out whether the scarcity is real. If it is, this
 strategy simply produces evidence slowly and no amount of impatience changes
 that.
 
-**This is why window 2 does not chase 100 trades.** The arithmetic above says
+**This is why window 3 does not chase 100 trades.** The arithmetic above says
 that target is a year or more away, and 2026-12-06 is ten weeks away. Rather
-than pretend a ten-week window can reach a sixteen-month goal, window 2 sets
+than pretend a ten-week window can reach a sixteen-month goal, window 3 sets
 the date as its end and accepts the ~20 trades that come with it. The 100-trade
 rule is retained only so it can still bind if the rate turns out far higher
 than measured.
@@ -153,7 +156,7 @@ Report at minimum:
 - fill rate — the number the backtest could not measure
 - mean slippage, entry and stop, versus intended
 - **news gate status per trade** — this sample is not uniformly gated
-- window 2 ends before 2026-12-06 by design, so no trade in it spans the
+- window 3 ends before 2026-12-06 by design, so no trade in it spans the
   23x5 change. If that boundary is ever crossed, split the report there.
 
 Against the benchmark of a **+0.218R validated holdout**. Live expectancy
@@ -328,12 +331,12 @@ The window is **not** ended for it. But the reporting obligation grows:
 
 These dates sit close together and should be read as one sequence:
 
-    2026-12-04   window 2 ends, by prior declaration
+    2026-12-04   window 3 ends, by prior declaration
     2026-12-06   23x5 trading begins
     2026-12-24   Thursday early close, four-day gap, no flatten (below)
     2026-12-31   Thursday close, four-day gap, no flatten (below)
 
-Window 2 is deliberately placed to end before the first of these rather than
+Window 3 is deliberately placed to end before the first of these rather than
 across them. The two December Thursdays fall after it closes, so they are an
 operational obligation — flatten by hand — and not a contaminant in the
 sample.
@@ -424,9 +427,50 @@ Any one of these would have been survivable. Together they mean the window
 could not produce what it was opened to produce, and continuing it would have
 spent months accumulating trades into a record already known to be unpoolable.
 
-**Nothing was lost by closing it.** No policy field changed, so window 2 runs
-the same rules; the three trades keep their own `(policy, build)` attribution
+**Nothing was lost by closing it.** No policy field changed, so the windows
+after it run the same rules; the three trades keep their own `(policy, build)` attribution
 in the audit log and remain readable as what they are.
+
+---
+
+## A third dimension: the model environment
+
+The fingerprint says which rules ran and the build SHA says which code ran.
+Neither says **which models were installed**, and that turns out to matter.
+
+`embed_model` has always pointed at `nomic-embed-text`, and that model had
+never been pulled. Ollama answered every embedding request with
+
+    model "nomic-embed-text" not found, try pulling it first
+
+so `pipeline.py` took its documented fallback — `dedup unavailable, continuing
+undeduped` — and carried on. **Dedup has therefore never run in this project's
+life.** The code was correct, the config named the right model, and the model
+was simply absent. Nothing in the fingerprint or the build could have shown it.
+
+It is fixed now, and the fix is not cosmetic. On four headlines — three
+phrasings of the same acquisition plus an unrelated dividend — dedup returns
+two: the duplicates collapse and the unrelated item survives. Triage now sees
+one copy of a story where it used to see three, which changes what the news
+gate is shown and therefore which names it can block.
+
+### So the environment is declared here too
+
+A trade belongs to this experiment only if it carries the fingerprint, the
+build **and** the model environment above. This is the third identifier, and
+like the other two it exists because something moved results while the others
+sat still:
+
+| what changed | fingerprint | build | caught by |
+|---|---|---|---|
+| a policy rule | moves | — | fingerprint |
+| the partial-bar fix | still | moves | build SHA |
+| Ollama down, gate fails open | still | still | nothing — see the news gate section |
+| embedding model absent, dedup dead | still | still | **nothing, for the project's whole life** |
+
+The bottom two rows are the same failure: the model environment is state that
+lives outside git, and neither identifier can see it. Checking it is part of
+starting a window now, not something to rediscover later.
 
 ---
 
@@ -443,4 +487,6 @@ in the audit log and remain readable as what they are.
 | 2026-08-24 → 09-24 | **scheduler blackout**, host off, 21 trading days missed. No restart — no policy or build change. Calendar clock extended to 2026-12-10 | 2 before, 3 now |
 | 2026-09-24 | news gate coverage recorded as **mixed** — 2 of 3 in-window trades taken ungated. Ollama left on manual start. No restart | 3 |
 | 2026-09-24 | **window 1 CLOSED, truncated** — 30-day blackout, 2 of 3 trades ungated, and 23x5 landing inside the remaining term | 3, final |
-| 2026-09-25 | **window 2 opened** at `fb709122e949` / `935c721`; hard end 2026-12-04, the last session before 23x5. First entry possible Mon 09-28 | 0 |
+| 2026-09-24 | **window 2 declared** at `fb709122e949` / `935c721`; hard end 2026-12-04, the last session before 23x5 | 0 |
+| 2026-09-24 | **window 2 superseded** before its first scan — `nomic-embed-text` was never installed, so dedup had never run. Pulled; dedup now collapses duplicate stories | 0, no scans |
+| 2026-09-25 | **window 3 opened** at `fb709122e949` / `935c721`, gemma3:12b + nomic-embed-text. Same hard end 2026-12-04 | 0 |
