@@ -1,7 +1,7 @@
 # Evaluation window — FROZEN
 
     policy fingerprint   fb709122e949
-    build                a8acc1d
+    build                cf0ca28  (window opened at a8acc1d; see the window log)
     branch               momentum-swing-research
     started              2026-08-18, first scan 05:33 AK
     account              Alpaca paper, opened 2026-08-06 at $100,000
@@ -20,6 +20,8 @@ The window ends when **both** are satisfied:
 - **100 completed scanner trades** — entered and exited, attributed to this
   system by `client_order_id`. Manual trades in the same account do not count.
 - **12 calendar weeks**, so the sample spans more than one market condition.
+  Extended to **2026-12-10** by the 2026-08-24 scheduler blackout — see that
+  section. Dark days do not count toward this rule.
 
 A **checkpoint at 30 trades** is for reporting only. Looking is allowed;
 stopping is not.
@@ -142,6 +144,53 @@ Leaving the tree on a research branch silently deploys research code.
 Check it after any research session. This is the one operational rule that no
 test can enforce.
 
+## Scheduler blackout, 2026-08-24 to 2026-09-24
+
+The machine was off. The four scheduled tasks never failed — they were never
+reached. Scanning stopped mid-session at **08-24 11:03 AK** and did not resume
+until **09-24 05:33 AK**. Windows fired missed-trigger catch-ups on 09-23 at
+20:17; the flatten's timing guard correctly made it a no-op and no closing
+orders were sent.
+
+**21 trading days were missed** (08-25 through 09-23, excluding Labor Day
+09-07), of which 17 were entry-eligible once Fridays are removed. No bar data
+was lost: the 09-24 collector backfilled the whole gap from the provider's
+60-day window, and `data_check.py --intraday` reports no gaps. Had the host
+stayed dark another month, that backfill would have been impossible — the
+60-day window is the only reason this cost nothing but time.
+
+What was lost is **exposure**, not data. No policy field and no build changed
+across the gap, so the window does **not** restart and the two trades collected
+before it still pool with the one after.
+
+### The calendar clock is extended, not counted
+
+The 12-week rule exists so the sample spans more than one market condition. 30
+dark days contributed no conditions, so counting them would satisfy the rule
+with wall-clock time the strategy never traded through. The calendar
+requirement is therefore extended by the length of the blackout:
+
+    12 weeks from 2026-08-18      would have ended 2026-11-10
+    + 30 days of blackout         ends 2026-12-10
+
+The trade-count rule is untouched — it was always counting trades, not days.
+
+**This is a judgment call made after seeing the outage, which is the shape of
+decision this document exists to constrain.** It is allowed only because it
+moves the window's end *away* and never closer: extending the clock cannot end
+the window early and cannot be used to stop on a good number. The other
+reading — counting the dark days — would have finished the window a month
+sooner, and that is the direction that needs guarding against.
+
+### There is no watchdog for a dark host
+
+`logs/watchdog.jsonl` runs inside the same machine and cannot report its own
+absence. Nothing detected this gap; it was found by reading the log a month
+later. Any future gap longer than one trading day is recorded here the same
+way, with the same extension.
+
+---
+
 ## Window log
 
 | date | event | trades so far |
@@ -152,3 +201,4 @@ test can enforce.
 | 2026-08-18 | **restarted** at `347ff1e34122` — liquidity floor raised 5M -> 20M on a 2.2% permutation result; first change made for an EDGE reason rather than a bug | 0 |
 | 2026-08-18 05:27 AK | **window open and running** at `347ff1e34122` / `a8acc1d`; all four tasks Ready, first scan 05:33 | 0 |
 | 2026-08-18 | **restarted** at `fb709122e949` — Thursday reopened for entries; Friday still closed. Arithmetic, not weekday edge | 0 |
+| 2026-08-24 → 09-24 | **scheduler blackout**, host off, 21 trading days missed. No restart — no policy or build change. Calendar clock extended to 2026-12-10 | 2 before, 3 now |
