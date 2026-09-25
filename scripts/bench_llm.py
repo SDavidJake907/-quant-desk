@@ -61,6 +61,25 @@ So by operational cost gemma3:12b made zero false blocks and the other two made
 one each. That is a larger gap than 13 versus 12 suggests, and it is the reason
 the model was left alone.
 
+IS THERE A SMALLER MODEL? MEASURED 2026-09-24, AND NO
+                        size    correct  grounded  s/call  false blocks
+    gemma3:12b          8.1GB     13/14     14/14    5.74     0
+    llama3.1:8b         4.9GB     12/14     14/14    3.34     1
+    qwen2.5:7b-instruct 4.7GB     12/14     12/14    2.95     0
+    gemma3:4b           3.3GB     11/14     14/14    4.29     1
+
+qwen2.5:7b is the near miss worth naming: fastest of the four, no false
+blocks, and the ONLY model that fails grounding. 12/14 means it produced
+evidence quotes that do not occur in the headline. This whole pipeline is
+built on `occurs_verbatim` so the model cannot invent its evidence, so a model
+that fabricates quotes is disqualified however fast it is.
+
+gemma3:4b falls to 11/14 and starts failing the bystander case — reading a
+Broadcom/VMware deal as AMD doing the acquiring.
+
+Nothing smaller is safe. Memory pressure on this box has come from loading a
+SECOND model beside this one, never from this one.
+
 Loading is serialised with keep_alive=0 so two models never share the GPU.
 """
 
