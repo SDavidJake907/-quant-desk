@@ -176,6 +176,28 @@ overnight stops.
       protection and lets entries fill overnight unprotected in thin
       liquidity. It is strictly worse than the present state.
 
+### 9a. Overnight exit — built, on a branch, not deployed
+
+`research/overnight-exit` (worktree at `../stock-scanner-overnight`) adds
+`execution/extended_exit.py` and `scripts/close_extended.py`: a way to CLOSE a
+position between 20:00 and 04:00, which currently cannot be done at all, by
+hand or otherwise. Limit orders only, because that is all the broker accepts
+out of hours.
+
+- [x] Exit-only by construction — sides come from the broker's position signs,
+      a flat book sends nothing, a second run cannot open a short.
+- [x] Polls and **fails loudly when the limit does not fill**, rather than
+      reporting a submitted order as a completed exit.
+- [x] 20 tests. Full suite 782 green on the branch.
+- [ ] **Never run against a live order yet.** Proving it needs a real position
+      to close; opening one for the test would put a trade in the window the
+      strategy never chose. First real use is the first proof — use `--symbol`
+      on one name and watch it.
+- [ ] Decide whether it is worth deploying at all. It **ends the window** when
+      merged, and it is a manual tool, so the honest sequence is §9's
+      measurement first — find out whether overnight exposure costs anything
+      before spending a window on the fix.
+
 This gates any read of live results after 2026-12-06, because the +0.218R
 holdout was measured before the regime change and does not describe the same
 market.
