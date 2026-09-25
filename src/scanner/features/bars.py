@@ -295,6 +295,19 @@ async def fetch_payload(
             raise BarsError(f"{symbol}: fetch failed: {exc}") from exc
 
 
+def cached_payload(
+    symbol: str, range_: str, interval: str, ttl_seconds: float | None = None
+) -> dict | None:
+    """The cached payload if it is still fresh, else None.
+
+    Public because a caller has to be able to tell a cache HIT from a fetch.
+    `fetch_payload` returns the payload either way, and `cache_payload` then
+    rewrote it unconditionally — which reset `cached_at` on every read, so a
+    stale payload renewed its own lease and could outlive its TTL forever.
+    """
+    return _read_cache(symbol, range_, interval, ttl_seconds)
+
+
 def cache_payload(symbol: str, range_: str, interval: str, payload: dict) -> None:
     """Write a payload the caller has already parsed successfully.
 

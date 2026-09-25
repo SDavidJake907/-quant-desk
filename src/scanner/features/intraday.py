@@ -30,7 +30,9 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from scanner.features.bars import BarsError, cache_payload, fetch_payload
+from scanner.features.bars import (
+    BarsError, cache_payload, cached_payload, fetch_payload,
+)
 from scanner.models import Frozen
 
 #: US equities trade on New York time; bucket boundaries are meaningless in UTC.
@@ -238,14 +240,45 @@ async def fetch_intraday(
     """
     interval = source_interval(minutes)
     range_ = range_ or max_range(minutes)
-    # One bar's worth of staleness at most. A date-stamped cache would happily
-    # serve this morning's fetch at three in the afternoon.
-    payload = await fetch_payload(
-        symbol, client, range_=range_, interval=interval,
-        ttl_seconds=minutes * 60 if ttl_seconds is None else ttl_seconds,
-    )
+
+    # HALF A BAR, NOT A WHOLE ONE.
+    #
+    # The TTL used to be one full bar — `minutes * 60` — which is exactly the
+    # scan cadence. A scan 30 minutes after the last one then sat precisely on
+    # the expiry boundary, so whether it saw the newest bar came down to
+    # sub-second jitter, and every other scan could run a full bar behind.
+    #
+    # That is not a rounding error when `fresh_bars = 2`. One bar of lag eats
+    # half the life of every setup, and a setup that triggers while the cache
+    # is stale can age out before the scanner ever sees it. Measured on
+    # 2026-09-25: a cache 29 minutes old served bars three buckets behind what
+    # the provider was returning.
+    #
+    # Half a bar guarantees the next scheduled scan always refetches, while
+    # still deduplicating the repeat fetches inside a single run.
+    ttl = minutes * 30 if ttl_seconds is None else ttl_seconds
+
+    # Read the cache EXPLICITLY, so a hit can be told from a fetch.
+    #
+    # `fetch_payload` returns a payload either way, and this then called
+    # `cache_payload` unconditionally — rewriting the cache with the very
+    # bytes just read out of it and stamping a fresh `cached_at`. A stale
+    # payload therefore renewed its own lease on every read and could outlive
+    # its TTL indefinitely.
+    payload = cached_payload(symbol, range_, interval, ttl)
+    from_cache = payload is not None
+    if payload is None:
+        payload = await fetch_payload(
+            symbol, client, range_=range_, interval=interval, ttl_seconds=0,
+        )
+
     bars = resample(payload, symbol, minutes=minutes, alignment=alignment)
-    cache_payload(symbol, range_, interval, payload)
+
+    # Still parse first and cache second: Yahoo answers 200 with an empty
+    # series for a symbol it does not know, and caching that would pin the
+    # failure in place. But only write what was actually fetched.
+    if not from_cache:
+        cache_payload(symbol, range_, interval, payload)
     return bars
 
 

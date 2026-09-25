@@ -1,6 +1,6 @@
 # Evaluation window — FROZEN
 
-    window               5
+    window               6
     policy fingerprint   5b091652a8ab
     code build           add46f1  — the last commit that can change behaviour
     llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
@@ -581,6 +581,51 @@ which is not the same as noticing while it is still dark.
 
 ---
 
+## Window 5 superseded: the bar cache renewed its own lease
+
+Window 5 collected nothing — zero records — and is replaced for a data bug
+found by asking why a real setup was missed.
+
+**CCL triggered at 11:30 ET on 2026-09-25 and was never traded.** It passed
+every gate: price 22.23, dollar volume 38.7M against a 20M floor, reward:risk
+2.10, `is_live_setup` true, `crosses_session` false. It sat inside the 2-bar
+freshness window for three consecutive scans — 12:03, 12:33 and 13:03 ET —
+and the funnel reported `candidates 0` at all three while the setup count
+never rose from 79. The scanner never saw it.
+
+### Two faults, and they compounded
+
+**A cache hit renewed its own expiry.** `fetch_intraday` read through
+`fetch_payload`, which returns a payload whether it fetched or not, then
+called `cache_payload` unconditionally — rewriting the cache with the bytes
+just read out of it and stamping a fresh `cached_at`. A stale payload renewed
+its lease on every read and could outlive its TTL indefinitely. Measured: a
+cache 29 minutes old served bars **three buckets behind** the provider, and
+came back stamped 0.0 minutes old.
+
+**The TTL was one full bar, which is also the scan cadence.** A scan thirty
+minutes after the last one sat exactly on the expiry boundary, so whether it
+saw the newest bar came down to sub-second jitter.
+
+With `fresh_bars = 2`, one bar of lag eats half the life of every setup, and a
+setup that triggers while the cache is stale can age out before the scanner
+ever sees it. That is the mechanism that loses a CCL.
+
+Fixed by reading the cache explicitly so a hit can be told from a fetch, and
+by halving the TTL so the next scheduled scan always refetches. Three tests
+pin it. The fingerprint does not move — no policy field changed — which is
+precisely the case the build SHA exists for, exactly as with the partial-bar
+fix in `f19aeff`.
+
+### What this does not excuse
+
+Scarcity is still real. One setup triggered across 499 symbols today, against
+a ten-session mean of **1.9 per session**. The cache bug explains why a rare
+setup was also missed; it does not explain why setups are rare. `WORKLIST.md`
+§8 still stands.
+
+---
+
 ## Window 4 superseded: the dollars were unreadable
 
 Window 4 never scanned. It is replaced because the sizing was measured and
@@ -681,3 +726,5 @@ costs a real sample.
 | 2026-09-25 | **window 4 opened** at `fb709122e949` / `2ac9fac`, after an end-to-end audit closed six gaps and hardened the scan against its own diagnostics. Same hard end 2026-12-04 | 0 |
 | 2026-09-25 | **window 4 superseded** before its first scan — sizing measured at 0.108% actual risk against a declared 1.0%, nine times too small to read a drawdown from | 0, no scans |
 | 2026-09-25 | **window 5 opened** at `5b091652a8ab`; deployment doubled to (100,80,60,40,0), slots left at 5. Same hard end 2026-12-04 | 0 |
+| 2026-09-25 | **window 5 superseded** — the bar cache renewed its own lease and served bars up to three buckets stale; CCL triggered at 11:30 ET, passed every gate, and was never seen | 0, no trades |
+| 2026-09-25 | **window 6 opened** at `5b091652a8ab`, same rules, new build. Same hard end 2026-12-04 | 0 |
