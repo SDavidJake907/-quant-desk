@@ -133,19 +133,63 @@ it lands, which is now.
         news protection.
 - [ ] Make it a `TradingPolicy` field so the choice is in the fingerprint.
 
-## 8. `fresh_bars = 2` — investigate, do not loosen
+## 8. `fresh_bars = 2` — ANSWERED 2026-09-25. Leave it alone.
 
-Current funnel reads `setups 130, stale 130, candidates 0`. Collect before
-touching it:
+**Measured, `scripts/stale_setup_test.py`, S&P 500, 119 setups.** Each setup
+re-entered N bars after its trigger at that bar's close, keeping the stop and
+target it was built with, so the cost of delay falls out of the arithmetic
+rather than needing a slippage model.
 
-- [ ] Setup age histogram
-- [ ] Outcomes by age bucket: 0–2, 3–5, 6–10, 11–20 bars
-- [ ] Entry slippage from trigger close to the price actually available
-- [ ] Expectancy after realistic spread and slippage
-- [ ] Count surviving each successive gate
+HOLDOUT expectancy decays monotonically, and crosses zero exactly where the
+live gate sits:
 
-If older setups stay profitable **on untouched data**, widen it. If not, trade
-scarcity is the honest output of the strategy and should be left alone.
+        delay      holdout      takeable
+        0 bars *   +0.141R       90%
+        1 bar  *   +0.072R       90%
+        2 bars *   +0.029R       88%
+        3 bars     -0.052R       80%
+        5 bars     -0.081R       82%
+        8 bars     -0.409R       82%
+        13 bars    -0.555R       65%
+        20 bars    -0.960R       55%
+        * admitted by fresh_bars = 2
+
+Paired randomisation on the same setups fresh versus stale — paired because
+every column holds the SAME setups at different entry points, so a two-group
+test would overstate its confidence the way the clustered t in §5 does:
+
+        HOLDOUT  0 vs  8 bars  n=33  +0.560R  p=0.005
+        HOLDOUT  0 vs 13 bars  n=26  +0.579R  p=0.010
+        HOLDOUT  0 vs 20 bars  n=22  +0.773R  p=0.027
+
+**So the gate is correctly placed and widening it would buy trades with
+negative expectancy.** Trade scarcity is the honest output of this strategy,
+exactly as this section anticipated. 8,455 of 8,479 setups rejected as stale
+is arithmetic, not a defect.
+
+- [x] Outcomes by age bucket
+- [x] Entry slippage — implicit: a later entry widens risk against the same
+      stop, so the same move earns less R
+- [x] Count surviving each successive gate — the `takeable` column, and note
+      it stays above 80% out to 8 bars. Setups do not EXPIRE quickly; they
+      stop being profitable long before they stop being enterable, which is
+      why a survival-based gate would have been the wrong instrument.
+- [ ] Setup age histogram — not needed for the decision and not done.
+
+### The uncomfortable part
+
+Holdout expectancy at delay 0 is **+0.141R**, and at the gate's own edge —
+delay 2, which the scanner trades — it is **+0.029R**. The benchmark this
+project quotes is a validated **+0.218R**.
+
+Different sample (60 days of 30m bars here, against the original 86-day
+study) so these are not the same measurement and should not be subtracted
+from one another. But the direction is unwelcome and it is not noise: the
+edge measured on data nothing was chosen from is thinner than the number
+being planned against.
+
+**This does not change the policy.** It is recorded because the next person
+to quote +0.218R should see it.
 
 My first theory here — that detection lagged the trigger — was measured and
 proved wrong: all 133 setups are visible at age 0. Do not re-derive it.
