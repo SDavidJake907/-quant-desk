@@ -43,8 +43,11 @@ class TestSchedule:
         to the flatten, so it opens nothing.
         """
         p = TradingPolicy()
-        assert deployment_for(date(2026, 8, 20), p) == 20.0   # Thursday
-        assert deployment_for(date(2026, 8, 21), p) == 0.0    # Friday
+        # The PROPERTY, not the number. The schedule was doubled on
+        # 2026-09-25 and a test pinned to 20.0 would have failed for a
+        # change that did not touch what this test is about.
+        assert deployment_for(date(2026, 8, 20), p) > 0.0      # Thursday
+        assert deployment_for(date(2026, 8, 21), p) == 0.0     # Friday
 
     def test_the_schedule_is_a_policy_field(self):
         p = TradingPolicy(weekday_deployment_pct=(80.0, 60.0, 40.0, 0.0, 0.0))

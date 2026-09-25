@@ -171,8 +171,34 @@ class TradingPolicy(Frozen):
     #: a best day at least that good at 18.9%. Train and holdout disagree about
     #: which day wins. This is a risk schedule, and since exposure and return
     #: scale together here it costs return roughly in proportion.
+    #: DOUBLED 2026-09-25, deliberately, to make the dollars readable.
+    #:
+    #: At the old schedule every position was sized by the cap rather than by
+    #: risk — `limited by position cap` printed on all three trades of the
+    #: last window — and actual risk came out at 0.108% against a declared
+    #: `risk_pct` of 1.0%. Nine times too small. Three trades at +0.44R
+    #: produced $1,860 on a $100k account, which is not a result anyone can
+    #: read a drawdown from.
+    #:
+    #: This changes NO expectancy. R is scale-invariant: doubling exposure
+    #: doubles dollars and doubles drawdown and leaves +0.248R exactly where
+    #: it was. What it buys is visibility — dollar P&L and drawdown large
+    #: enough to mean something, and fills under a size that can actually
+    #: move against you.
+    #:
+    #: The taper SHAPE is unchanged and still not a weekday edge. Monday
+    #: still deploys most and Friday still deploys nothing, for the same
+    #: bars-available arithmetic. Only the scale moved.
+    #:
+    #: Monday now hits `max_position_pct` exactly: min(20, 100/5) = 20%. So
+    #: this is the most the existing ceilings allow without raising one, and
+    #: going further is a separate decision about single-name concentration.
+    #:
+    #: EXPECT THE DAILY-LOSS GUARD TO START BINDING. It is inert at 0.108%
+    #: risk per trade and will not stay inert at twice the size. A scan that
+    #: refuses to trade after a bad morning is the guard working, not a fault.
     weekday_deployment_pct: tuple[float, float, float, float, float] = (
-        50.0, 40.0, 30.0, 20.0, 0.0)
+        100.0, 80.0, 60.0, 40.0, 0.0)
 
     #: Weekday from which no NEW positions are opened, Monday being 0.
     #: Thursday, because flattening on Friday alone still allows a position to

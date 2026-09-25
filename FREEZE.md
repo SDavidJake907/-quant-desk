@@ -1,7 +1,7 @@
 # Evaluation window — FROZEN
 
-    window               4
-    policy fingerprint   fb709122e949
+    window               5
+    policy fingerprint   5b091652a8ab
     code build           2ac9fac  — the last commit that can change behaviour
     llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
     branch               momentum-swing-research
@@ -581,6 +581,48 @@ which is not the same as noticing while it is still dark.
 
 ---
 
+## Window 4 superseded: the dollars were unreadable
+
+Window 4 never scanned. It is replaced because the sizing was measured and
+found to be nine times smaller than the policy declared.
+
+Every position was sized by the position cap rather than by risk — the
+scanner printed `limited by position cap` on all three trades of window 1 —
+and actual risk came out at **0.108%** against a declared `risk_pct` of
+**1.0%**:
+
+    ACN   risk $200.12   0.196%    position $7,948   7.80%
+    APP   risk  $60.18   0.059%    position $3,789   3.72%
+    PSX   risk  $68.70   0.067%    position $3,942   3.87%
+
+Three trades at +0.44R produced $1,860 on a $100,000 account. No drawdown can
+be read from that, and no conclusion about fills under size either.
+
+`weekday_deployment_pct` is doubled to `(100, 80, 60, 40, 0)`. Monday now
+sits exactly on the existing `max_position_pct` ceiling — `min(20, 100/5)` —
+so this is the most the current caps allow without raising one.
+
+### What this does and does not change
+
+**It changes no expectancy.** R is scale-invariant: doubling exposure doubles
+dollars and doubles drawdown and leaves the measured +0.248R exactly where it
+was. Results from before and after this change pool on R and must NOT be
+pooled on dollars.
+
+**`max_positions` was deliberately left at 5.** The obvious move was more
+slots, and the arithmetic says it is worse than useless: `position_cap_for` is
+`deployment / max_positions`, so ten slots on the same deployment HALVES every
+position, and ten slots with doubled deployment is arithmetically identical to
+today. The book has never held more than three positions and the cap has never
+refused a single candidate — 96 refusals, none of them about slots. Slot count
+is decorative while candidates are this scarce; deployment is the real dial.
+
+**Expect the daily-loss guard to bind.** `max_daily_loss_pct = 3.0` is inert
+at 0.108% risk per trade and will not stay inert at twice the size. A scan
+that refuses to trade after a bad morning is the guard working.
+
+---
+
 ## Window 3 superseded: the ranking was unfalsifiable
 
 Window 3 never scanned. It was replaced the same evening because a defect was
@@ -637,3 +679,5 @@ costs a real sample.
 | 2026-09-25 | **window 3 opened** at `fb709122e949` / `935c721`, gemma3:12b + nomic-embed-text. Same hard end 2026-12-04 | 0 |
 | 2026-09-24 | **window 3 superseded** before its first scan — only bought symbols were recorded, leaving the model's ranking unfalsifiable. `candidate_slate` now records the untaken candidates too | 0, no scans |
 | 2026-09-25 | **window 4 opened** at `fb709122e949` / `2ac9fac`, after an end-to-end audit closed six gaps and hardened the scan against its own diagnostics. Same hard end 2026-12-04 | 0 |
+| 2026-09-25 | **window 4 superseded** before its first scan — sizing measured at 0.108% actual risk against a declared 1.0%, nine times too small to read a drawdown from | 0, no scans |
+| 2026-09-25 | **window 5 opened** at `5b091652a8ab`; deployment doubled to (100,80,60,40,0), slots left at 5. Same hard end 2026-12-04 | 0 |
