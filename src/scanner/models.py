@@ -91,6 +91,42 @@ class TradeOutcome(Frozen):
     intended_target: float
 
 
+class SlateEntry(Frozen):
+    """One candidate as it stood when the scan ranked it.
+
+    THE POINT IS THE ONES NOT TAKEN
+    `TradeIntent` is only ever written for a symbol that was bought, so every
+    outcome the system can observe was pre-filtered by rank. That makes the
+    model's ranking unfalsifiable from live trading: its lower-ranked calls
+    never become trades and so never become evidence.
+
+    Recording the whole slate breaks that. A candidate ranked third here has a
+    determined outcome in bars already held, whether or not an order was sent,
+    so the ranking can be scored offline against setups it rejected.
+    """
+
+    symbol: str
+    priority_rank: int = 0
+    priority_score: float = 0.0
+    llm_rank: int = 0
+    llm_conviction: str = ""
+    llm_driver: str = ""
+    llm_concern: str = ""
+    entry_price: float = 0.0
+    stop_price: float = 0.0
+    target_price: float = 0.0
+    reward_risk: float = 0.0
+    dollar_volume: float = 0.0
+    liquidity_tier: str = ""
+    sector: str = ""
+    rsi_gate_passed: bool = False
+    #: The bar the setup triggered on, so replay can resolve from the same
+    #: point the live scan would have entered.
+    trigger_at: str = ""
+    trigger_slot: str = ""
+    trigger_weekday: str = ""
+
+
 class AuditEvent(Frozen):
     """Append-only record of a decision, refusal, submission, or fill."""
 
@@ -119,6 +155,13 @@ class AuditEvent(Frozen):
     #: outcome folded into the decision that preceded it would be
     #: indistinguishable from a decision that had always claimed it.
     outcome: TradeOutcome | None = None
+
+    #: Every candidate the scan ranked, taken or not. Written once per scan as
+    #: its own `candidate_slate` record, never folded into an intent — the
+    #: slate is what was SEEN and an intent is what was DONE, and collapsing
+    #: them would lose exactly the rejected candidates that make the ranking
+    #: falsifiable.
+    slate: tuple[SlateEntry, ...] | None = None
 
     #: Fingerprint of the TradingPolicy that produced this record.
     #:

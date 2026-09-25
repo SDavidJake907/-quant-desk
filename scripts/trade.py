@@ -58,7 +58,7 @@ from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
 from scanner.sources import dividends
 from scanner.sources.index_history import COMPOSITE_1500, SP400, SP500, SP600
-from scanner.models import AuditEvent, TradeIntent
+from scanner.models import AuditEvent, TradeIntent, SlateEntry
 
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN, RED, YELLOW, CYAN = "\033[32m", "\033[31m", "\033[33m", "\033[36m"
@@ -445,6 +445,54 @@ async def main(
             if earnings:
                 print(f"  {YELLOW}earnings inside the holding period: "
                       f"{', '.join(f'{s} {e.label}' for s, e in sorted(earnings.items()))}{RESET}")
+
+        # Record the WHOLE slate, before anything is bought.
+        #
+        # Every other record here describes a trade that happened, so the only
+        # outcomes this system can ever observe are the ones it already ranked
+        # highly. That makes the ranking unfalsifiable: its third-choice calls
+        # never become orders and so never become evidence, no matter how long
+        # it runs. Writing the slate at decision time — taken and untaken
+        # alike — is what lets the ranking be scored later against setups it
+        # passed over, from bars already held.
+        #
+        # Written BEFORE the send loop deliberately. A slate written afterwards
+        # would be missing exactly on the runs that failed partway, which are
+        # the runs worth reading.
+        if candidates:
+            slate = tuple(
+                SlateEntry(
+                    symbol=setup.symbol,
+                    priority_rank=ranks.get(setup.symbol, 0),
+                    priority_score=round(priority(setup), 2),
+                    llm_rank=llm_rank.get(setup.symbol, 0),
+                    llm_conviction=(llm_order[setup.symbol].conviction
+                                    if setup.symbol in llm_order else ""),
+                    llm_driver=(llm_order[setup.symbol].driver
+                                if setup.symbol in llm_order else ""),
+                    llm_concern=(llm_order[setup.symbol].concern
+                                 if setup.symbol in llm_order else ""),
+                    entry_price=setup.entry_price,
+                    stop_price=setup.stop_price,
+                    target_price=setup.target_price,
+                    reward_risk=setup.reward_risk,
+                    dollar_volume=round(volumes_by_symbol.get(setup.symbol, 0.0), 2),
+                    liquidity_tier=_liquidity_tier(
+                        volumes_by_symbol.get(setup.symbol, 0.0)),
+                    sector=sector_of.get(setup.symbol, ""),
+                    rsi_gate_passed=bool(rsi_shadow),
+                    trigger_at=at.isoformat(),
+                    trigger_slot=session_slot(at),
+                    trigger_weekday=at.strftime("%a"),
+                )
+                for setup, at, rsi_shadow in candidates[:show]
+            )
+            append_event(settings.audit_log_path, AuditEvent(
+                event="candidate_slate", at=datetime.now().astimezone(),
+                symbol="", slate=slate, stage=SCAN,
+                policy=policy.fingerprint, build=build_id(),
+                reason=f"{len(slate)} candidate(s) ranked",
+            ))
 
         room = limits.max_positions - len(held)
         sent = 0
