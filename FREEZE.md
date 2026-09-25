@@ -2,7 +2,7 @@
 
     window               5
     policy fingerprint   5b091652a8ab
-    code build           2ac9fac  — the last commit that can change behaviour
+    code build           add46f1  — the last commit that can change behaviour
     llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
     branch               momentum-swing-research
     started              2026-09-25, first scan 05:33 AK
