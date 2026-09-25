@@ -1,8 +1,8 @@
 # Evaluation window — FROZEN
 
-    window               3
+    window               4
     policy fingerprint   fb709122e949
-    code build           935c721  — the last commit that can change behaviour
+    code build           ed1c645  — the last commit that can change behaviour
     llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
     branch               momentum-swing-research
     started              2026-09-25, first scan 05:33 AK
@@ -12,9 +12,11 @@
                          equity $101,862.13 at window open, flat
 
 Window 1 ran 2026-08-18 to 2026-09-24 and was **truncated at 3 trades**. Its
-closing record is below; its trades do not pool with these. Window 2 was
-declared and superseded the same evening, before its first scan ever ran — no
-scans, no trades, nothing lost.
+closing record is below; its trades do not pool with these. Windows 2 and 3
+were each declared and superseded the same evening, before either ran a single
+scan — no scans, no trades, nothing lost. Both restarts bought something worth
+more than the nothing they cost: window 2 fixed dedup, window 3 made the
+model's ranking falsifiable.
 
 **On the build SHA.** Audit records carry whatever `HEAD` is when the scan
 runs, so a documentation commit moves the recorded SHA without changing a line
@@ -119,11 +121,31 @@ The real answer to scarcity is §8, not a longer window.
 Anything that alters what gets traded or at what price:
 
 - `TradingPolicy` — any field
-- `scripts/trade.py`, `scripts/flatten.py`
+- `scripts/trade.py`, `scripts/flatten.py`, `scripts/manage_positions.py`,
+  `scripts/protect.py`
 - `src/scanner/screens/smc.py`, `features/structure.py`, `features/intraday.py`
 - `execution/sizing.py`, `guards.py`, `news_gate.py`, `session.py`, `taper.py`,
-  `flatten.py`
-- The scheduled tasks and their times
+  `flatten.py`, `safety.py`, `sleeve.py`
+- **The LLM layer**: `llm/triage.py`, `llm/ranking.py`, `llm/dedup.py`,
+  `llm/ollama.py`, `llm/grounding.py`
+- `config.py` — `triage_model`, `embed_model`, `dedup_threshold`,
+  `triage_temperature`, `triage_num_ctx`
+- `sources/calendar.py` — the earnings gate reads it
+- `models.py` — `TradeIntent` is the shape that crosses into execution
+- The scheduled tasks, their times, and `scripts/scheduled_*.bat`
+
+### The list was incomplete until 2026-09-24
+
+It named `news_gate.py` but not the LLM modules the gate's verdict comes FROM.
+A prompt edit in `triage.py` changes which categories are returned, which
+changes which names are blocked, which changes what trades — without touching
+a single listed file. `dedup_threshold = 0.92` decides what triage is even
+shown. `config.py` names the model.
+
+The same reasoning added `safety.py`, `sleeve.py`, `calendar.py`, `models.py`
+and the two position-management scripts, all of which can alter what is held
+or at what price. A list that omits them lets the window be changed while
+appearing intact, which is worse than having no list.
 
 If one of these must change — a genuine bug, not an improvement — the window
 **ends**. Record the reason below, report the truncated sample, and start a new
@@ -474,6 +496,110 @@ starting a window now, not something to rediscover later.
 
 ---
 
+## What window 4 carries that window 3 did not
+
+Window 3 never scanned, so window 4 absorbs an end-to-end audit rather than
+needing a window of its own. Five gaps, all closed before the first scan:
+
+1. **`max_hold_bars = 60` was enforced nowhere.** It is how +0.218R was
+   measured — 5.6% of holdout trades exited on it — and not one live trade
+   ever has. `manage_positions.py` implemented it and was never scheduled. It
+   now runs before every scan, refuses to act when the market is shut (it
+   closes at market, and the 16:03 ET run is after the bell), records a
+   `hold_limit_exit` audit event, and binds to `TradingPolicy.max_hold_bars`
+   rather than the backtest's own constant so the two cannot drift apart.
+
+2. **Naked positions were detected and not fixed.** The scan found them,
+   shouted, and printed "re-arm with: protect.py --submit" — a manual step in
+   an unattended system, and the last time it mattered nobody was watching.
+   `protect.py` now runs first on every scan. Deliberately no market-hours
+   guard: a protective order sent after the bell is queued for the next open,
+   and a stop that activates at the open beats a position naked into it.
+
+3. **This list omitted the LLM layer.** A prompt edit in `llm/triage.py`
+   changes which categories come back, which changes which names the gate
+   blocks, which changes what trades — without touching a single listed file.
+   Corrected above, along with `config.py`, `calendar.py`, `models.py`,
+   `safety.py`, `sleeve.py` and the two position scripts.
+
+4. **The triage prompt produced two false blocks.** Measured through the
+   production path, not a proxy: `bench_triage.py` runs the real prompt over
+   the same cases. It scored 11/14, reading a unit sale (IP) and a dead deal
+   (PFE) as `target` — the verdict that refuses a real setup. Three clauses
+   were added for deal-is-off, unit-sold and stake-bought. Now 12/14, and
+   **false blocks went 2 to 0**. The one new miss, MO as `none` rather than
+   `acquirer`, blocks nothing and costs nothing.
+
+5. **Nothing could score the ranking.** `replay_slate.py` resolves recorded
+   slates against stored bars, including candidates never bought. Validated
+   first on the ten trades whose answer is known: all ten replay with the
+   right exit reason, mean difference **−0.172R**, replay pessimistic because
+   it assumes the intended entry while live limits filled better. On paper
+   that is flattery rather than edge, and replay is the number to plan with.
+
+6. **Headlines were never persisted.** `NewsItem.fetched_at` had always been
+   documented as "Point-in-time stamp for backtests" and nothing wrote one to
+   disk, so every headline the ranker read was discarded when the scan ended.
+   The slate records the model's OUTPUT, which is enough to SCORE its ranking
+   — but re-running it, which is what testing a prompt change needs, requires
+   the INPUT. That is why the triage prompt edited today could only be
+   measured on fourteen hand-written cases.
+
+   `sources/news_store.py` now keeps one append-only file per day, holding
+   exactly the items the model was shown, deduplicated on id so fourteen
+   scans over the same feed grow the file by stories rather than by scans.
+   Verified on live headlines: 60 stored, 0 on a second pass, timestamps
+   intact. It never raises — these headlines are evidence ABOUT a decision,
+   not an input to it, so a full disk must cost the evidence and never the
+   trade.
+
+   The store is written from today forward. Nothing recovers the headlines
+   already lost, so the earliest prompt change that can be replayed is the
+   next one.
+
+**Still open:** the ranking cannot be re-run against anything before
+2026-09-25, because that is when the headlines start.
+
+---
+
+## Window 3 superseded: the ranking was unfalsifiable
+
+Window 3 never scanned. It was replaced the same evening because a defect was
+found that no amount of running it would have fixed.
+
+**Only bought symbols were recorded.** `TradeIntent` is written when an order
+goes out, so every outcome this system can ever observe was already filtered by
+rank. The model's third-choice calls never become orders, never become
+outcomes, and therefore never become evidence — its ranking could not be shown
+wrong by any quantity of live trading. `candidate_refused` did not cover the
+gap: it keeps a symbol and a reason, and 89 of 96 read `already holding`, which
+is an accounting fact rather than a judgment.
+
+This is survivorship, the same shape as the delisted-history problem in
+`WORKLIST.md` §4, and unlike small sample size **it does not shrink with
+time**. Ten thousand trades would leave it exactly where it started.
+
+`scripts/trade.py` now writes a `candidate_slate` record on every scan: every
+ranked candidate, taken or not, with the model's rank kept apart from the
+deterministic one, the levels, and the trigger bar. A candidate ranked third
+has a determined outcome sitting in bars already held, so the ranking can be
+scored offline against the setups it passed over — no extra trading and no
+extra risk. It also means the ~96 days of 30m bars already collected can be
+replayed rather than waited for.
+
+**It records and decides nothing.** The fingerprint did not move. But it edits
+a file this document lists, so the window ends — which is the rule working as
+intended rather than an exception to it.
+
+### Why this was worth a restart and tomorrow would not have been
+
+Window 3 had zero trades and had not run a scan. The restart cost was
+literally nothing, and it will never be this cheap again: the first scan is
+05:33 AK. Making the change tonight costs an empty window; making it next week
+costs a real sample.
+
+---
+
 ## Window log
 
 | date | event | trades so far |
@@ -490,3 +616,5 @@ starting a window now, not something to rediscover later.
 | 2026-09-24 | **window 2 declared** at `fb709122e949` / `935c721`; hard end 2026-12-04, the last session before 23x5 | 0 |
 | 2026-09-24 | **window 2 superseded** before its first scan — `nomic-embed-text` was never installed, so dedup had never run. Pulled; dedup now collapses duplicate stories | 0, no scans |
 | 2026-09-25 | **window 3 opened** at `fb709122e949` / `935c721`, gemma3:12b + nomic-embed-text. Same hard end 2026-12-04 | 0 |
+| 2026-09-24 | **window 3 superseded** before its first scan — only bought symbols were recorded, leaving the model's ranking unfalsifiable. `candidate_slate` now records the untaken candidates too | 0, no scans |
+| 2026-09-25 | **window 4 opened** at `fb709122e949` / `ed1c645`. Same hard end 2026-12-04 | 0 |

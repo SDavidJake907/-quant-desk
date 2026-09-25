@@ -57,6 +57,7 @@ from scanner.screens.smc import is_live_setup, priority, scan
 from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
 from scanner.sources import dividends
+from scanner.sources import news_store
 from scanner.sources.index_history import COMPOSITE_1500, SP400, SP500, SP600
 from scanner.models import AuditEvent, TradeIntent, SlateEntry
 
@@ -428,6 +429,26 @@ async def main(
                     headlines[setup.symbol] = await yahoo_rss.fetch(setup.symbol, client)
                 except Exception:
                     headlines[setup.symbol] = ()
+            # Keep what the model was SHOWN, before asking what it thinks.
+            #
+            # Yahoo's feed returns only what is current, so until now every
+            # headline the ranker read was discarded when the scan ended. The
+            # slate records the model's OUTPUT, which is enough to score its
+            # ranking — but re-running it, which is what testing a prompt
+            # change needs, requires the INPUT. Nobody kept it, so the triage
+            # prompt edited today could only be measured on hand-written
+            # cases.
+            #
+            # Written before the model is called so a model failure still
+            # leaves the evidence behind. It never raises: these headlines are
+            # evidence ABOUT a decision, not an input to it, and a full disk
+            # must not stop a trade.
+            stored = news_store.append_items(
+                item for items in headlines.values() for item in items
+            )
+            if stored:
+                print(f"  {DIM}kept {stored} new headline(s) for replay{RESET}")
+
             opinions = await ranking.rank(headlines, client, sector_of, sector_rs)
             llm_order = {o.symbol: o for o in opinions}
             llm_rank = {s: i + 1 for i, s in enumerate(ranking.order(opinions))}

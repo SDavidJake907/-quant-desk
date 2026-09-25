@@ -17,6 +17,24 @@ cost nothing, exactly as in the backtest.
 
 It also cancels working orders whose trigger bar has aged out: a limit resting
 at a price the setup no longer justifies is not the trade that was validated.
+
+RUNS ON THE SCAN SCHEDULE
+It existed for months and was never scheduled, so the limit was declared in
+`TradingPolicy` and enforced nowhere. No live trade has ever exited on it —
+every recorded outcome is a stop, a target, or a weekend flatten. The Friday
+flatten hides most of the gap, but a Monday entry reaches 60 bars on Friday
+MORNING and rode to 15:45 instead.
+
+REFUSES TO ACT WHEN THE MARKET IS SHUT
+It closes at market, and a market order outside regular hours is rejected or
+queued to the next open — which would close a position at a price nobody
+chose. The last scan of the day runs at 16:03 ET, after the bell, so this
+guard is load-bearing rather than theoretical.
+
+IT RECORDS WHAT IT DID
+A close with no audit record is an exit nobody can attribute later. The
+outcome would still be reconciled from broker history, but the DECISION to
+exit on the limit would exist nowhere.
 """
 
 from __future__ import annotations
@@ -27,10 +45,19 @@ from datetime import datetime
 
 import httpx
 
-from scanner.backtest.setups import DEFAULT_MAX_BARS
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError
+from scanner.execution.audit import append_event
+from scanner.execution.policy import TradingPolicy
+from scanner.execution.provenance import build_id
 from scanner.features.intraday import fetch_intraday, max_range
+from scanner.models import AuditEvent
+
+#: Bound to the POLICY, not to the backtest's own constant. They agree today;
+#: binding to the policy is what keeps them agreeing, which is the same lesson
+#: as the liquidity floor that drifted between two declarations.
+POLICY = TradingPolicy()
+DEFAULT_MAX_BARS = POLICY.max_hold_bars
 
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN, RED, YELLOW = "\033[32m", "\033[31m", "\033[33m"
@@ -53,6 +80,14 @@ def _parsed(stamp: str) -> datetime | None:
 async def main(max_bars: int, minutes: int, execute: bool) -> None:
     async with httpx.AsyncClient() as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
+
+        # A market order outside regular hours is rejected, or queued to an
+        # open nobody chose. Reporting stays available; acting does not.
+        if execute and not await broker.market_open():
+            print(f"{YELLOW}market is closed — not closing anything. "
+                  f"Re-run during regular hours.{RESET}")
+            execute = False
+
         positions = await broker._get("/v2/positions")
         orders = await broker._get("/v2/orders", status="open", nested="true")
 
@@ -106,12 +141,21 @@ async def main(max_bars: int, minutes: int, execute: bool) -> None:
             print(f"{DIM}re-run with --execute to close them{RESET}")
             return
 
+        closed: list[str] = []
         for symbol in stale_positions:
             try:
                 await broker.close_position(symbol)
+                closed.append(symbol)
                 print(f"  {GREEN}closed{RESET} {symbol}")
             except BrokerError as exc:
                 print(f"  {RED}could not close {symbol}: {exc}{RESET}")
+            append_event(settings.audit_log_path, AuditEvent(
+                event="hold_limit_exit", at=datetime.now().astimezone(),
+                symbol=symbol, stage="trade",
+                policy=POLICY.fingerprint, build=build_id(),
+                reason=(f"held past {max_bars} bars; "
+                        f"{'closed' if symbol in closed else 'CLOSE FAILED'}"),
+            ))
         for order in stale_orders:
             try:
                 await broker.cancel_order(order["id"])

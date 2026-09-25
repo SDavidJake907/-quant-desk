@@ -91,6 +91,10 @@ pieces, listicles and valuation musings are false.
 - category: one of {categories}
 - direction: likely effect on {company}, or "unclear"
 - deal_role: only for takeover or merger stories. "target" if {company} is the one BEING bought or merged into another; "acquirer" if {company} is the one DOING the buying; "none" for everything else, including all non-deal news. Being bought and buying are opposite situations — read carefully which one this article describes.
+  Three cases read like deals and are "none":
+    * THE DEAL IS OFF — called off, terminated, abandoned, blocked or withdrawn. There is no live deal, so {company} is not a target.
+    * A UNIT IS SOLD — {company} is selling a division, business, segment or subsidiary. {company} itself is not being acquired.
+    * A STAKE IS BOUGHT — an investor builds or holds a position in {company}. A stake is not a bid for the company.
 - evidence_quote: copy a span VERBATIM from that article's title or summary that \
 justifies the role you chose. Copy exactly, character for character. Never \
 paraphrase, never invent text, and never quote text that is not there.
