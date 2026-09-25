@@ -2,7 +2,7 @@
 
     window               4
     policy fingerprint   fb709122e949
-    code build           c3d336a  — the last commit that can change behaviour
+    code build           2ac9fac  — the last commit that can change behaviour
     llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
     branch               momentum-swing-research
     started              2026-09-25, first scan 05:33 AK
@@ -557,8 +557,27 @@ needing a window of its own. Five gaps, all closed before the first scan:
    already lost, so the earliest prompt change that can be replayed is the
    next one.
 
+7. **A diagnostic could stop a trade, and an absence could not report
+   itself.** The slate writer sat between the funnel and the send loop with
+   no guard, so an exception building it would have stopped trading after
+   finding setups and before sending orders — and it had never once executed,
+   because every scan the day it shipped found zero candidates. It is now a
+   function, wrapped, and exercised by a test rather than by the first live
+   candidate. `news_store` had been built to never raise on exactly this
+   argument and the slate had not been given the same treatment.
+
+   `execution/continuity.py` reports the gap the blackout could not. It
+   counts missed SESSIONS rather than elapsed hours, so an ordinary
+   overnight and an ordinary weekend are silent while a single missed
+   weekday is not. The 2026-08-24 outage would have announced itself on the
+   first scan back instead of being found a month later. The check is itself
+   wrapped: a diagnostic that crashes the scan is the bug it exists to
+   prevent.
+
 **Still open:** the ranking cannot be re-run against anything before
-2026-09-25, because that is when the headlines start.
+2026-09-25, because that is when the headlines start. And nothing outside
+this machine watches it — continuity reports a gap once the host returns,
+which is not the same as noticing while it is still dark.
 
 ---
 
@@ -617,4 +636,4 @@ costs a real sample.
 | 2026-09-24 | **window 2 superseded** before its first scan — `nomic-embed-text` was never installed, so dedup had never run. Pulled; dedup now collapses duplicate stories | 0, no scans |
 | 2026-09-25 | **window 3 opened** at `fb709122e949` / `935c721`, gemma3:12b + nomic-embed-text. Same hard end 2026-12-04 | 0 |
 | 2026-09-24 | **window 3 superseded** before its first scan — only bought symbols were recorded, leaving the model's ranking unfalsifiable. `candidate_slate` now records the untaken candidates too | 0, no scans |
-| 2026-09-25 | **window 4 opened** at `fb709122e949` / `c3d336a`, after an end-to-end audit closed six gaps. Same hard end 2026-12-04 | 0 |
+| 2026-09-25 | **window 4 opened** at `fb709122e949` / `2ac9fac`, after an end-to-end audit closed six gaps and hardened the scan against its own diagnostics. Same hard end 2026-12-04 | 0 |
