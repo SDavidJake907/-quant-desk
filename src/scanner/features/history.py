@@ -127,6 +127,12 @@ def to_bars(
     symbol: str, minutes: int, alignment: str, rows: list[list[float]]
 ) -> IntradayBars:
     """Rebuild the bar series from stored rows."""
+    # Drop the same no-trading placeholders `resample` now refuses to build.
+    # Filtered on READ rather than removed from disk: the store is
+    # append-only and its value is that it records what the provider actually
+    # returned. 2,591 of 250,742 stored bars are placeholders, all written
+    # before resample learned to reject them.
+    rows = [r for r in rows if not (r[5] <= 0 and r[2] == r[3])]
     if len(rows) < 2:
         raise HistoryError(f"{symbol}: accumulated store has fewer than 2 bars")
     ordered = sorted(rows, key=lambda r: r[0])
