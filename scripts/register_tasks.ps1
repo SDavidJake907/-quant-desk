@@ -22,7 +22,8 @@ $tasks = @(
     "stock-scanner-data",
     "stock-scanner-flatten",
     "stock-scanner-outcomes",
-    "stock-scanner-news"
+    "stock-scanner-news",
+    "stock-scanner-sector"
 )
 
 if ($Remove) {
@@ -129,3 +130,21 @@ $newsSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeL
 $newsAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_news.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-news" -Trigger $newsTrigger -Action $newsAction -Settings $newsSettings -Description "Archive point-in-time headlines for the liquid universe" -Force | Out-Null
 Write-Output "registered stock-scanner-news    14:00 AK daily"
+
+# --- sector strength, pre-open ---------------------------------------------
+# 05:00 AK, half an hour before the first scan. Writes today's median sector
+# relative strength so the 05:33 scan does not pay 14.42s computing it.
+#
+# THE TIME IS THE POINT. This first went into the 13:00 AK data job, which
+# stamps the file with that day; the next morning's scans ask for the next
+# day, miss, and recompute. A job that runs after the data it feeds is no job
+# at all.
+#
+# Advisory only, so unsupervised and never retried: the medians are context
+# for the ranking prompt and gate nothing, and the scan computes them itself
+# when the file is missing or stale.
+$sectorTrigger = New-ScheduledTaskTrigger -Daily -At 5:00AM
+$sectorSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$sectorAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_sector.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-sector" -Trigger $sectorTrigger -Action $sectorAction -Settings $sectorSettings -Description "Median sector relative strength, written before the first scan (05:00 AK)" -Force | Out-Null
+Write-Output "registered stock-scanner-sector  05:00 AK daily"

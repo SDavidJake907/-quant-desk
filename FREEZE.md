@@ -581,6 +581,71 @@ which is not the same as noticing while it is still dark.
 
 ---
 
+## Window 9 superseded: the expensive advice ran before the cheap gates
+
+Window 9 took no trades and is replaced for a staging fix. No policy field
+changed, so the fingerprint stays `29378de4d359`; the build moves.
+
+### Sector strength was recomputed thirteen times a day for one answer
+
+`_sector_standing()` fetched two years of DAILY bars for all 501 universe
+symbols plus `^GSPC`, derived relative strength per symbol and took a median
+per sector — on every scan that found a candidate. Measured:
+
+```
+cold  14.42s      first scan of the day, daily cache empty
+warm   4.45s      cache warm
+```
+
+against a full 501-symbol scan of about 17s. The inputs are daily bars, so the
+median at 06:03 is the median at 11:33: thirteen runs produced thirteen
+identical numbers, and the most expensive one landed on the scan closest to the
+open.
+
+Now `features/sector_strength.py`, date-stamped like the daily bar cache,
+written once before the open. DATE-STAMPED AND NOT TTL, deliberately — a TTL
+cache that refreshes its own expiry is exactly what superseded window 5, and
+`test_sector_strength.py` pins that a stamp from another session is refused
+rather than served.
+
+### And the ordering was backwards
+
+The advisory block — sector arithmetic, headline fetches, an LLM call — ran
+BEFORE the WATCH gates that decide whether a candidate can be acted on at all.
+So a scan where every candidate was already held, or where the five slots were
+full, paid for opinions it could not use. With `max_positions = 5` and
+deployment at (100, 80, 60, 40, 0), a full book is not an edge case.
+
+The scan already gets this right one level up, where `_liquid()` runs before
+`scan()` because it is cheaper. It simply was not applied at the candidate
+stage.
+
+**The send loop is unchanged.** It still applies both gates itself and records
+every refusal exactly as before, so this cannot alter a decision — `rankable`
+only decides what is worth forming an opinion about. The full slate is still
+recorded for every candidate, taken or not, because that is what keeps the
+ranking falsifiable and it is why window 3 was superseded.
+
+### The first attempt at the schedule was wrong
+
+The refresh initially went into `scheduled_data.bat` at 13:00 AK. That job runs
+after the close and stamps the file with THAT day, so every scan the following
+morning asks for the following day, misses, and recomputes. The job did nothing
+at all.
+
+It is now `stock-scanner-sector` at 05:00 AK, half an hour before the first
+scan — a job that runs after the data it feeds is no job at all. Recorded
+because the fault was invisible: the fallback inside `sector_strength.today()`
+meant the system behaved correctly and the scheduled task was simply inert,
+which is the same shape as the news task that was never in `-Remove`.
+
+### What this changes about the numbers
+
+Nothing. Universe 267, funnel 501 -> 77 setups, fingerprint `29378de4d359`,
+843 tests green. Window 9 had taken no trades.
+
+---
+
 ## What this window cannot tell you: it has never seen a bear market
 
 No restart. No rule changed and no code changed — this records a limit on what
@@ -1002,3 +1067,5 @@ costs a real sample.
 | 2026-09-26 | **window 8 superseded** — `min_price` was a policy field bypassed by four hardcoded copies, so editing it would have moved the fingerprint and changed nothing live; `MIN_RANGE_PCT` was enforced in the preview only, which showed 230 symbols against the trader's 267 | 0, no trades |
 | 2026-09-26 | **window 9 opened** at `29378de4d359` / `6400751`; three tradeability floors single-sourced from the policy, range floor declared and OFF at 0.0, context gate short-circuits. No rule changed. Same hard end 2026-12-04 | 0 |
 | 2026-09-26 | regime limit recorded — the sample has **0 of 92 down-trending sessions**, and Alpaca replicates the edge within 1 se (+0.311R vs +0.380R) while showing ~+0.025R over 2 years. No rule or code changed, **no restart** | 0 |
+| 2026-09-26 | **window 9 superseded** — sector strength recomputed 13x a day for an answer daily bars cannot change (14.42s cold), and the advisory block ran before the WATCH gates, paying for candidates a full book could not trade | 0, no trades |
+| 2026-09-26 | **window 10 opened** at `29378de4d359`, same rules, new build. Sector medians cached date-stamped and written pre-open by a sixth task; send loop unchanged. Same hard end 2026-12-04 | 0 |

@@ -57,6 +57,7 @@ from scanner.llm import ranking
 from scanner.screens.smc import is_live_setup, priority, scan
 from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
+from scanner.features import sector_strength
 from scanner.sources import dividends
 from scanner.sources import news_store
 from scanner.sources.index_history import COMPOSITE_1500, SP400, SP500, SP600
@@ -86,30 +87,19 @@ MIN_RANGE_PCT = POLICY.min_range_pct
 
 
 async def _sector_standing(client, universe) -> dict[str, float]:
-    """Median relative strength per sector — leaders positive, laggards not.
+    """Median relative strength per sector, from the once-a-day cache.
 
-    Computed here rather than asked of the model: it is arithmetic, and the
-    model's job is to read the news against it.
+    MOVED OUT OF THE SCAN. This used to fetch two years of daily bars for all
+    501 symbols on every scan that found a candidate: 14.42s cold, 4.45s warm,
+    against a ~17s scan. The inputs are DAILY bars, so the answer cannot change
+    between the 06:03 scan and the 11:33 one — thirteen runs a day produced
+    thirteen identical numbers.
+
+    `sector_strength.today()` serves a date-stamped file written by the daily
+    collector and falls back to computing it once if that task has not run, so
+    a scan never depends on another job having succeeded.
     """
-    import statistics
-
-    from scanner.features import technicals
-    from scanner.features.bars import fetch_bars, fetch_many
-
-    try:
-        benchmark = technicals.compute(await fetch_bars("^GSPC", client, range_="2y"))
-        daily, _ = await fetch_many(tuple(m.symbol for m in universe), client, range_="2y")
-    except Exception:
-        return {}
-    buckets: dict[str, list[float]] = {}
-    for member in universe:
-        series = daily.get(member.symbol)
-        if series is None:
-            continue
-        rs = technicals.relative_strength(technicals.compute(series), benchmark)
-        if rs is not None:
-            buckets.setdefault(member.sector, []).append(rs)
-    return {s: statistics.median(v) for s, v in buckets.items() if v}
+    return await sector_strength.today(client, universe)
 
 
 def _dollar_volume(bars, window: int = 20) -> float:
@@ -548,15 +538,41 @@ async def main(
         ranks = {row[0].symbol: i + 1 for i, row in enumerate(candidates)}
         print(f"\n{BOLD}{len(candidates)} fresh setups{RESET}\n")
 
+        # CHEAP GATES BEFORE EXPENSIVE ADVICE.
+        #
+        # The advisory block below costs sector arithmetic, a round of headline
+        # fetches and an LLM call. The WATCH gates that decide whether a
+        # candidate can be acted on at all — already held, and no free slot —
+        # used to run AFTER it, in the send loop. So a scan where every
+        # candidate was already held, or where the five slots were full, paid
+        # for advice on candidates it could not act on. With max_positions=5
+        # and deployment at (100,80,60,40,0), a full book is not an edge case.
+        #
+        # This is the ordering the scan already gets right one level up, where
+        # `_liquid()` runs before `scan()` because it is cheaper.
+        #
+        # The send loop below is deliberately UNCHANGED and still applies both
+        # gates itself, so every refusal is recorded exactly as before and this
+        # cannot alter a decision. `rankable` only decides what is worth
+        # forming an opinion about.
+        room = limits.max_positions - len(held)
+        rankable = ([row for row in candidates
+                     if check_symbol(row[0].symbol, held, pending)][:show]
+                    if room > 0 else [])
+        if candidates and not rankable:
+            print(f"  {DIM}no candidate is actionable "
+                  f"({'no free slot' if room <= 0 else 'all already held'}) — "
+                  f"skipping news and ranking{RESET}")
+
         # Gemma's advisory ordering, recorded beside the deterministic one.
         llm_order: dict[str, ranking.SetupOpinion] = {}
         llm_rank: dict[str, int] = {}
-        if news_gate and candidates:
+        if news_gate and rankable:
             from scanner.entity import prefilter
             from scanner.sources import yahoo_rss
             sector_rs = await _sector_standing(client, universe)
             headlines = {}
-            for setup, _, _ in candidates[:show]:
+            for setup, _, _ in rankable:
                 try:
                     headlines[setup.symbol] = await yahoo_rss.fetch(setup.symbol, client)
                 except Exception:
@@ -593,7 +609,7 @@ async def main(
 
         earnings = {}
         if news_gate and candidates:
-            wanted = frozenset(setup.symbol for setup, _, _ in candidates[:show])
+            wanted = frozenset(setup.symbol for setup, _, _ in rankable)
             earnings = await event_calendar.upcoming_earnings(wanted, client)
             if earnings:
                 print(f"  {YELLOW}earnings inside the holding period: "
@@ -633,7 +649,6 @@ async def main(
             print(f"  {YELLOW}! slate not recorded: "
                   f"{type(exc).__name__}: {exc}{RESET}")
 
-        room = limits.max_positions - len(held)
         sent = 0
         for setup, at, rsi_shadow in candidates[:show]:
             symbol_gate = check_symbol(setup.symbol, held, pending)
