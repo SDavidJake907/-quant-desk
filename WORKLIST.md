@@ -627,19 +627,25 @@ thirteen null rankings were all measured inside it.
 ### On data that does contain a downturn
 
 The Alpaca SIP store spans 2024-09 -> 2026-09 and covers the 2025 -18.9%
-drawdown. Same rules, 336 symbols, 565 resolved setups:
+drawdown. Same rules, 501 symbols (collection complete: 0 failed, 3,343,967
+bars, 180 MB), 858 resolved setups:
 
 ```
-above both    +0.040R  se 0.097  n=361  win 36%
-mixed         +0.108R  se 0.167  n=90   win 41%
-below both    -0.089R  se 0.167  n=114  win 32%
+above both    +0.108R  se 0.078  n=523  win 38%
+mixed         +0.028R  se 0.119  n=156  win 38%
+below both    -0.086R  se 0.125  n=179  win 32%
 
-gap (above - below)  +0.130R   permutation p=0.506
+gap (above - below)  +0.194R   permutation p=0.201
 ```
 
 Bear conditions go negative, the direction theory predicts for a long-only
-sweep strategy. NOT A FINDING — p=0.506. What changed is that 114 bear-session
-setups now exist to test against, where the Yahoo store had zero.
+sweep strategy. NOT A FINDING — p=0.201. But refreshed on the completed
+501-symbol store (858 setups, up from 565 on 336 symbols) the `below both`
+bucket held almost exactly: -0.089R on n=114 -> -0.086R on n=179, while `mixed`
+swung +0.108R -> +0.028R and showed itself to be noise. Stability under a 57%
+larger sample is what separates an effect from an artifact, and the ordering is
+now monotonic. This is the most promising unenforced result in the repo after
+the 20M floor, and it still needs a third sample before enforcement.
 
 ### The larger thing this surfaced: the window, not the provider
 

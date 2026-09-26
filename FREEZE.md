@@ -609,18 +609,22 @@ model environment records which regime a window ran in. A fourth identifier is
 arguably missing, because the market is a variable this file does not pin and
 cannot.
 
-### The Alpaca store now contains 114 bear-session setups
+### The Alpaca store now contains 179 bear-session setups
 
 Over 2024-09 to 2026-09, including the 2025 -18.9% drawdown:
 
 ```
-above both    +0.040R  se 0.097  n=361
-mixed         +0.108R  se 0.167  n=90
-below both    -0.089R  se 0.167  n=114     gap p=0.506
+above both    +0.108R  se 0.078  n=523
+mixed         +0.028R  se 0.119  n=156
+below both    -0.086R  se 0.125  n=179     gap p=0.201
 ```
 
-Negative in bear conditions, as a long-only sweep strategy should be. p=0.506,
-so not a finding — but no longer unmeasurable.
+Negative in bear conditions, as a long-only sweep strategy should be. p=0.201,
+so still NOT a finding — but the `below both` bucket barely moved when the
+sample grew 57% (-0.089R on 114 setups -> -0.086R on 179), while `mixed` swung
+from +0.108R to +0.028R and revealed itself as noise. A real effect holds its
+value as n rises; noise does not. Ordering is now cleanly monotonic. Worth a
+third sample, not yet worth enforcing.
 
 ### And the first successful replication, which cuts the headline number
 
