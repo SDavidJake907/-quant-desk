@@ -9,3 +9,5 @@ data/
 .DS_Store
 dashboard.html
 logs/
+tmp/_*
+tmp/*.log

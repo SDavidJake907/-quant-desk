@@ -68,11 +68,21 @@ GREEN, RED, YELLOW, CYAN = "\033[32m", "\033[31m", "\033[33m", "\033[36m"
 INDEXES = {"sp500": (SP500,), "sp400": (SP400,), "sp600": (SP600,),
            "all": COMPOSITE_1500}
 
-MIN_PRICE = 5.0
-#: Read from the policy so this cannot drift from what was measured.
+#: Read from the policy so these cannot drift from what was measured.
 #: It did drift: this file carried its own 5M constant while the policy
 #: said something else, so changing the policy changed nothing live.
-MIN_DOLLAR_VOLUME = TradingPolicy().min_dollar_volume
+#:
+#: `min_price` had the SAME bug and survived that fix — the comment above was
+#: written for the line below it and the line above it was left hardcoded.
+#: Worse than the original: `min_price` is a policy field, so it is hashed
+#: into the fingerprint. Editing it declared a new evaluation window and
+#: changed nothing live, which is a false signal rather than a missed one.
+POLICY = TradingPolicy()
+MIN_PRICE = POLICY.min_price
+MIN_DOLLAR_VOLUME = POLICY.min_dollar_volume
+#: Average bar range as a % of price. See `policy.min_range_pct` for why the
+#: default is 0.0 and what enabling it would cost.
+MIN_RANGE_PCT = POLICY.min_range_pct
 
 
 async def _sector_standing(client, universe) -> dict[str, float]:
@@ -166,12 +176,27 @@ def _record_slate(candidates, ranks, llm_rank, llm_order, volumes, sectors,
     return len(slate)
 
 
+def _range_pct(bars, window: int = 20) -> float:
+    """Average bar range over the window, as a % of that bar's close."""
+    highs, lows = bars.highs[-window:], bars.lows[-window:]
+    closes = bars.closes[-window:]
+    spans = [(h - l) / c * 100 for h, l, c in zip(highs, lows, closes) if c]
+    return sum(spans) / len(spans) if spans else 0.0
+
+
 def _liquid(bars, window: int = 20) -> bool:
     """Tradeability, not signal. A floor that says "you could actually get
     filled here" is a different thing from one that claims liquid names
-    perform better."""
+    perform better.
+
+    The range check is here so the preview and the trader screen on the same
+    three numbers; at the shipped default of 0.0 it admits everything, which
+    is what the holdout measured.
+    """
     closes = bars.closes[-window:]
     if not closes or closes[-1] < MIN_PRICE:
+        return False
+    if _range_pct(bars, window) < MIN_RANGE_PCT:
         return False
     return _dollar_volume(bars, window) >= MIN_DOLLAR_VOLUME
 

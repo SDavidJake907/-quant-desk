@@ -44,12 +44,16 @@ GREEN, RED, YELLOW, CYAN = "\033[32m", "\033[31m", "\033[33m", "\033[36m"
 
 INDEXES = {"sp500": (SP500,), "sp400": (SP400,), "sp600": (SP600,),
            "all": COMPOSITE_1500}
+POLICY = TradingPolicy()
 
 #: Day-trading practicality. A setup you cannot get filled on is not a setup.
-MIN_PRICE = 5.0
-#: From the policy, not a local copy — see scripts/trade.py.
-MIN_DOLLAR_VOLUME = TradingPolicy().min_dollar_volume
-MIN_RANGE_PCT = 0.4               # average bar range, as % of price
+#: All three from the policy, not local copies — see scripts/trade.py. This
+#: file held the only copy of MIN_RANGE_PCT and enforced it, while trade.py
+#: had no range check at all: the preview showed 230 symbols where the trader
+#: would act on 267, and the 37 it hid included MA, KO, PG and BRK.B.
+MIN_PRICE = POLICY.min_price
+MIN_DOLLAR_VOLUME = POLICY.min_dollar_volume
+MIN_RANGE_PCT = POLICY.min_range_pct
 
 
 class Candidate:

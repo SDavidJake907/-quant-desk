@@ -128,30 +128,95 @@ def test_every_entry_point_defaults_to_the_validated_configuration():
             )
 
 
-def test_the_liquidity_floor_is_read_from_the_policy_not_copied():
-    """`trade.py` and `find_setups.py` each carried their own
-    MIN_DOLLAR_VOLUME = 5_000_000.0 while TradingPolicy held the real value.
+def test_tradeability_floors_are_read_from_the_policy_not_copied():
+    """Three constants, four entry points, and the same bug twice.
 
-    That is precisely the drift this object exists to prevent, and it was
-    silent: raising the policy floor would have changed nothing live, and a
-    backtest run from the policy would have measured a configuration the
-    scanner never traded. The existing drift test did not cover this field.
+    `trade.py` and `find_setups.py` each carried their own
+    MIN_DOLLAR_VOLUME = 5_000_000.0 while TradingPolicy held the real value.
+    That was fixed for the dollar floor and the comment explaining the fix was
+    written directly BELOW a hardcoded `MIN_PRICE = 5.0` that had it too — in
+    trade.py, find_setups.py, collect_news.py and provider_compare.py.
+
+    `min_price` is worse than the original, because it IS a policy field and is
+    therefore hashed into the fingerprint: editing it declared a fresh
+    evaluation window and changed nothing live. A false signal, not a missed
+    one.
+
+    MIN_RANGE_PCT was the mirror image — enforced in `find_setups.py` and
+    absent from the policy and from `trade.py`, so the preview screened 230
+    symbols where the trader would act on 267.
+
+    This test is deliberately about VALUES rather than spellings: the previous
+    version asserted the literal string "TradingPolicy().min_dollar_volume"
+    appeared in the source, which passed only for one way of writing the read.
     """
-    import importlib.util
-    import sys
+    import re
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    expected = TradingPolicy().min_dollar_volume
+    policy = TradingPolicy()
+    fields = {
+        "MIN_PRICE": policy.min_price,
+        "MIN_DOLLAR_VOLUME": policy.min_dollar_volume,
+        "MIN_RANGE_PCT": policy.min_range_pct,
+    }
+    entry_points = {
+        "scripts/trade.py": ("MIN_PRICE", "MIN_DOLLAR_VOLUME",
+                             "MIN_RANGE_PCT"),
+        "scripts/find_setups.py": ("MIN_PRICE", "MIN_DOLLAR_VOLUME",
+                                   "MIN_RANGE_PCT"),
+        "scripts/collect_news.py": ("MIN_PRICE",),
+        "scripts/provider_compare.py": ("MIN_PRICE",),
+    }
 
-    for name in ("trade", "find_setups"):
-        source = (root / "scripts" / f"{name}.py").read_text(encoding="utf-8")
-        assert "MIN_DOLLAR_VOLUME = 5_000_000.0" not in source, (
-            f"scripts/{name}.py has re-hardcoded the liquidity floor")
-        assert "TradingPolicy().min_dollar_volume" in source, (
-            f"scripts/{name}.py must read the floor from the policy")
+    for path, names in entry_points.items():
+        source = (root / path).read_text(encoding="utf-8")
+        for name in names:
+            found = re.findall(rf"^{name}\s*=\s*(.+?)\s*(?:#.*)?$",
+                               source, re.MULTILINE)
+            assert found, f"{path} no longer defines {name}"
+            for expression in found:
+                assert not re.fullmatch(r"[\d_.]+", expression), (
+                    f"{path} hardcodes {name} = {expression} instead of "
+                    f"reading the policy — evidence and execution can drift"
+                )
+                assert "min_" in expression or "POLICY" in expression, (
+                    f"{path} sets {name} = {expression}, which does not come "
+                    f"from the policy"
+                )
 
-    assert expected == 20_000_000.0, (
+    assert fields["MIN_DOLLAR_VOLUME"] == 20_000_000.0, (
         "the floor was raised to 20M on measurement: below it the strategy "
         "earned +0.114R and above it +0.776R, with a 2.2% permutation test"
     )
+    assert fields["MIN_RANGE_PCT"] == 0.0, (
+        "the range floor ships DECLARED AND OFF. It has never been measured, "
+        "and enabling it removes 37 liquid names (MA, KO, PG, BRK.B) from a "
+        "universe of 267 on an untested hypothesis. Thirteen untested ranking "
+        "ideas have failed here. Measure it on a train/holdout split first."
+    )
+
+
+def test_the_range_floor_is_enforced_where_it_is_declared():
+    """A declared floor that nothing reads is how MIN_RANGE_PCT started."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    for path in ("scripts/trade.py", "scripts/find_setups.py"):
+        source = (root / path).read_text(encoding="utf-8")
+        assert "MIN_RANGE_PCT" in source.split("MIN_RANGE_PCT =", 1)[1], (
+            f"{path} defines MIN_RANGE_PCT and never compares against it"
+        )
+
+
+def test_the_context_gate_is_free_when_it_constrains_nothing():
+    """Every `require_*` flag defaults False and the live policy sets none, so
+    an unconstrained call must not compute EMAs, RSI, MACD and ATR to return a
+    True it could not have avoided. That was 48% of a scan's compute."""
+    from unittest.mock import patch
+
+    from scanner.features import intraday_context
+
+    with patch.object(intraday_context, "compute") as never:
+        assert intraday_context.passes(object()) is True
+        never.assert_not_called()

@@ -59,7 +59,8 @@ GREEN, RED, YELLOW = "\033[32m", "\033[31m", "\033[33m"
 INDEXES = {"sp500": (SP500,), "sp400": (SP400,), "sp600": (SP600,),
            "all": COMPOSITE_1500}
 POLICY = TradingPolicy()
-MIN_PRICE = 5.0
+#: From the policy. This file already held POLICY and still kept a local copy.
+MIN_PRICE = POLICY.min_price
 
 #: Fetch this many feeds at once. Yahoo tolerated 1,500 bar requests in ~40s,
 #: but RSS is a different endpoint and there is no reason to find its limit

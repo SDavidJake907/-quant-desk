@@ -93,6 +93,27 @@ class TradingPolicy(Frozen):
     #: trade of quantity for quality.
     min_dollar_volume: float = 20_000_000.0
 
+    #: Average true bar range over the last 20 bars, as a % of price. A floor
+    #: here says "this name moves enough for a 1.5% stop to be a level rather
+    #: than a rounding error".
+    #:
+    #: ZERO — DISABLED — ON PURPOSE. This number existed as a hardcoded 0.4 in
+    #: `find_setups.py` alone, where it silently narrowed the PREVIEW to 230
+    #: symbols while `trade.py` acted on 267. The two disagreed, and the 37 in
+    #: the gap were names like MA, KO, PG and BRK.B — WBD averages 0.088%, so a
+    #: 1.5% stop there is seventeen bars of ordinary movement away.
+    #:
+    #: The argument for enabling it is the same MECHANISM argument that carried
+    #: the 20M floor: this trades sweeps of resting orders, and a name that
+    #: barely moves does not sweep. But the floor was measured before it was
+    #: enforced (p=0.022 over 125 setups) and this has never been measured at
+    #: all. Thirteen untested ranking ideas have failed here, several after
+    #: looking obvious. So it ships DECLARED and OFF: both entry points now
+    #: read the same number, changing it moves the fingerprint, and live
+    #: behaviour is exactly what the holdout measured until a split says
+    #: otherwise.
+    min_range_pct: float = 0.0
+
     # --- what stops a trade -----------------------------------------------
     block_structural_news: bool = True
     block_earnings_within_days: int = 7
