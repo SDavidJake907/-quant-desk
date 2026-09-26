@@ -349,6 +349,67 @@ variants, 4 shadow dimensions, delayed entry, and now four horizons.
       no evidence behind it and would cross a boundary that exists for a
       measured reason.
 
+## 13. Zero-volume placeholder bars are shrinking the universe
+
+`scripts/verify_bars.py` asserts the invariants nobody checks because they are
+obviously true. The bars pass all of them — OHLC consistent, times strictly
+increasing, buckets aligned to :00 and :30, nothing outside 09:30-16:00 — and
+every setup the screen returns honours the policy it was scanned under.
+
+One thing does not pass. **12.7% of session-days hold 14 bars, and a
+09:30-16:00 session is 13.**
+
+The extra bucket is 16:00, and it is not a bar:
+
+        bucket   median volume   median range
+        15:30        2,665,138          1.238
+        16:00                0          0.000
+
+Zero volume, zero range, high equal to low. A Yahoo placeholder for the
+closing print. 2,591 of 250,742 bars, 1.03%.
+
+### What it costs
+
+Nothing triggers on one — 0 of 92 setups — but the liquidity filter averages
+volume x close over the last 20 bars, and a zero drags the mean down:
+
+        median dollar volume as stored     19,890,206
+        median with placeholders removed   21,275,399
+        understated by                          6.51%
+
+The floor is 20,000,000, so the median S&P 500 name sits **right on the
+boundary and the artifact pushes it to the wrong side**:
+
+        symbols passing, as stored                245
+        symbols passing, placeholders removed     267
+        wrongly rejected                           22   (+9.0%)
+
+        KEY   19,847,701 -> 22,728,781
+        FITB  19,547,935 -> 22,025,013
+        VRTX  19,834,307 -> 21,315,726
+        CL    19,097,699 -> 21,180,890
+
+Twenty-two genuinely liquid large caps excluded by a data artifact. For
+comparison, adding the entire S&P 400 and 600 — 1,003 extra symbols — bought
+only +0.15 setups per session. This is free and comparable.
+
+### Two possible fixes, and they are not equivalent
+
+- [ ] **Narrow:** exclude zero-volume bars from `_dollar_volume` only. Fixes
+      the measured defect, touches `trade.py` and `find_setups.py`, and
+      leaves structure detection exactly as it is — so no historical result
+      moves.
+- [ ] **Broad:** drop placeholder bars at parse time so they never enter a
+      series. More correct — a bar with no trading is not a bar, the same
+      reasoning `drop_incomplete` already applies to a bucket that has not
+      closed. But **13% of setups have a placeholder inside their structure
+      window**, so this can change which setups exist, and every historical
+      number including the +0.218R baseline would need re-measuring.
+
+The narrow fix is quantified and safe. The broad fix is more correct and
+needs its own before/after study before anyone trusts it. Do the narrow one
+first, measure the broad one separately.
+
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
 23x5 trading begins 2026-12-06 (SEC approved Nasdaq's proposal April 2026;
