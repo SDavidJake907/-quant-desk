@@ -585,6 +585,98 @@ considering 0.4. Treat the prior as null: thirteen ideas have failed that bar.
 
 ---
 
+## 17. The system has no concept of bull or bear — measured 2026-09-26
+
+Asked whether the repo understands market direction. It does not, anywhere in
+the trading path, and the sample it was validated on could not have revealed
+the omission.
+
+### What is actually wired
+
+`scheduled_scan.bat` runs `trade.py --submit-paper`. No index filter, no regime
+gate, nothing market-wide. The ingredients exist and are all off:
+
+- `intraday_context` computes `bullish_alignment`, `above_200`, `fast_stack`,
+  reachable only through `--trend-context` etc. — `store_true`, default False,
+  never passed by the scheduler. These are the same flags §16 short-circuited
+  because nothing sets them.
+- `_sector_standing()` does fetch `^GSPC` and compute relative strength, but it
+  feeds the LLM ranking prompt only. It orders candidates; it never rejects one.
+- `find_setups.py --bullish` and `smc_backtest.py --bullish` exist.
+  `trade.py` has no equivalent.
+
+Structurally long-only: in `screens/` and `execution/`, `"sell"` appears only
+in exits and the Friday flatten, never as an entry side. A bearish sweep is not
+filtered out — it cannot be represented.
+
+### The validated sample contains no down-trending session
+
+S&P classified against its own 50- and 200-day averages:
+
+```
+Yahoo store, 2026-05-14 -> 2026-09-24   (S&P +2.7%)
+  above both    80 of 92 sessions   87%
+  mixed         12 of 92 sessions   13%
+  below both     0 of 92 sessions    0%
+```
+
+Six docstrings here say "one market regime". It is more specific than that: one
+FAVOURABLE regime. The +0.218R holdout, the 20M floor at p=0.022 and the
+thirteen null rankings were all measured inside it.
+
+### On data that does contain a downturn
+
+The Alpaca SIP store spans 2024-09 -> 2026-09 and covers the 2025 -18.9%
+drawdown. Same rules, 336 symbols, 565 resolved setups:
+
+```
+above both    +0.040R  se 0.097  n=361  win 36%
+mixed         +0.108R  se 0.167  n=90   win 41%
+below both    -0.089R  se 0.167  n=114  win 32%
+
+gap (above - below)  +0.130R   permutation p=0.506
+```
+
+Bear conditions go negative, the direction theory predicts for a long-only
+sweep strategy. NOT A FINDING — p=0.506. What changed is that 114 bear-session
+setups now exist to test against, where the Yahoo store had zero.
+
+### The larger thing this surfaced: the window, not the provider
+
+"above both" reading +0.040R rather than +0.31R prompted the matched provider
+comparison on the shared dates:
+
+```
+2026-05-11 -> 2026-09-25      YAHOO    ALPACA SIP
+  mean R                     +0.380        +0.311
+  se                          0.150         0.142     agree within 1 se
+```
+
+So the edge is real and is not Yahoo's reconstruction of the tape — the first
+replication this project has had. Which means the gap between **+0.311R over
+4.5 months** and **~+0.025R over 2 years** is a WINDOW effect. The period every
+published number came from was unusually favourable, and it is the same period
+`min_risk_pct` was chosen on.
+
+That qualifies the headline result more sharply than the regime question did.
+
+### Next, in order
+
+1. Re-collect Alpaca from `--start 2016-01-01` instead of 2024-09. Reaches four
+   more drawdowns — 2018 (-19.8%), 2020 (-33.9%), 2022 (-25.4%, nine months),
+   2025 (-18.9%) — and takes the sample from 0.38 years to ~10. Also the fix
+   for needing 224 trades to exclude zero and for the 0.82 deflated Sharpe.
+   One command, free.
+2. Measure a `below both` exclusion the way the 20M floor was measured:
+   train/holdout, permutation, sign-flip check, BEFORE enforcing anything.
+   Prior is better than the thirteen failed rankings, because like the
+   liquidity floor it is a claim about where the MECHANISM applies rather than
+   a prediction — a long-only sweep needs buyers to defend the level.
+3. Only then consider the short side, which is a much larger change: it is not
+   a filter but a second direction the screen cannot currently express.
+
+---
+
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
 23x5 trading begins 2026-12-06 (SEC approved Nasdaq's proposal April 2026;

@@ -581,6 +581,70 @@ which is not the same as noticing while it is still dark.
 
 ---
 
+## What this window cannot tell you: it has never seen a bear market
+
+No restart. No rule changed and no code changed — this records a limit on what
+the evidence can support, which is the other thing this file is for.
+
+The trading path has no concept of market direction. `--trend-context` and
+`--rsi-context` are `store_true`, default False, and the scheduler never passes
+them; `_sector_standing()` fetches `^GSPC` but only to inform the LLM ranking
+prompt, so it orders candidates and rejects none. The strategy is also
+structurally long-only: `"sell"` appears in `screens/` and `execution/` only as
+an exit or the Friday flatten, never as an entry side.
+
+That would be a defensible design choice. What makes it a gap is the sample:
+
+```
+2026-05-14 -> 2026-09-24   (S&P +2.7%)
+  above both    80 of 92 sessions   87%
+  mixed         12 of 92 sessions   13%
+  below both     0 of 92 sessions    0%
+```
+
+Not one down-trending session. Every number this project has published — the
++0.218R holdout, the 20M floor at p=0.022, thirteen null rankings — was measured
+inside a favourable regime, and nothing in the fingerprint, the build SHA or the
+model environment records which regime a window ran in. A fourth identifier is
+arguably missing, because the market is a variable this file does not pin and
+cannot.
+
+### The Alpaca store now contains 114 bear-session setups
+
+Over 2024-09 to 2026-09, including the 2025 -18.9% drawdown:
+
+```
+above both    +0.040R  se 0.097  n=361
+mixed         +0.108R  se 0.167  n=90
+below both    -0.089R  se 0.167  n=114     gap p=0.506
+```
+
+Negative in bear conditions, as a long-only sweep strategy should be. p=0.506,
+so not a finding — but no longer unmeasurable.
+
+### And the first successful replication, which cuts the headline number
+
+That +0.040R prompted the matched-window provider comparison:
+
+```
+2026-05-11 -> 2026-09-25      YAHOO    ALPACA SIP
+  mean R                     +0.380        +0.311
+  se                          0.150         0.142
+```
+
+Within one standard error, on an independent feed from the venue the orders go
+to. **The edge is in the market, not in Yahoo's reconstruction of the tape** —
+the replication this project had no way to run until today.
+
+The cost of that good news is that it isolates the remaining gap as a WINDOW
+effect: the same rules on the same verified-equivalent data earn +0.311R over
+these 4.5 months and roughly +0.025R over two years. The period every published
+result came from was unusually favourable, and it is the period `min_risk_pct`
+was tuned on. Paper trading continues unchanged; the numbers it is measured
+against should carry this caveat.
+
+---
+
 ## Window 8 superseded: the same drift bug, twice, one of it in reverse
 
 Window 8 took no trades and is replaced for a filter audit that found the exact
@@ -933,3 +997,4 @@ costs a real sample.
 | 2026-09-26 | **window 8 opened** at `5b091652a8ab`; placeholder bars rejected, tradeable universe 245 -> 267, fifth task archives news daily | 0 |
 | 2026-09-26 | **window 8 superseded** — `min_price` was a policy field bypassed by four hardcoded copies, so editing it would have moved the fingerprint and changed nothing live; `MIN_RANGE_PCT` was enforced in the preview only, which showed 230 symbols against the trader's 267 | 0, no trades |
 | 2026-09-26 | **window 9 opened** at `29378de4d359` / `6400751`; three tradeability floors single-sourced from the policy, range floor declared and OFF at 0.0, context gate short-circuits. No rule changed. Same hard end 2026-12-04 | 0 |
+| 2026-09-26 | regime limit recorded — the sample has **0 of 92 down-trending sessions**, and Alpaca replicates the edge within 1 se (+0.311R vs +0.380R) while showing ~+0.025R over 2 years. No rule or code changed, **no restart** | 0 |
