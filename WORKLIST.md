@@ -311,6 +311,44 @@ get those entries.
 
 n=10. This describes what happened; it is not a finding.
 
+## 12. Multi-horizon context — tested 2026-09-25, nothing survives
+
+The idea: a setup triggering after a month of decline is a different thing
+from one triggering in an uptrend, and the screen does not care. Hand the
+model 24h / 7d / 14d / 30d context so it can judge news against price.
+
+`ranking.py` deliberately refuses to — "you are NOT judging the chart, price
+is not your job" — so the boundary was tested rather than crossed.
+`scripts/horizon_test.py` labels every historical setup by percentage change
+into the trigger bar over 13 / 65 / 130 / 273 bars, bucketed into bands fixed
+before looking, and scores them against realized R.
+
+        HOLDOUT, split chosen on train, threshold 0.05/4 = 0.013
+
+        1d    up vs flat    -0.165R   p=0.674
+        7d    down vs flat  -0.298R   p=0.455
+        14d   holdout bands too small (24 vs 5)
+        30d   holdout bands too small (22 vs 7)
+
+**Both testable horizons flipped sign between train and holdout.** Train
+picked "up" as the best 1d band and "down" as the best 7d band; on the
+holdout each was WORSE than flat. That is the same signature as the RSI
+divergence result in the README — an effect that reverses across halves is
+noise, and reading either half alone would have produced a confident and
+wrong answer.
+
+This is the tenth context test in this project and the tenth null. The
+running tally: 17 signal filters, 7 of 9 context gates worse, 13 ablation
+variants, 4 shadow dimensions, delayed entry, and now four horizons.
+
+- [ ] Re-run as the store deepens. 14d and 30d could not be tested at all —
+      their holdout bands held 5 and 7 setups. Null on ~190 setups is not
+      null.
+- [ ] Recording horizon state on every decision still costs nothing and
+      would let this be scored properly later. Showing it to the model has
+      no evidence behind it and would cross a boundary that exists for a
+      measured reason.
+
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
 23x5 trading begins 2026-12-06 (SEC approved Nasdaq's proposal April 2026;
