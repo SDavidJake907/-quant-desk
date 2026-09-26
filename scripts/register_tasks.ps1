@@ -14,8 +14,19 @@ param([switch]$Remove)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
+# Every task this script registers. -Remove walks this list, so a task added
+# below and not added here would keep firing daily with no documented way to
+# tear it down -- which is what happened to stock-scanner-news.
+$tasks = @(
+    "stock-scanner-scan",
+    "stock-scanner-data",
+    "stock-scanner-flatten",
+    "stock-scanner-outcomes",
+    "stock-scanner-news"
+)
+
 if ($Remove) {
-    foreach ($name in "stock-scanner-scan", "stock-scanner-data", "stock-scanner-flatten", "stock-scanner-outcomes") {
+    foreach ($name in $tasks) {
         try {
             Unregister-ScheduledTask -TaskName $name -Confirm:$false
             Write-Output "removed $name"
@@ -100,3 +111,21 @@ $outSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLi
 $outAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_outcomes.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-outcomes" -Trigger $outTrigger -Action $outAction -Settings $outSettings -Description "Append realized outcomes to the audit log" -Force | Out-Null
 Write-Output "registered stock-scanner-outcomes 13:30 AK daily"
+
+# --- news archive -----------------------------------------------------------
+# The one thing a weekend can gather. The scanner runs seven days a week and on
+# a weekend gathers nothing — no bars print, so Saturday re-reads Friday's
+# series and produces zero candidates, measured across 28 weekend scans.
+#
+# News does not stop, and the scan only stores it for names that became
+# candidates, which on most days is none. So every day loses the same thing a
+# weekend does, and there is no reason to archive Saturday but not Tuesday.
+#
+# 14:00 AK = 18:00 ET, after DATA at 13:00 and OUTCOMES at 13:30, so three jobs
+# are not competing for the same provider. Read-only of the market, append-only
+# to data/news, and nothing in the trading path reads what it writes.
+$newsTrigger = New-ScheduledTaskTrigger -Daily -At 2:00PM
+$newsSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
+$newsAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_news.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-news" -Trigger $newsTrigger -Action $newsAction -Settings $newsSettings -Description "Archive point-in-time headlines for the liquid universe" -Force | Out-Null
+Write-Output "registered stock-scanner-news    14:00 AK daily"
