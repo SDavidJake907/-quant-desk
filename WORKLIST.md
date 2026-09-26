@@ -410,6 +410,181 @@ The narrow fix is quantified and safe. The broad fix is more correct and
 needs its own before/after study before anyone trusts it. Do the narrow one
 first, measure the broad one separately.
 
+## 14. Stop-to-noise — the first ranking idea that did not flip
+
+Eleven ranking ideas have died here, several by reversing between halves.
+The twelfth, run 2026-09-25, is the first that did not.
+
+### First, the eleventh, because it is the more striking result
+
+`equal_lows_test.py` asks whether sweeping a POOL of equal lows beats
+sweeping an isolated one. That is not a borrowed indicator — it is **this
+strategy's own central thesis**, that stops stack under a level which has
+held twice:
+
+        TRAIN     pool minus isolated   +0.616R
+        HOLDOUT   pool minus isolated   -0.674R
+
+A complete reversal. The thesis the screen is built on does not survive its
+own holdout, on 196 setups.
+
+### The twelfth: stop distance measured against the name's own noise
+
+`min_risk_pct = 1.5` applies one number to every symbol. On a quiet name a
+1.5% stop sits outside normal movement, so being hit means the structure
+failed. On a name whose bars routinely travel 3%, the same stop sits INSIDE
+one bar's ordinary range and gets taken out by drift.
+
+So the measure is the ratio, not the level: stop distance / ATR(14) at the
+trigger. Bands fixed before looking.
+
+        TRAIN                      HOLDOUT
+        1-2x ATR  +0.544R n=58     1-2x ATR  +1.076R n=11
+        2-3x ATR  +0.349R n=55     2-3x ATR  -0.072R n=36
+        3x+  ATR  +0.864R n=15     3x+  ATR  +0.134R n=19
+
+        train picked 3x+ over 2-3x   gap +0.515R
+        holdout                      gap +0.205R   p=0.604
+
+**Same direction, not significant.** p=0.604 is nothing and n=19/36 is thin.
+But it did not reverse, which eleven others did, and that is the only
+distinction available at this sample size.
+
+### Why this shape of idea and not another indicator
+
+The one thing that ever worked here was the 20M liquidity floor — +0.114R
+below against +0.776R above, p=0.022. It is not a prediction. It says where
+the strategy's MECHANISM applies: this trades liquidity sweeps, a sweep needs
+resting orders, a thin name has none.
+
+Stop-to-noise asks the same kind of question about a different mechanism —
+not "is this setup good" but "does a 1.5% stop mean anything in a name that
+moves 3% a bar". Every idea that failed was a claim about a setup. The one
+that worked was a constraint on the universe.
+
+- [ ] Re-run as the store deepens. Holdout bands of 19 and 36 cannot settle
+      this either way.
+- [ ] Do NOT act on it yet. p=0.604 is not evidence, and acting on a
+      not-yet-null is how the thirteen-variant mistake happened.
+
+## 15. Sweep rejection shape — the code is not missing it
+
+`took_out` decides a sweep happened on one comparison — `low < prior.price`.
+Only the LOW. Nothing about where the bar closed. So a bar that stabs below
+the level on a long wick and closes back near its high scores identically to
+one that closes on its low, and those are opposite pictures to anyone reading
+a chart: the first is a rejection, the second is a breakdown.
+
+That is a real blind spot, and it is not an indicator — it is the shape of a
+single candle, and it is the shape the strategy's own thesis rests on. So it
+was measured. Close position within the sweeping bar's own range, thirds
+fixed before looking:
+
+        shape mix: closed weak 57, closed mid 54, closed strong 85
+        median close position: 0.59 of range
+
+        TRAIN                        HOLDOUT
+        closed weak   +0.459R n=37   closed weak   +0.462R n=20
+        closed mid    +0.978R n=41   closed mid    +0.221R n=13
+        closed strong +0.226R n=52   closed strong -0.009R n=33
+
+        train picked mid over strong   gap +0.751R
+        holdout                        gap +0.230R   p=0.646
+
+Same direction, not significant. But read the bands rather than the verdict.
+
+**"Closed strong" — the textbook rejection — is the WORST band in both
+halves.** +0.226R on train, -0.009R on holdout. The shape a discretionary
+trader would call the cleanest signal carries no advantage and possibly a
+disadvantage.
+
+And 57 of 196 sweeps closed in the bottom third of their range. Those are
+breakdowns a human would refuse to trade, and they were the most consistent
+band across halves: +0.459R and +0.462R.
+
+### What this settles
+
+The intuition was sound — the code genuinely cannot see rejection, and that
+gap is real. The answer is that the gap costs nothing, because the visual
+quality does not predict the outcome. Adding a rejection requirement would
+have removed the steadiest band and kept the weakest.
+
+That is now thirteen tests. Twelve were indicators; this one was chart shape,
+which is a different kind of claim, and it landed in the same place. Together
+with the equal-lows reversal — the strategy's own central thesis, +0.616R on
+train and -0.674R on holdout — the pattern is that what LOOKS like quality in
+this setup is not quality.
+
+- [ ] Re-run as the store deepens. Holdout bands of 13 and 33 settle nothing.
+- [ ] Do NOT add a rejection filter. It would keep the worst band.
+
+## 16. Filter audit — two drift bugs and a free gate, fixed 2026-09-26
+
+Asked for a precision pass over every filter. Full gate sequence, in order:
+
+```
+BAR      drop_incomplete · placeholder rejection (zero-volume 16:00)
+SYMBOL   min_price 5.0 · min_dollar_volume 20M · min_range_pct 0.0 (off)
+SETUP    swings k=2 · sweep · higher_low · CHoCH · BOS
+         stop<entry<target · min_risk_pct 1.5 · min_reward_risk 1.5
+         require_value_sweep · dedup on (sweep, higher_low)
+FUNNEL   is_live_setup · fresh_bars<=2 · crosses_session
+         skip_open · wind_down_from_weekday
+ORDER    already-held · room · size_position · ex-dividend · check_news
+ACCOUNT  kill switch · market_open · check_account · unprotected-position warn
+```
+
+`verify_bars.py` already proves every setup honours the risk and R:R floors.
+
+**Fixed — `min_price` drift, the same bug twice.** `policy.min_price = 5.0`
+existed and was read by nobody; `trade.py`, `find_setups.py`,
+`collect_news.py` and `provider_compare.py` each hardcoded their own copy. The
+comment documenting the *identical* fix for `min_dollar_volume` was written
+directly below the hardcoded line in `trade.py`. Worse than the original:
+`min_price` is a policy field, so it is fingerprinted — editing it would have
+declared a fresh evaluation window and changed nothing live. A false signal,
+not a missed one.
+
+**Fixed — `MIN_RANGE_PCT` enforced only in the preview.** `find_setups.py`
+alone defined and applied a 0.4% average-range floor; `trade.py:_liquid()` had
+no range check. Measured: the preview showed **230** symbols where the trader
+acts on **267**, hiding MA, KO, PG, BRK.B and 33 others. WBD averages 0.088%,
+where a 1.5% stop is seventeen bars of ordinary movement.
+
+Now `policy.min_range_pct`, read by both, fingerprinted, **defaulted to 0.0 —
+declared and off**. The mechanism argument for enabling it is the same one that
+carried the 20M floor, but that floor was measured *before* enforcement
+(p=0.022, 125 setups, same sign both halves) and this has never been measured
+on any split. Enabling it drops 14% of the universe on an untested hypothesis
+and orphans the +0.218R holdout, which was measured with no range filter.
+
+**Fixed — the context gate computed indicators for a foregone answer.**
+`intraday_context.passes()` has eight `require_*` flags, all defaulting False,
+none set by the live policy. It computed four EMAs, a Wilder RSI, a MACD, an
+ATR and a volume ratio, then returned a `True` no input could change. Now
+short-circuits. The flags stay — they are how the next constraint gets tested.
+
+**Result:** universe 267, 197 setups, 833 tests green, live path clean.
+Fingerprint `5b091652a8ab` -> `29378de4d359` because a field was *added*, not
+because a rule changed. Window 8 had no trades, so nothing is lost.
+
+### Still missing, and worth a measurement
+
+- **No spread filter anywhere.** Nothing reads bid/ask. `excursions.py` showed
+  fills dominate — two winners survived within 0.2R of the stop — and Alpaca
+  SIP now provides quotes. A tradeability CONSTRAINT, the only category that
+  has ever worked here.
+- **No gap-risk filter.** Roughly half of these positions are held overnight
+  by design. A name that gaps often is one where the stop is bypassed rather
+  than hit, and losers already fill nearly a full R worse than intended.
+- **No upper price bound**, and `min_range_pct` untested. Both cheap to split.
+
+### Next
+Measure `min_range_pct` as a band study on the train/holdout split before
+considering 0.4. Treat the prior as null: thirteen ideas have failed that bar.
+
+---
+
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
 23x5 trading begins 2026-12-06 (SEC approved Nasdaq's proposal April 2026;

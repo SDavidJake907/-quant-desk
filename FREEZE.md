@@ -1,6 +1,6 @@
 # Evaluation window — FROZEN
 
-    window               7
+    window               8
     policy fingerprint   5b091652a8ab
     code build           add46f1  — the last commit that can change behaviour
     llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
@@ -581,6 +581,174 @@ which is not the same as noticing while it is still dark.
 
 ---
 
+## Window 8 superseded: the same drift bug, twice, one of it in reverse
+
+Window 8 took no trades and is replaced for a filter audit that found the exact
+failure this repository already documents and had already fixed once.
+
+The README's own warning: *"Three entry points once carried three different
+defaults for the same rules."* The fix was applied to `min_dollar_volume`, and
+the comment recording it was written **directly below a hardcoded
+`MIN_PRICE = 5.0`** that had the identical bug:
+
+```python
+MIN_PRICE = 5.0
+#: Read from the policy so this cannot drift from what was measured.
+#: It did drift: this file carried its own 5M constant while the policy
+#: said something else, so changing the policy changed nothing live.
+MIN_DOLLAR_VOLUME = TradingPolicy().min_dollar_volume
+```
+
+Four files held that copy: `trade.py`, `find_setups.py`, `collect_news.py`,
+`provider_compare.py`. And `policy.min_price = 5.0` existed all along, read by
+nobody.
+
+### This one is worse than the bug it sat beside
+
+`min_dollar_volume` drifting meant a policy edit changed nothing live — bad,
+and invisible. `min_price` is a **declared policy field**, so it is hashed into
+the fingerprint. Editing it would have moved the fingerprint, declared a fresh
+evaluation window, restarted the trade count, and changed nothing about what
+the scanner traded.
+
+That inverts the purpose of the three identifiers. The table above promises
+"a policy rule → moves → caught by fingerprint". Here the fingerprint would
+have moved for a rule that did not take effect: not a missed signal but a
+false one, and the kind that makes a window log untrustworthy in retrospect.
+
+### And the mirror image: a filter enforced in only the preview
+
+`find_setups.py` alone defined and enforced `MIN_RANGE_PCT = 0.4`, the average
+bar range as a percent of price. `trade.py:_liquid()` had no range check at
+all. Measured over the accumulated store:
+
+```
+TRADER  (price + dollar volume)         267 symbols
+PREVIEW (+ average bar range >= 0.4%)   230 symbols
+hidden by the preview, traded by trade.py: 37
+```
+
+Not obscure names — WBD (0.088% average range), BRK.B, MA, KO, VZ, PG, CSX.
+The tool a human reads before the market opens showed a *narrower* universe
+than the process that submits the orders, and neither number was in the
+fingerprint, so no window could have detected a change to either.
+
+### The range floor ships DECLARED AND OFF
+
+It is now `policy.min_range_pct`, read by both entry points, hashed into the
+fingerprint — and defaulted to **0.0**.
+
+The temptation is to enable it at 0.4. The mechanism argument is the same one
+that carried the 20M liquidity floor: this trades sweeps of resting orders, and
+on WBD a 1.5% stop is seventeen bars of ordinary movement away, so the stop is
+not a level. That argument is good.
+
+It is also exactly the argument made for thirteen ideas that were then measured
+and died, including the strategy's own thesis that a pool of equal lows beats
+an isolated one (+0.616R train, −0.674R holdout). The liquidity floor earned
+enforcement by being measured **before** it was turned on: p=0.022 over 125
+setups, same direction in both halves. This has never been measured on any
+split. Enabling it would drop 14% of the universe on an untested hypothesis and
+orphan the +0.218R holdout result, which was measured with no range filter.
+
+So: single-sourced, fingerprinted, testable, off. Live behaviour is unchanged
+and now honestly described by the preview.
+
+### The context gate computed indicators to return a foregone True
+
+`intraday_context.passes()` takes eight `require_*` flags. Every one defaults
+to `False` and the live policy sets none of them — each was tested, each was
+null. In that configuration the function computed four EMAs, a Wilder RSI, a
+MACD, an ATR and a volume ratio, then returned a `True` that no input could
+have changed. It now answers before the arithmetic when nothing is required.
+
+The requirements themselves stay. They are how a future constraint would be
+enforced, and deleting the plumbing would mean rebuilding it to test the next
+idea.
+
+### What this changes about the numbers
+
+Nothing, and that is the point of recording it. The universe stays 267, the
+scan finds 197 setups, all 833 tests pass. The fingerprint moves from
+`5b091652a8ab` to `29378de4d359` because a field was added to the policy, not
+because a rule changed. Window 8 had taken no trades, so no evidence is lost.
+
+---
+
+## Window 7 superseded: a placeholder bar was shrinking the universe
+
+Window 7 took no trades and is replaced for a data fix that acts directly on
+the binding constraint.
+
+`scripts/verify_bars.py` asserts the invariants nobody checks because they are
+obviously true. The bars passed all of them — OHLC consistent, times strictly
+increasing, buckets on :00 and :30, nothing outside session hours — and every
+setup the screen returns honours the policy it was scanned under.
+
+One invariant failed. **12.7% of session-days held 14 bars, and a 09:30-16:00
+session is 13.** The extra bucket was 16:00 and it was not a bar:
+
+    bucket   median volume   median range
+    15:30        2,665,138          1.238
+    16:00                0          0.000
+
+Zero volume, zero range, high equal to low — a Yahoo placeholder carrying the
+closing print. 2,591 of 250,742 stored bars.
+
+### What it cost
+
+Nothing triggered on one. But the liquidity filter averages volume x close
+over the last 20 bars, and a zero drags the mean down **6.51%**. The floor is
+20,000,000 and the median S&P 500 name measured **19,890,206** — right on the
+boundary, with the artifact pushing it to the wrong side:
+
+    symbols passing, as stored                245
+    symbols passing, placeholders removed     267
+    wrongly rejected                           22   (+9.0%)
+
+    KEY   19,847,701 -> 22,728,781
+    FITB  19,547,935 -> 22,025,013
+    VRTX  19,834,307 -> 21,315,726
+
+Twenty-two genuinely liquid large caps excluded by an artifact. For scale,
+adding the entire S&P 400 and 600 — 1,003 extra symbols — bought +0.15 setups
+per session. This was free and larger.
+
+### Measured before changing, not after
+
+The broad fix drops the bucket at parse time rather than only excluding it
+from one average, which is more correct — a bucket with no trading is not a
+bar, the same reasoning `drop_incomplete` already applies to one that has not
+closed. But it can change which setups exist, so it was studied first:
+
+    as stored   n=194   +0.431R   train +0.405   holdout +0.483
+    cleaned     n=196   +0.411R   train +0.342   holdout +0.548
+
+    190 of ~195 setups identical, 4 lost, 6 gained
+
+Expectancy moves 0.02R against a standard error of 0.131. The structure barely
+notices, and the holdout improves. Applied in both construction paths —
+`resample` refuses to build one, and `history.to_bars` filters the 2,591
+already on disk. The store is not rewritten: it is append-only and its value
+is recording what the provider actually returned.
+
+Five tests pin it, including that a flat bar WITH volume is kept and a
+zero-volume bar that moved is kept — only the exact artifact is targeted.
+
+### A fifth scheduled task
+
+`stock-scanner-news`, 14:00 AK daily, archives point-in-time headlines for the
+liquid universe. The scanner runs seven days a week and on a weekend gathers
+nothing — no bars print, so Saturday re-reads Friday's series and produces
+zero candidates, measured across 28 weekend scans. News does not stop, and the
+scan stores it only for names that became candidates, which on most days is
+none. Verified: 3,299 headlines from 267 symbols in 12 seconds.
+
+Read-only of the market, append-only to `data/news`, and nothing in the
+trading path reads what it writes.
+
+---
+
 ## Window 6 superseded: the scan never said how fresh its bars were
 
 Window 6 took no trades — the market was shut for its whole life — and is
@@ -761,3 +929,7 @@ costs a real sample.
 | 2026-09-25 | **window 6 opened** at `5b091652a8ab`, same rules, new build. Same hard end 2026-12-04 | 0 |
 | 2026-09-25 | **window 6 superseded** — the scan never reported bar freshness, so stale data and a quiet market looked identical | 0, no trades |
 | 2026-09-25 | **window 7 opened** at `5b091652a8ab`, same rules, new build. Same hard end 2026-12-04 | 0 |
+| 2026-09-25 | **window 7 superseded** — a zero-volume 16:00 placeholder bar understated liquidity 6.51%, wrongly excluding 22 liquid names from a 20M floor | 0, no trades |
+| 2026-09-26 | **window 8 opened** at `5b091652a8ab`; placeholder bars rejected, tradeable universe 245 -> 267, fifth task archives news daily | 0 |
+| 2026-09-26 | **window 8 superseded** — `min_price` was a policy field bypassed by four hardcoded copies, so editing it would have moved the fingerprint and changed nothing live; `MIN_RANGE_PCT` was enforced in the preview only, which showed 230 symbols against the trader's 267 | 0, no trades |
+| 2026-09-26 | **window 9 opened** at `29378de4d359` / `6400751`; three tradeability floors single-sourced from the policy, range floor declared and OFF at 0.0, context gate short-circuits. No rule changed. Same hard end 2026-12-04 | 0 |
