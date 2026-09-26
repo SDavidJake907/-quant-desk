@@ -1,6 +1,6 @@
 # Evaluation window — FROZEN
 
-    window               6
+    window               7
     policy fingerprint   5b091652a8ab
     code build           add46f1  — the last commit that can change behaviour
     llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
@@ -581,17 +581,48 @@ which is not the same as noticing while it is still dark.
 
 ---
 
+## Window 6 superseded: the scan never said how fresh its bars were
+
+Window 6 took no trades — the market was shut for its whole life — and is
+replaced to add one line of output.
+
+The cache bug above was found only because someone said "I think this is
+behind", and answering that took four throwaway scripts. The funnel reports
+what was REJECTED and never what it was looking at, so **a scan running on
+stale bars and a market with nothing in it produce an identical line.**
+
+The scan now prints the newest bar it holds, its age in minutes and in bars,
+and the oldest across the universe when they disagree:
+
+    bars: newest 16:00 EDT — 321 min old (10.7 bars)
+
+It turns yellow only while the market is OPEN and the lag reaches 1.5 bars,
+because outside session hours the newest bar is legitimately hours old and a
+permanently yellow line is a line nobody reads.
+
+One bar of lag is the entire freshness budget at `fresh_bars = 2`. This makes
+that visible at a glance instead of by investigation.
+
+---
+
 ## Window 5 superseded: the bar cache renewed its own lease
 
 Window 5 collected nothing — zero records — and is replaced for a data bug
 found by asking why a real setup was missed.
 
-**CCL triggered at 11:30 ET on 2026-09-25 and was never traded.** It passed
-every gate: price 22.23, dollar volume 38.7M against a 20M floor, reward:risk
-2.10, `is_live_setup` true, `crosses_session` false. It sat inside the 2-bar
-freshness window for three consecutive scans — 12:03, 12:33 and 13:03 ET —
-and the funnel reported `candidates 0` at all three while the setup count
-never rose from 79. The scanner never saw it.
+**CCL triggered at 11:30 ET on 2026-09-25 and the scanner never saw it.** It
+passed every PRICE gate: 22.23, dollar volume 38.7M against a 20M floor,
+reward:risk 2.10, `is_live_setup` true, `crosses_session` false. It sat inside
+the 2-bar freshness window for three consecutive scans — 12:03, 12:33 and
+13:03 ET — and the funnel reported `candidates 0` at all three while the setup
+count never rose from 79.
+
+**It would have been refused anyway.** Checked afterwards rather than assumed:
+the news gate returns `REFUSE — reports earnings Tue 09/29 pre-mkt`, four days
+inside the seven-day block. So the cache bug cost a candidate EVALUATION here,
+not a trade. The bug is real and would lose real trades on other setups; this
+particular one was never going to be taken, and saying otherwise would be
+using a fixed bug to explain a loss that never happened.
 
 ### Two faults, and they compounded
 
@@ -728,3 +759,5 @@ costs a real sample.
 | 2026-09-25 | **window 5 opened** at `5b091652a8ab`; deployment doubled to (100,80,60,40,0), slots left at 5. Same hard end 2026-12-04 | 0 |
 | 2026-09-25 | **window 5 superseded** — the bar cache renewed its own lease and served bars up to three buckets stale; CCL triggered at 11:30 ET, passed every gate, and was never seen | 0, no trades |
 | 2026-09-25 | **window 6 opened** at `5b091652a8ab`, same rules, new build. Same hard end 2026-12-04 | 0 |
+| 2026-09-25 | **window 6 superseded** — the scan never reported bar freshness, so stale data and a quiet market looked identical | 0, no trades |
+| 2026-09-25 | **window 7 opened** at `5b091652a8ab`, same rules, new build. Same hard end 2026-12-04 | 0 |

@@ -186,6 +186,10 @@ async def main(
 ) -> None:
     policy = policy or TradingPolicy()
     decisions: list[Decision] = []
+    #: Only the submitting path asks the broker. A dry run reports bar
+    #: freshness without judging it, because outside session hours the newest
+    #: bar is legitimately hours old.
+    open_market = False
 
     def record(stage, symbol, reason="", intent=None, order_id="", request_id="",
                event="candidate_refused"):
@@ -485,6 +489,32 @@ async def main(
                 candidates.append(
                     (setup, bars.times[setup.trigger_index], shadow)
                 )
+
+        # SAY HOW FRESH THE BARS ARE.
+        #
+        # On 2026-09-25 the bar cache was found renewing its own lease and
+        # serving data up to three buckets stale, which with fresh_bars=2 can
+        # lose a setup before the scanner ever sees it. It took four throwaway
+        # scripts to establish that, because the funnel reports what was
+        # REJECTED and never what it was looking at.
+        #
+        # A scan running on stale bars and a market with nothing in it produce
+        # the same line. This is the difference between them.
+        _times = [b.times[-1] for b in loaded
+                  if not isinstance(b, Exception) and len(b)]
+        if _times:
+            newest = max(_times)
+            lag_min = (datetime.now(tz=EXCHANGE_TZ) - newest).total_seconds() / 60
+            # Only WARN while the market is open. Outside session hours the
+            # newest bar is naturally hours old and a permanent yellow line
+            # is a line nobody reads. `open_market` exists only on the
+            # submitting path, so a dry run reports without judging.
+            tint = YELLOW if (open_market and lag_min >= minutes * 1.5) else DIM
+            spread = ""
+            if len(set(_times)) > 1:
+                spread = f", oldest {min(_times):%H:%M}"
+            print(f"{tint}bars: newest {newest:%H:%M %Z}{spread} — "
+                  f"{lag_min:.0f} min old ({lag_min / minutes:.1f} bars){RESET}")
 
         print(f"{DIM}{funnel.summary()}{RESET}")
 
