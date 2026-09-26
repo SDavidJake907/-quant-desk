@@ -85,12 +85,45 @@ it lands, which is now.
 - [ ] Re-run `shadow_test.py` as the store deepens. Three dimensions are
       null on 191 setups, which is not the same as null.
 
-## 3. Parquet/DuckDB storage
+## 3. Storage and compute — REMEASURED 2026-09-25, the old note was wrong
 
-- [ ] Replace the JSON bar cache. Measured: full backtest compute ≈ **9s**,
-      reading 500 cached symbols ≈ **104s**. I/O is 12× compute.
-- [ ] This is the reason research iterations are slow, not CPU. A GPU would not
-      help.
+The original note said reading 500 cached symbols took **104s** against **9s**
+of compute, concluded I/O was 12x compute, and that a GPU would not help.
+
+Remeasured against the ACCUMULATED STORE, which is what research actually
+reads now:
+
+        I/O  (read store + parse)   0.93s    4%
+        CPU  (scan/screen)         20.27s   96%
+
+It is the other way round. The old figure was measuring the raw Yahoo payload
+cache (`data/bars`, full JSON chart responses); `history.accumulated` reads a
+compact row store and is 20x faster. Both numbers were true of different
+things, and the conclusion drawn from the wrong one shaped this section.
+
+### A GPU is still the wrong tool, for a better reason
+
+`screens/smc.py` is **pure Python** — no numpy anywhere. Tuples of floats,
+sequential loops, data-dependent branching, and a per-symbol series of about
+1,200 bars. CUDA would need the screen rewritten as array operations first,
+and then arrays that small would be swamped by kernel launch overhead. The
+pattern logic is also inherently sequential: structure is built from prior
+structure.
+
+### The actual win is the nineteen idle cores
+
+The work is embarrassingly parallel ACROSS symbols, and this machine runs 20
+cores while using one:
+
+        serial     21.27s   206 setups
+        parallel    2.11s   206 setups   (ProcessPoolExecutor, 20 workers)
+        speedup     10.1x   identical result
+
+- [ ] Parallelise the research scripts across cores. Ten minutes of work for
+      10x on every backtest, ablation and permutation test. The LIVE scan
+      would gain little — its 22s is mostly network fetch, not compute.
+- [ ] Parquet/DuckDB is still worth doing for a deeper store, but it is no
+      longer the bottleneck and should not be sold as one.
 
 ## 4. Survivorship — delisted price history
 
@@ -232,6 +265,51 @@ evidence for moving it, not because moving it was proven harmful.
 
 My first theory here — that detection lagged the trigger — was measured and
 proved wrong: all 133 setups are visible at age 0. Do not re-derive it.
+
+## 11. Excursions — the winners barely survived
+
+`scripts/excursions.py` resolves each completed trade against stored bars and
+tracks how far it ran against the entry (MAE) and in its favour (MFE), both in
+R. Borrowed from `core/risk/exits.py` in the LLM-Quant-Engine project on this
+machine — the mechanism, not its numbers, which are crypto.
+
+        sym      result      MAE      MFE  reason
+        CCL      -0.939   -1.094   +0.772  stop
+        EXPE     +3.197   -0.532   +3.159  target
+        IP       -1.122   -1.072   +0.209  stop
+        CEG      +2.315   -0.417   +2.323  target
+        Q        +1.721   -0.882   +1.733  target
+        AMD      -0.683   -1.571   +0.559  stop
+        SUPN     -1.043   -1.004   +0.368  flattened
+        APP      -0.363   -1.054   +0.105  stop
+        ACN      +2.163   -0.962   +2.360  target
+        PSX      -0.471   -1.258   +0.000  stop
+
+**Two of the four winners came within 0.2R of being stopped out.** ACN reached
+**-0.962R** before finishing +2.163R, and Q reached -0.882R before finishing
++1.721R. Those two carry much of the positive expectancy, and they survived on
+margins a worse fill erases.
+
+### The fill gap, visible in one column
+
+MAE is computed from the INTENDED entry; realized R comes from the ACTUAL
+fill. So the gap between them IS the fill advantage:
+
+        AMD   bars say -1.571R    account says -0.683R
+        PSX   bars say -1.258R    account says -0.471R
+        APP   bars say -1.054R    account says -0.363R
+
+Nearly a full R on AMD. Every loser filled better than intended, which is the
+same +0.172R paper optimism replay found, now itemised. Real money does not
+get those entries.
+
+- [ ] Re-read expectancy with this in mind. The mean is +0.477R, drops to
+      +0.175R without the single best trade, and rests on two winners that
+      nearly stopped out at fills the account would not have got.
+- [ ] No loser ever reached +1R, so these are stop-placement outcomes rather
+      than exit-rule ones. That is the one encouraging line here.
+
+n=10. This describes what happened; it is not a finding.
 
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
