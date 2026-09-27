@@ -683,6 +683,81 @@ That qualifies the headline result more sharply than the regime question did.
 
 ---
 
+## 18. Timeframe tested; 30m stays. And win rate is an inverse proxy
+
+Asked what bar size is best for entry and exit. Five timeframes on the
+501-symbol Alpaca store, `scripts/timeframe_test.py`.
+
+Two confounds were neutralised first, either of which would have decided the
+answer on its own:
+
+- `max_hold_bars = 60` is counted in BARS: 30 trading hours at 30m (~4.6
+  sessions) but 240 hours at 240m (~37 sessions). Held constant at 1800
+  MINUTES instead, so every series gets the same wall clock.
+- A 390-minute session is 13 x 30 and not a whole multiple of 60/90/120/240.
+  Buckets are chunked WITHIN a session, never across one, so a session's last
+  bar is short rather than spanning the overnight gap.
+
+`min_risk_pct`, `min_reward_risk` and `swing_k` unchanged, or the comparison
+stops being about the bar.
+
+```
+   bar   setups   hold        ALL      TRAIN    HOLDOUT     win
+   30m      860    60b     +0.054     -0.096     +0.352   36.9%   <- live
+   60m      825    30b     +0.058     +0.041     +0.092   41.8%
+   90m      715    20b     +0.042     +0.047     +0.033   43.2%
+  120m      698    15b     -0.004     +0.018     -0.047   44.0%
+  240m      424     7b     -0.020     +0.007     -0.075   46.5%
+
+vs live 30m, holdout only
+    60m  -0.261R  p=0.066   not distinguishable
+    90m  -0.319R  p=0.028   worse
+   120m  -0.400R  p=0.006   worse
+   240m  -0.428R  p=0.014   worse
+```
+
+**Coarser than 60m is genuinely worse** — monotonic in bar size and significant
+at 90m, 120m and 240m. Mechanically sensible: a sweep is an event at a level,
+and a 4-hour candle smears the sweep and the reaction into one bar, so
+`took_out` cannot separate them.
+
+**But 30m is NOT shown to beat 60m.** On ALL setups they are a dead heat
+(+0.054 vs +0.058). The holdout comparison flatters 30m because 30m's halves
+disagree violently — train -0.096R against holdout +0.352R, a swing of
++0.448R — while 60m is stable (+0.041 -> +0.092). A -0.261R gap at p=0.066
+resting on one anomalously strong half is not actionable.
+
+**Decision: no change.** 30m stays because nothing beat it, not because it won.
+
+Five trials, declared. The eight `require_*` context flags were deliberately
+NOT crossed with this: each was already tested individually and each was null,
+and a 5 x 8 grid adds forty trials to a deflated Sharpe already at 0.82
+against 50.
+
+### The result worth more than the timeframe answer
+
+Win rate climbs monotonically with bar size — 36.9% to 46.5% — while
+expectancy falls. That is the THIRD independent demonstration of the same
+trade-off today:
+
+```
+intervention                      win rate          expectancy
+nearest structural target     37.0% -> 85.4%   +0.056R -> -0.013R
+structural lower-low exit     41.5% -> 48.1%   +0.358R -> +0.273R
+coarser bar (240m)            36.9% -> 46.5%   +0.054R -> -0.020R
+```
+
+Three unrelated changes — moving the target, adding an exit rule, resizing the
+bar — every one raised win rate and every one cost expectancy. That is a
+structural property, not a coincidence: the money sits in the ~25% of trades
+that reach a far structural target and average +2.383R, and anything making
+wins more frequent truncates exactly those.
+
+**So win rate is close to a pure inverse proxy for expectancy here, and should
+not be optimised.** Worth remembering before the next idea that improves it.
+
+---
+
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
 23x5 trading begins 2026-12-06 (SEC approved Nasdaq's proposal April 2026;
