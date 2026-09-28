@@ -59,13 +59,35 @@ if ($tags) { $have = @($tags.models | Where-Object { $_.name -eq $wanted }).Coun
 Report $have "model $wanted" $(if ($have) { "present" } else { "MISSING - news gate will pass everything" })
 
 # --- 3. Scheduled tasks ---------------------------------------------------
-foreach ($name in "stock-scanner-scan", "stock-scanner-data", "stock-scanner-flatten", "stock-scanner-outcomes") {
-    $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+# DISCOVERED, NOT LISTED. This block carried its own four names while the
+# scheduler had six: stock-scanner-news was added 2026-09-25 and
+# stock-scanner-sector on 09-28, and neither appeared here. A startup check
+# reporting "all good" while silently skipping a third of the jobs is worse than
+# no check, and it is the same drift that left news out of -Remove.
+#
+# Both directions are reported. A task expected and absent is a gap; a task that
+# exists and is not expected is one somebody forgot to remove.
+$expected = @(
+    "stock-scanner-scan",
+    "stock-scanner-data",
+    "stock-scanner-flatten",
+    "stock-scanner-outcomes",
+    "stock-scanner-news",
+    "stock-scanner-sector"
+)
+$registered = @(Get-ScheduledTask -TaskName "stock-scanner-*" -ErrorAction SilentlyContinue)
+foreach ($name in $expected) {
+    $task = $registered | Where-Object { $_.TaskName -eq $name }
     if ($task) {
         $info = Get-ScheduledTaskInfo -TaskName $name
         Report ($task.State -ne "Disabled") $name "$($task.State), next $($info.NextRunTime)"
     } else {
-        Report $false $name "NOT REGISTERED - run scripts\register_tasks.ps1"
+        Report $false $name "NOT REGISTERED - run scriptsegister_tasks.ps1"
+    }
+}
+foreach ($task in $registered) {
+    if ($expected -notcontains $task.TaskName) {
+        Report $false $task.TaskName "REGISTERED BUT UNEXPECTED"
     }
 }
 
