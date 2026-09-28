@@ -317,6 +317,52 @@ scan window, the bar source (Yahoo, regular hours) and `/v2/clock` are
 unaffected — verified at 00:29 ET mid-overnight-session, where the clock still
 reports `is_open: false` and `next_open 09:30`.
 
+### VERIFIED AGAINST THE BROKER, 2026-09-28 16:59 ET
+
+The paragraph below was written from Alpaca's documentation. It has now been
+tested live from inside the post-market session, on the paper account, with
+throwaway one-share orders priced 20% below the market so none could fill. All
+were cancelled.
+
+```
+ACCEPTED  plain limit, extended_hours=True    -> pending_new
+ACCEPTED  plain limit, extended_hours=False   -> accepted
+REJECTED  BRACKET,     extended_hours=True    -> HTTP 403
+          "bracket orders do not support extended hours trading"
+REJECTED  STOP order,  extended_hours=True    -> HTTP 422
+          "stop orders are not eligible for extended hours trading"
+```
+
+The broker rejects both in its own words. This is stronger than the
+documentation claim: it is not that stops are merely unsupported by the
+overnight venue, it is that the API refuses a bracket outright the moment
+`extended_hours` is set. **There is no order this system could send that enters
+extended hours WITH protection attached.** An extended-hours entry is
+necessarily a naked one.
+
+`/v2/clock` also confirmed: at 16:59 ET, inside the post-market session, it
+reports `is_open: false` with `next_open 09:29`. The clock tracks REGULAR hours
+and will keep doing so through 23x5, which is why the scan window needs no
+change on 2026-12-06.
+
+### Quote data: the spread filter is researchable but not enforceable
+
+Checked at the same time, because a spread filter is the most defensible
+missing constraint in WORKLIST:
+
+```
+latest SIP quote   HTTP 403  "subscription does not permit querying recent SIP data"
+latest IEX quote   HTTP 200  bid 11.74 x100, ask 0        (post-market, one-sided)
+historical SIP     HTTP 200  bid 12.51 x3100, ask 12.52 x6500, spread 0.0100
+```
+
+So the tier serves HISTORICAL SIP quotes but not recent ones. A spread STUDY
+over the two-year store is fully possible and worth doing. Enforcing a spread
+floor LIVE is not, on this tier: it would have to run on IEX, which measured
+4.4% of SIP volume on AAPL and returned a one-sided book in the probe above.
+Sizing a gate on 4% of the tape is how the IEX-vs-SIP mistake was made the first
+time.
+
 ### The exposure is on overnight holds, and it cannot be configured away
 
 Alpaca's overnight session supports **limit orders only**. Stops are not
