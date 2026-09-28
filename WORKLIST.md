@@ -758,6 +758,105 @@ not be optimised.** Worth remembering before the next idea that improves it.
 
 ---
 
+## 19. The universe is not in the fingerprint — APPLY AT THE NEXT BOUNDARY
+
+`TradingPolicy` carries 29 fields, from `min_price` to `shadow_llm_ranking`.
+The UNIVERSE is not one of them. It is a CLI argument:
+
+```python
+p.add_argument("--index", choices=list(INDEXES), default="sp500")
+```
+
+So `--index all` instead of `--index sp500` changes which symbols are traded —
+267 names becomes 287 — and the fingerprint stays `29378de4d359`. Two windows
+with identical fingerprints could have scanned different universes and nothing
+in the audit log would tell them apart.
+
+This is the `min_price` defect from section 16, INVERTED AND WORSE. `min_price`
+moved the fingerprint without changing behaviour: a false alarm, annoying.
+The universe changes behaviour without moving the fingerprint: a silent change.
+FREEZE's own table promises "a policy rule -> moves -> caught by fingerprint",
+and this rule is not caught.
+
+`scheduled_scan.bat` passes no `--index`, so live runs use the `sp500` default.
+Nothing is currently wrong in the log. The hole is that nothing would show if it
+were.
+
+### Fix
+Add the universe to `TradingPolicy` as a declared field and have `trade.py`
+read it, the way `min_dollar_volume` and now `min_price` are read.
+
+### WHY THIS IS NOT DONE YET — the boundary matters
+Adding a policy field moves the fingerprint, which supersedes window 10. Every
+previous supersession was free because those windows held zero trades. Window 10
+has **MLM open right now**, and its provenance is already weakened by the
+`7247e3f+dirty` build. Orphaning it into a closed window mid-position costs more
+than waiting.
+
+Apply when MLM resolves — stop, target, or Friday's flatten at the latest — and
+make both decisions at that one boundary.
+
+## 20. Market-cap expansion measured: it buys 20 symbols, not a better universe
+
+Asked whether widening past the S&P 500 would find better setups. Measured
+against the live floors (price >= $5, dollar volume >= 20M):
+
+```
+index    symbols  have bars  pass floor  % liquid   median $vol
+sp500        501        501        267      53%     37,692,206
+sp400        400        400         18       4%     38,197,493
+sp600        603        602          2       0%     29,368,028
+
+TOTAL       1504                   287
+```
+
+Going to all 1504 adds **20 tradeable names**, 267 -> 287, +7.5%. The 20M
+liquidity floor already excludes 96% of mid caps and 99.7% of small caps, so the
+market-cap question and the liquidity-floor question are THE SAME QUESTION.
+
+The 20 that qualify are genuinely liquid — median $38M per bar, comparable to
+the S&P 500 median — so there is no quality objection. The objection is price:
++7.5% evidence rate against 3x the scan (501 -> 1504 symbols, ~17s -> ~50s of
+compute plus the fetch), and a window restart.
+
+Note the asymmetry already present: `scheduled_data.bat` COLLECTS `--index all`
+(1504 symbols) while the scan reads `sp500`. The data is already being gathered
+and is already unused.
+
+**Decision: not now.** If more setups are wanted, the lever is the liquidity
+floor, not the index — and that floor is the one measured result here (+0.114R
+below 20M against +0.776R above, p=0.022). Lowering it buys hundreds of names at
+measurably worse expectancy. That trade has already been decided with evidence.
+
+Revisit alongside section 19, once the universe is fingerprinted and the knob is
+visible in the audit trail.
+
+## 21. Two smaller things left open 2026-09-28
+
+**The health probe overstates itself.** `execution/health.py:probe()` calls only
+`/api/tags`, a disk listing. "news gate OK — gemma3:12b reachable" prints
+identically for a model that is present but cannot load — OOM, corrupt blob, GPU
+contention — and the failure would surface only when the first real candidate
+arrived, inside the 25-minute task limit. One tiny inference would make OK mean
+the model runs.
+
+**`llm_rank = 0` became ambiguous today.** After the gate reorder in section 17,
+a candidate that is not actionable skips the advisory block but is still written
+to the slate, so `llm_rank = 0` now means EITHER "ranked last" OR "never
+ranked". MLM's 09:03 slate entry is the first instance. The slate exists to make
+Gemma's ranking falsifiable, which was worth superseding window 3 for, so this
+wants a distinct sentinel before more slates accumulate and any scoring treats
+skipped candidates as badly-ranked ones.
+
+**Not a finding, for the record:** there is no PDF stock list and there never
+was. The seven `tmp/pdfs/chart-patterns-*.png` files are scanned pages from "How
+to Trade Chart Patterns", added in the baseline commit `1843c82` and wired into
+nothing. The universe comes from Wikipedia index-membership pages via
+`WIKI_API`, with point-in-time membership so backtests do not inherit
+survivorship bias.
+
+---
+
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
 23x5 trading begins 2026-12-06 (SEC approved Nasdaq's proposal April 2026;
