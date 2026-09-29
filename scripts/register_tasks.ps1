@@ -24,7 +24,8 @@ $tasks = @(
     "stock-scanner-outcomes",
     "stock-scanner-news",
     "stock-scanner-sector",
-    "stock-scanner-extended"
+    "stock-scanner-extended",
+    "stock-scanner-extras"
 )
 
 if ($Remove) {
@@ -165,3 +166,15 @@ $extSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLi
 $extAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_extended.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-extended" -Trigger $extTrigger -Action $extAction -Settings $extSettings -Description "Extended-hours SIP bars 04:00-19:30 ET into a separate research store (18:00 AK)" -Force | Out-Null
 Write-Output "registered stock-scanner-extended 18:00 AK daily"
+
+# --- point-in-time news and auctions ----------------------------------------
+# 19:00 AK, after the extended-hours collection at 18:00 so two jobs do not
+# race the provider. News back to 2015 is what finally makes the model layer
+# testable: ranking.py has never been scored because the live store held two
+# days. Auctions give the official open, which the 30m first bar cannot
+# separate from the half hour after it.
+$xtTrigger = New-ScheduledTaskTrigger -Daily -At 7:00PM
+$xtSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 3) -MultipleInstances IgnoreNew
+$xtAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_extras.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-extras" -Trigger $xtTrigger -Action $xtAction -Settings $xtSettings -Description "Point-in-time news history and auction prints (19:00 AK)" -Force | Out-Null
+Write-Output "registered stock-scanner-extras   19:00 AK daily"
