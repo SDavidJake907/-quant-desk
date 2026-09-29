@@ -1,27 +1,53 @@
-"""Gemma's opinion on which setups look best — recorded, not obeyed.
+"""Gemma's read on which setups look best — and, since 2026-09-28, a veto.
 
 WHY THE MODEL GETS THIS JOB AND NOT THE OTHER ONE
-Finding the setup is arithmetic over bars: swing pivots, a sweep, a break.
-A model does that worse, differently on each run, and untestably. Choosing
-between five setups that have already passed every deterministic test is a
-different question, and part of it is genuinely textual — is this company
-about to be reorganised, is the move already explained by something that has
-nothing to do with structure.
+Finding the setup is arithmetic over bars: swing pivots, a sweep, a break. A
+model does that worse, differently on each run, and untestably. Choosing between
+five setups that have already passed every deterministic test is a different
+question, and part of it is genuinely textual — is this company about to be
+reorganised, is the move already explained by something with nothing to do with
+structure.
 
-So the split is by competence: **price is arithmetic, context is language.**
+So the split is by competence: **finding is arithmetic, judging is language.**
 
-WHAT IT IS AND IS NOT ALLOWED
-The schema has no numeric field, so the model cannot emit an entry, a stop, a
-target or a size. It never sees prices, because a model shown prices starts
-doing arithmetic badly instead of reading. It ranks by conviction and must
-quote the text it is reasoning from.
+WHAT IT MAY AND MAY NOT EMIT
+The schema has no numeric field, so the model cannot produce an entry, a stop, a
+target or a size. Those are computed and it is never asked. Every claim must
+quote text that occurs verbatim in THAT company's own headlines.
 
-AND IT DOES NOT DECIDE — YET
-Its ranking is written to the audit log beside the deterministic one and
-compared later. Acting on it now would make the strategy unbacktestable and
-throw away the only out-of-sample evidence this project has. If, after a few
-hundred paper trades, the model's top-ranked setups have outperformed the
-deterministic order, that will be a measured fact rather than a hope.
+IT NOW SEES PRICE CONTEXT, WHICH IT DID NOT BEFORE
+This file used to say the model never sees prices, on the reasoning that a model
+shown numbers starts doing arithmetic badly instead of reading. That was
+abandoned on evidence. Both positions opened 2026-09-28 were deep laggards —
+MLM at -29.2pp against the S&P and 14.4% below its 200-day — and the model could
+not have known, because nothing told it. The screen has no opinion about trend
+and cannot read; the model can read and was denied the trend. Neither could see
+the whole case.
+
+It is now given four facts the scan already computed and discarded: 12-1
+relative strength, distance from the 200-day, distance from the 52-week high,
+and the setup's reward:risk. It is told not to repeat them back, and the
+no-numbers schema still holds.
+
+Measured effect, same two names and the same news: MLM moved from
+conviction=neutral, concern=none, ranked first, to conviction=weak, ranked last.
+
+AND IT NOW DECIDES, WITHIN LIMITS
+`policy.llm_veto_enabled` lets a GROUNDED veto block a trade outright. The
+qualifier is load-bearing and was earned on the first live test: the model
+attributed a CMG buyback headline to MLM, and the verbatim check caught it. An
+ungrounded opinion may colour a ranking but can never stop an order, and
+`order()` falls an ungrounded conviction back to neutral so it moves nothing.
+
+A model outage produces no opinions at all rather than an error, so a dead model
+degrades the ranking and cannot become a silent halt.
+
+WHAT IS STILL NOT KNOWN
+Whether its per-candidate calls predict outcomes. The slate records every
+candidate it ranked, taken and untaken, precisely so that can be scored later —
+and there are three slates. Its judgement on the SYSTEM is measured and good
+(`scripts/gemma_audit.py`, 2/2). Its judgement on individual setups is not
+measured at all.
 """
 
 from __future__ import annotations
