@@ -503,8 +503,18 @@ async def main(
             if isinstance(bars, Exception) or not _liquid(bars):
                 continue
             volumes_by_symbol[symbol] = _dollar_volume(bars)
+            # READ FROM THE POLICY, NOT HARDCODED.
+            #
+            # This was `require_value_sweep=True` while the policy said False,
+            # so the change measured and shipped on 2026-09-28 never reached a
+            # live scan: setup counts stayed at 73-76 when they should have
+            # risen about 70%, and the fingerprint moved for a rule that had no
+            # effect. Exactly the defect the 2026-09-26 audit found in
+            # `min_price` -- fixed there, and its neighbour in the same call
+            # was never checked.
             setups = scan(bars, k=k, min_reward_risk=min_rr,
-                          min_risk_pct=min_risk_pct, require_value_sweep=True,
+                          min_risk_pct=min_risk_pct,
+                          require_value_sweep=policy.require_value_sweep,
                           require_trend_context=trend_context,
                           require_rsi_context=rsi_context,
                           require_macd_context=macd_context)

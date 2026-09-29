@@ -273,3 +273,36 @@ def test_the_generated_prose_tracks_the_fields_it_describes():
     held = TradingPolicy(flat_before_weekend=True).as_prose()
     free = TradingPolicy(flat_before_weekend=False).as_prose()
     assert "before the weekend" in held and "before the weekend" not in free
+
+
+def test_every_scan_argument_comes_from_the_policy():
+    """`require_value_sweep=True` was hardcoded in trade.py while the policy
+    said False, so the one evidence-backed change of 2026-09-28 never reached a
+    live scan. Setup counts stayed flat at 73-76 and the fingerprint had moved
+    for a rule with no effect — a false signal, which is the worse direction.
+
+    This is the third time a policy field has been shadowed by a literal in a
+    caller: min_dollar_volume, then min_price, now this. The first two were
+    caught by value tests; this one needed the SCAN CALL ITSELF checked, because
+    the constant was an argument rather than a module-level name.
+    """
+    import re
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parent.parent
+              / "scripts" / "trade.py").read_text(encoding="utf-8")
+    call = re.search(r"setups = scan\((.*?)\)\n", source, re.S)
+    assert call, "the scan call in trade.py could not be found"
+    body = call.group(1)
+
+    for flag in ("require_value_sweep",):
+        assigned = re.search(rf"{flag}\s*=\s*([^,\)]+)", body)
+        assert assigned, f"{flag} is not passed to scan()"
+        value = assigned.group(1).strip()
+        assert value not in ("True", "False"), (
+            f"scan() is called with {flag}={value}, a literal. It must read "
+            f"the policy or a live change silently does nothing."
+        )
+        assert "policy." in value or "V." in value, (
+            f"{flag}={value} does not come from the policy object"
+        )
