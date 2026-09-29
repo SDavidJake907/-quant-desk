@@ -857,6 +857,64 @@ survivorship bias.
 
 ---
 
+## 22. HTF liquidity pools — null, and the premise was wrong
+
+The idea, and it was the best one of 2026-09-28: a sweep only matters if it runs
+REAL resting orders, and orders cluster at levels people can see. So the 4h
+should not veto a 15m setup — it should SUPPLY the level the sweep must take
+out. That is a change to what `took_out` counts as a sweep, not a seventh filter.
+
+Argued at the time to have the best prior of anything tested, being the 20M
+floor's own mechanism argument (a sweep needs resting orders) applied to the
+LEVEL instead of the INSTRUMENT.
+
+```
+entry 30m, pool from 240m, 741 setups
+mix: htf pool 540 (73%), entry only 201 (27%)
+
+               TRAIN                 HOLDOUT
+htf pool      -0.135R n=356         +0.290R n=184  win 40%
+entry only    -0.099R n=138         +0.280R n=63   win 38%
+
+train picked "entry only"; holdout gap -0.011R, p=0.968, SIGN FLIPPED
+```
+
+Holdout bands one hundredth of an R apart. No effect.
+
+**The mix refutes the premise outright.** 73% of sweeps ALREADY take out a
+confirmed 4h swing low. The belief that most sweeps hit meaningless local lows
+was wrong, so the refinement had almost nothing to separate. `took_out` reading
+only the entry timeframe was not the weakness it looked like.
+
+### The number that matters more than this result
+
+Twenty ideas, twenty nulls. Declared trials are now roughly seventy — the
+original 50 plus five timeframes, two exit tests, gap risk, accumulation twice,
+relative strength, and this.
+
+A Bonferroni threshold at seventy trials is about **0.0007**. The 20M liquidity
+floor sits at **p=0.022**. It does not clear it.
+
+That does not make the floor wrong — it has a mechanism behind it and it held
+its direction across both halves. But this repo describes it as the one
+validated result, and at the current trial count that description is no longer
+defensible. The deflated Sharpe of 0.82 was computed against 50 trials and
+should be recomputed against seventy before any figure here is quoted again.
+
+### What follows
+
+Stop testing filters. The search space has been sampled twenty times with one
+near-survivor, and every additional test now costs more in correction than it
+can plausibly return. The remaining leads are STRUCTURAL rather than selective:
+
+1. the short side — bearish sweeps are invisible to the screen, not rejected by
+   it, and adding them roughly doubles the sample
+2. 2018/2020/2022 data — the regime filter is the only live lead and needs a
+   third sample
+3. live paper trades — the only evidence that carries no trial penalty
+
+---
+
 ## 9. Overnight holds after 2026-12-06 — measure before deciding
 
 23x5 trading begins 2026-12-06 (SEC approved Nasdaq's proposal April 2026;
