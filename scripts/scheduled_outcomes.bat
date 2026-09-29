@@ -20,4 +20,18 @@ echo. >> "%LOG%"
 echo ===== OUTCOMES %DATE% %TIME% ===== >> "%LOG%"
 
 ".venv\Scripts\python.exe" "scripts\record_outcomes.py" --write >> "%LOG%" 2>&1
+
+REM --- archive what the broker holds -------------------------------
+REM The audit log records what was DECIDED; the broker records what
+REM FILLED, and only the first is in git. reconcile.py already names the
+REM exposure: realized R is recomputed from order history the broker
+REM prunes. Twelve closed trades is the only non-backtest evidence here.
+REM
+REM Routine pruning, an account reset, a key rotation or a CLEARING
+REM MIGRATION would take it -- and a clearing change is the class of
+REM event no identifier in FREEZE captures, the same blind spot as the
+REM 23x5 market change on 2026-12-06.
+REM
+REM Dated snapshots, never overwritten, exit code ignored.
+".venv\Scripts\python.exe" "scripts\archive_broker.py" >> "%LOG%" 2>&1
 exit /b %errorlevel%
