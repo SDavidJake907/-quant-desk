@@ -53,9 +53,33 @@ def source_text(item: NewsItem) -> str:
     return f"{item.title} {item.summary}".strip()
 
 
+def _collapse(text: str) -> str:
+    """Lowercase with runs of whitespace collapsed to one space.
+
+    WHITESPACE IS NOT EVIDENCE. The guard exists to stop the model inventing a
+    quote, and a span differing only in spacing has invented nothing.
+
+    Found live 2026-09-28. The model quoted "Will GLP-1s hurt food stocks?
+    Assessing the changing consumer." against a headline carrying TWO spaces
+    after the question mark. A correct citation was marked ungrounded, and
+    since an ungrounded opinion has its veto discarded and its conviction
+    reset to neutral by `order()`, the model was silently overruled for a
+    formatting difference it could not see and did not introduce.
+
+    RSS feeds carry double spaces, newlines and non-breaking spaces routinely,
+    so this was not a rare case.
+    """
+    return " ".join(text.split()).lower()
+
+
 def occurs_verbatim(quote: str, item: NewsItem) -> bool:
-    """The original guard: the span must genuinely appear in the source."""
-    return quote.strip().lower() in source_text(item).lower()
+    """The original guard: the span must genuinely appear in the source.
+
+    Compared with whitespace collapsed on BOTH sides. This does not loosen
+    what is checked -- every word, in order, must still be present -- it only
+    stops spacing from counting as fabrication.
+    """
+    return _collapse(quote) in _collapse(source_text(item))
 
 
 def is_substantive(quote: str) -> bool:
