@@ -86,6 +86,59 @@ MIN_DOLLAR_VOLUME = POLICY.min_dollar_volume
 MIN_RANGE_PCT = POLICY.min_range_pct
 
 
+async def _trend_context(client, setups) -> dict[str, dict]:
+    """Daily trend facts per candidate: the arithmetic the screen discards.
+
+    12-1 relative strength against ^GSPC, distance from the 200-day average,
+    daily RSI, and the setup's own geometry. Returns {} on any failure — this
+    informs a prompt and one gate, and neither may take down a scan.
+
+    The 12-1 window skips the most recent month, because short-horizon reversal
+    contaminates it. That is the same definition `momentum_factor` uses.
+    """
+    from scanner.features import technicals
+    from scanner.features.bars import fetch_bars, fetch_many
+
+    symbols = tuple({s.symbol for s in setups})
+    if not symbols:
+        return {}
+    try:
+        benchmark = technicals.compute(
+            await fetch_bars("^GSPC", client, range_="2y"))
+        daily, _ = await fetch_many(symbols, client, range_="2y")
+    except Exception:                                        # noqa: BLE001
+        return {}
+
+    out: dict[str, dict] = {}
+    for setup in setups:
+        series = daily.get(setup.symbol)
+        if series is None:
+            continue
+        try:
+            features = technicals.compute(series)
+            closes = series.closes
+            facts: dict[str, float] = {}
+            strength = technicals.relative_strength(features, benchmark)
+            if strength is not None:
+                facts["rs"] = strength
+            # Features already carries these; recomputing them here would be
+            # a second definition of the same number.
+            if features.sma200:
+                facts["from_200"] = (closes[-1] / features.sma200 - 1.0) * 100.0
+            if features.pct_from_52w_high is not None:
+                facts["from_52w_high"] = features.pct_from_52w_high
+            risk = setup.entry_price - setup.stop_price
+            if risk > 0 and setup.entry_price > 0:
+                facts["reward_risk"] = (setup.target_price
+                                        - setup.entry_price) / risk
+                facts["risk_pct"] = risk / setup.entry_price * 100.0
+            if facts:
+                out[setup.symbol] = facts
+        except Exception:                                    # noqa: BLE001
+            continue
+    return out
+
+
 async def _sector_standing(client, universe) -> dict[str, float]:
     """Median relative strength per sector, from the once-a-day cache.
 
@@ -567,10 +620,26 @@ async def main(
         # Gemma's advisory ordering, recorded beside the deterministic one.
         llm_order: dict[str, ranking.SetupOpinion] = {}
         llm_rank: dict[str, int] = {}
+        # MUST exist before the send loop. It is populated inside the advisory
+        # block, which does not run when the gate is off or nothing is
+        # actionable -- and the send loop reads it either way. An earlier
+        # version of exactly this shape shipped undefined and only fired on a
+        # branch the tests never reached; `test_no_undefined_names` was written
+        # for it.
+        trend_facts: dict[str, dict] = {}
         if news_gate and rankable:
             from scanner.entity import prefilter
             from scanner.sources import yahoo_rss
             sector_rs = await _sector_standing(client, universe)
+            # FACTS THE SCAN ALREADY HAD AND THREW AWAY.
+            #
+            # On 2026-09-28 both positions opened were deep laggards -- MLM at
+            # -29.2pp against the S&P and 14.4% below its 200-day average. The
+            # screen has no opinion about trend and the model was never told,
+            # so nothing in the pipeline could object. This hands the model the
+            # arithmetic it cannot do for itself.
+            trend_facts = await _trend_context(
+                client, [row[0] for row in rankable])
             headlines = {}
             for setup, _, _ in rankable:
                 try:
@@ -597,7 +666,8 @@ async def main(
             if stored:
                 print(f"  {DIM}kept {stored} new headline(s) for replay{RESET}")
 
-            opinions = await ranking.rank(headlines, client, sector_of, sector_rs)
+            opinions = await ranking.rank(headlines, client, sector_of,
+                                          sector_rs, trend_facts)
             llm_order = {o.symbol: o for o in opinions}
             llm_rank = {s: i + 1 for i, s in enumerate(ranking.order(opinions))}
             if opinions:
@@ -705,6 +775,30 @@ async def main(
                     print(f"  {RED}{setup.symbol:<6} SKIPPED — {reason}{RESET}")
                     record(CONFIRM, setup.symbol, reason)
                     continue
+
+            # TREND GATE. Enabled on the operator's decision, against a null
+            # measurement that is recorded in policy.min_relative_strength.
+            # A setup in a name lagging the index badly is admitted by the
+            # screen exactly as readily as one in a leader; this is the only
+            # place that distinction is made.
+            facts = trend_facts.get(setup.symbol) or {}
+            strength = facts.get("rs")
+            if strength is not None and strength < policy.min_relative_strength:
+                reason = (f"relative strength {strength:+.1f}pp below the "
+                          f"{policy.min_relative_strength:+.1f}pp floor")
+                print(f"  {RED}{setup.symbol:<6} SKIPPED — {reason}{RESET}")
+                record(CONFIRM, setup.symbol, reason)
+                continue
+
+            # THE MODEL MAY NOW REFUSE. Only a GROUNDED veto blocks, and only
+            # when the policy allows it; an outage produces no opinion at all,
+            # so a dead model cannot become a silent halt.
+            opinion = llm_order.get(setup.symbol)
+            if policy.llm_veto_enabled and opinion is not None and opinion.veto:
+                reason = f"model veto: {opinion.veto_reason or 'no reason given'}"
+                print(f"  {RED}{setup.symbol:<6} SKIPPED — {reason}{RESET}")
+                record(CONFIRM, setup.symbol, reason)
+                continue
 
             if news_gate:
                 flag = await check_news(setup.symbol, client, earnings=earnings)

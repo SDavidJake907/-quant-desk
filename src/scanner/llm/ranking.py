@@ -56,9 +56,11 @@ _SCHEMA = {
                     "concern": {"type": "string"},
                     "driver": {"type": "string", "enum": list(DRIVERS)},
                     "evidence_quote": {"type": "string"},
+                    "veto": {"type": "boolean"},
+                    "veto_reason": {"type": "string"},
                 },
                 "required": ["symbol", "conviction", "concern", "driver",
-                             "evidence_quote"],
+                             "evidence_quote", "veto", "veto_reason"],
             },
         }
     },
@@ -72,7 +74,9 @@ judging the chart — you cannot see it, and price is not your job.
 Your only question for each company: is there anything in its recent news that \
 makes it a WORSE candidate than the others here?
 
-Each company is listed with its SECTOR and how that sector is performing against the market, so you can judge whether its news is its own or its sector's.
+Each company is listed with its SECTOR and how that sector stands against the market, then with facts the screen computed and did not act on: its 12-1 relative strength against the S&P 500, how far it sits from its 200-day average, how far below its 52-week high, and the setup's reward:risk. Use them together with the news — a falling stock with bad news is a different case from a falling stock with none.
+
+YOU MAY REFUSE. Set veto true to stop a trade outright, with veto_reason giving the ground in a few words. Refuse when the news and the price picture together say the structure is unreliable — a company in a sustained decline whose news explains why, a pending merger, litigation, or a withdrawn outlook. Do NOT refuse merely because a stock is weak: weakness after a sweep is the pattern being traded. Refuse when you can say what is wrong, not when you are unsure.
 
 - strong   nothing in the news works against it; the move is unexplained by news
 - neutral  ordinary news; nothing that changes what the price means
@@ -111,6 +115,12 @@ class SetupOpinion(Frozen):
     concern: str = ""
     evidence_quote: str = ""
     grounded: bool = True
+    #: A refusal to trade this candidate at all, with `veto_reason` saying
+    #: why. Honoured only when `grounded` is true and
+    #: `policy.llm_veto_enabled` is set, so an ungrounded opinion can
+    #: colour a ranking but never block an order.
+    veto: bool = False
+    veto_reason: str = ""
 
     @property
     def rank_key(self) -> int:
@@ -122,6 +132,7 @@ def _render(
     candidates: dict[str, tuple[NewsItem, ...]],
     sectors: dict[str, str] | None = None,
     sector_rs: dict[str, float] | None = None,
+    context: dict[str, dict] | None = None,
 ) -> str:
     """One block per company: its sector, how that sector stands, its news.
 
@@ -141,7 +152,33 @@ def _render(
                 standing = "leading" if median > 0 else "lagging"
                 note = f"  (sector: {sector} — {standing} the market)"
         headlines = "\n".join(f"    - {item.title}" for item in items[:5]) or "    (no recent news)"
-        blocks.append(f"[{symbol}]{note}\n{headlines}")
+        # PRICE CONTEXT, ADDED 2026-09-28.
+        #
+        # The model used to see a ticker, a sector and five headlines. It
+        # could not have known MLM was 14% below its 200-day average and
+        # lagging the index by 29 points, because nothing told it. Both
+        # positions opened that day were deep laggards and the screen has
+        # no opinion about trend.
+        #
+        # These are facts the scan already computed and threw away. Giving
+        # the model arithmetic it cannot do itself is the same reasoning
+        # that puts sector standing here rather than asking for it.
+        facts = (context or {}).get(symbol) or {}
+        lines = []
+        if facts.get('rs') is not None:
+            way = 'leading' if facts['rs'] > 0 else 'lagging'
+            lines.append(f"    12-1 vs S&P 500: {facts['rs']:+.1f}pp ({way})")
+        if facts.get('from_200') is not None:
+            side = 'above' if facts['from_200'] >= 0 else 'below'
+            lines.append(f"    200-day average: {abs(facts['from_200']):.1f}% {side}")
+        if facts.get('from_52w_high') is not None:
+            lines.append(f"    from 52-week high: {facts['from_52w_high']:+.1f}%")
+        if facts.get('reward_risk') is not None:
+            lines.append(f"    setup reward:risk {facts['reward_risk']:.2f},"
+                         f" stop {facts.get('risk_pct', 0):.2f}% away")
+        joined = ('\n').join(lines)
+        body = (joined + '\n' if lines else '') + headlines
+        blocks.append('[' + symbol + ']' + note + '\n' + body)
     return "\n\n".join(blocks)
 
 
@@ -150,6 +187,7 @@ async def rank(
     client: httpx.AsyncClient,
     sectors: dict[str, str] | None = None,
     sector_rs: dict[str, float] | None = None,
+    context: dict[str, dict] | None = None,
 ) -> tuple[SetupOpinion, ...]:
     """Rank candidates by news context. Never raises.
 
@@ -161,7 +199,8 @@ async def rank(
     neutral = tuple(SetupOpinion(symbol=s) for s in candidates)
     try:
         raw = await chat_json(
-            _PROMPT.format(companies=_render(candidates, sectors, sector_rs)),
+            _PROMPT.format(companies=_render(candidates, sectors, sector_rs,
+                                             context)),
             _SCHEMA, client,
         )
     except (LLMError, json.JSONDecodeError):
@@ -183,6 +222,11 @@ async def rank(
             concern=str(entry.get("concern", ""))[:120],
             evidence_quote=quote if grounded else "",
             grounded=grounded,
+            # An UNGROUNDED opinion may not block a trade. The quote check is
+            # the only defence against a confident sentence with nothing behind
+            # it, and a veto is the most consequential thing the model can say.
+            veto=bool(entry.get("veto")) and grounded,
+            veto_reason=str(entry.get("veto_reason", ""))[:120],
         ))
 
     seen = {o.symbol for o in opinions}

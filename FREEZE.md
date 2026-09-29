@@ -1117,3 +1117,6 @@ costs a real sample.
 | 2026-09-26 | **window 10 opened** at `29378de4d359`, same rules, new build. Sector medians cached date-stamped and written pre-open by a sixth task; send loop unchanged. Same hard end 2026-12-04 | 0 |
 | 2026-09-28 | **first trade of window 10: MLM**, 41 sh @ 491.06, stop 482.21, target 510.81, R:R 2.19. Gemma ranked it 1 of 2; NKE blocked twice by the earnings gate (reports Thu 10/01 after-close) | 1 |
 | 2026-09-28 | **MLM carries `7247e3f+dirty`** — an untracked research script (`trace_trade.py`) sat in the tree while the scheduler fired. The rules are unchanged and the fingerprint is correct, but this one trade is not reproducible from any commit. Tree cleaned at `13b5e5f`; **no restart** — a restart would discard a valid trade to fix a provenance defect that is now recorded | 1 |
+| 2026-09-28 | **second trade: CMG**, 631 sh @ 32.14, R:R 1.91, build `7cd2f07` clean | 2 |
+| 2026-09-28 | **window 10 superseded** — both trades were deep laggards (MLM -29.2pp, CMG -21.2pp vs S&P) and nothing in the pipeline objected. Trend gate and model veto added | 2, both open |
+| 2026-09-28 | **window 11 opened** at `07c4cda1e9ab`; `min_relative_strength=-10.0` and `llm_veto_enabled=True`. The RS filter TESTED NULL (p=0.999, halves disagree) and is enabled on the operator's judgement, not the measurement. Same hard end 2026-12-04 | 0 |

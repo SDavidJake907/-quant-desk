@@ -114,6 +114,40 @@ class TradingPolicy(Frozen):
     #: otherwise.
     min_range_pct: float = 0.0
 
+    #: Minimum 12-1 relative strength against ^GSPC, in percentage points, for
+    #: a setup to be tradeable. -10.0 excludes laggards and deep laggards.
+    #:
+    #: WHY IT IS HERE. Both positions opened 2026-09-28 were deep laggards:
+    #: MLM at -29.2pp and CMG at -21.2pp, each below its 200-day average and
+    #: down ~18% on the year. The screen has no opinion about trend, so a
+    #: liquidity sweep in a name that has been sold for twelve months scores
+    #: identically to one in a leader. The mechanism argument is real: a sweep
+    #: is supposed to be a SHAKEOUT, which needs someone defending the level,
+    #: and in a falling knife the break of lows may just be the selling
+    #: continuing.
+    #:
+    #: IT TESTED NULL, AND THAT IS RECORDED RATHER THAN HIDDEN.
+    #: `scripts/relative_strength_test.py` over 731 setups:
+    #:
+    #:     band            train            holdout
+    #:     leader          -0.114R n=155    +0.596R n=104
+    #:     in line         -0.248R n=108    +0.169R n=36
+    #:     laggard         -0.134R n=83     -0.204R n=31
+    #:     deep laggard    -0.044R n=141    +0.169R n=73
+    #:
+    #: Holdout favours leaders strongly, but TRAIN ranked deep laggards best
+    #: and leaders third. The halves disagree, the chosen gap is +0.000R at
+    #: p=0.999, and that is the signature of noise. Nineteen ideas have now
+    #: failed the same bar.
+    #:
+    #: It is enabled anyway, as a deliberate and reversible choice by the
+    #: operator, on the mechanism argument rather than the measurement. It is a
+    #: declared field so it moves the fingerprint, and the cost is legible:
+    #: laggard and deep-laggard bands are 45% of setups, so this roughly halves
+    #: the trade rate in exchange for an edge the data does not confirm. Set it
+    #: to -100.0 to disable.
+    min_relative_strength: float = -10.0
+
     # --- what stops a trade -----------------------------------------------
     block_structural_news: bool = True
     block_earnings_within_days: int = 7
@@ -255,6 +289,30 @@ class TradingPolicy(Frozen):
     shadow_session_slot: bool = True
     shadow_weekday: bool = True
     shadow_llm_ranking: bool = True
+
+    # --- what the model may decide ------------------------------------------
+    #: Whether a grounded `veto` from the ranking model BLOCKS a trade rather
+    #: than merely colouring it.
+    #:
+    #: Until now the model has been advisory in the strict sense: it ranks
+    #: candidates the screen already chose and nothing it says can stop an
+    #: order. That was the right default while its judgement was unmeasured.
+    #:
+    #: What IS measured: `scripts/gemma_audit.py` gives it the project's own
+    #: facts and marks its answers against conclusions established earlier. It
+    #: scores 2/2 on the gradeable questions, and unprompted it identified the
+    #: outlier trade skewing the mean and the optimistic fill assumption --
+    #: both of which were independently confirmed here.
+    #:
+    #: What is NOT measured: whether its per-candidate calls predict outcomes.
+    #: That needs the slate to accumulate, and there are three slates.
+    #:
+    #: A veto is refused unless `grounded` is true, so an ungrounded opinion
+    #: cannot block a trade, and every veto is recorded with its reason. If the
+    #: model is unreachable nothing is vetoed -- the same fail-open direction
+    #: the news gate already takes, because a dead model must not become a
+    #: silent halt.
+    llm_veto_enabled: bool = True
 
     @property
     def fingerprint(self) -> str:
