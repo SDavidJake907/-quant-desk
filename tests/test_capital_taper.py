@@ -18,7 +18,7 @@ POSITION CAP for the day. Nothing else in the sizing path changes.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -27,27 +27,43 @@ from scanner.execution.taper import deployment_for, position_cap_for
 
 
 class TestSchedule:
-    def test_monday_deploys_the_most(self):
-        p = TradingPolicy()
-        mon = deployment_for(date(2026, 8, 17), p)      # Monday
-        tue = deployment_for(date(2026, 8, 18), p)
-        wed = deployment_for(date(2026, 8, 19), p)
-        assert mon > tue > wed
+    def test_every_weekday_deploys_the_same(self):
+        """The taper was FLATTENED 2026-09-28. It ran (100, 80, 60, 40, 0),
+        averaging 56% of the sleeve, and is now uniform.
 
-    def test_thursday_still_trades_and_friday_does_not(self):
-        """The taper must agree with the wind-down rather than contradict it.
-
-        Thursday trades on arithmetic: ~17 bars before the Friday flatten
-        against a ~20 bar mean hold, costing -0.313R and still landing above
-        the overall average. Friday has ~11 bars and loses most of its value
-        to the flatten, so it opens nothing.
+        `taper.py` always described the schedule as a preference that costs
+        return in proportion, with return-over-drawdown stable between 4.7 and
+        5.1 at every level tested. Flattening it raises return ~1.79x and
+        drawdown ~1.79x and leaves that ratio alone. It is a dial, and the
+        operator turned it up.
         """
         p = TradingPolicy()
-        # The PROPERTY, not the number. The schedule was doubled on
-        # 2026-09-25 and a test pinned to 20.0 would have failed for a
-        # change that did not touch what this test is about.
+        levels = [deployment_for(date(2026, 8, 17) + timedelta(days=n), p)
+                  for n in range(5)]
+        assert levels == [100.0] * 5, levels
+
+    def test_friday_now_trades_too(self):
+        """The taper must agree with the wind-down rather than contradict it.
+
+        Friday was excluded because it has ~11 bars before the flatten against
+        a ~20 bar mean hold, and because the flatten was priced at -0.213R.
+
+        Both halves were re-measured on 2026-09-28 over the 501-symbol Alpaca
+        store. The flatten costs **-0.012R, se 0.020** -- eighteen times less --
+        and with it modelled, Friday returns -0.002R against Monday's -0.011R
+        with the HIGHEST win rate of any day at 50.8%. The truncation is real
+        and shows up exactly where three other measurements today put it: as a
+        higher win rate at a lower R, not as a loss.
+
+        Friday is 14% of all setups. Excluding it removed a seventh of the
+        evidence for nothing measurable.
+        """
+        p = TradingPolicy()
+        # The PROPERTY, not the number, so a later change to the level does not
+        # fail a test about which DAYS trade.
         assert deployment_for(date(2026, 8, 20), p) > 0.0      # Thursday
-        assert deployment_for(date(2026, 8, 21), p) == 0.0     # Friday
+        assert deployment_for(date(2026, 8, 21), p) > 0.0      # Friday
+        assert p.wind_down_from_weekday == 5                   # nothing refused
 
     def test_the_schedule_is_a_policy_field(self):
         p = TradingPolicy(weekday_deployment_pct=(80.0, 60.0, 40.0, 0.0, 0.0))
@@ -76,20 +92,35 @@ class TestPositionCap:
                           weekday_deployment_pct=(500.0, 0.0, 0.0, 0.0, 0.0))
         assert position_cap_for(date(2026, 8, 17), p) == pytest.approx(20.0)
 
-    def test_a_zero_day_gives_a_zero_cap(self):
-        """Friday, the only day that now deploys nothing."""
-        p = TradingPolicy()
-        assert position_cap_for(date(2026, 8, 21), p) == 0.0
+    def test_a_zero_day_still_gives_a_zero_cap(self):
+        """No weekday is zero any more, so this pins the MECHANISM instead.
+
+        A schedule that asks for nothing must still cap at nothing, or turning
+        the dial down later would silently keep trading.
+        """
+        p = TradingPolicy(weekday_deployment_pct=(100.0, 100.0, 100.0,
+                                                  100.0, 0.0))
+        assert position_cap_for(date(2026, 8, 21), p) == 0.0   # a Friday
 
 
 class TestPolicy:
-    def test_the_default_schedule_tapers_toward_the_weekend(self):
-        """Monotonically down Monday to Thursday, and zero on Friday — the one
-        day the flatten leaves too little room to work in."""
+    def test_the_default_schedule_is_flat(self):
+        """Flattened 2026-09-28 on the operator's decision.
+
+        Recorded as a decision rather than a discovery: by trigger day, with
+        the flatten modelled, no weekday shows an edge --
+
+            Mon -0.011R n=175   Tue -0.050R n=233   Wed +0.066R n=171
+            Thu +0.015R n=162   Fri -0.002R n=120
+
+        -- and the old ramp ran OPPOSITE to that, giving Monday 100% for
+        -0.011R and Wednesday 60% for the best +0.066R. It was never a weekday
+        edge; it was a weekend-risk preference, and the risk it priced measured
+        eighteen times smaller than assumed.
+        """
         schedule = TradingPolicy().weekday_deployment_pct
         assert len(schedule) == 5
-        assert schedule[0] >= schedule[1] >= schedule[2] >= schedule[3] > 0.0
-        assert schedule[4] == 0.0
+        assert schedule == (100.0, 100.0, 100.0, 100.0, 100.0)
 
     def test_the_schedule_changes_the_fingerprint(self):
         base = TradingPolicy()

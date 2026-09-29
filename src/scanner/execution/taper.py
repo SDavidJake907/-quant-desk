@@ -8,6 +8,21 @@ day at least that good at 18.9%. Train and holdout disagree about which day
 wins. Sizing more on any particular weekday would be sizing on noise.
 
 WHAT IT IS
+A risk schedule, AND IT IS NOW FLAT. The schedule ran (100, 80, 60, 40, 0) until
+2026-09-28, averaging 56% of the sleeve. It is now uniform 100%, on the
+operator's decision.
+
+The paragraph below is why that is a legitimate dial rather than a claim: this
+module always said the taper "costs return in proportion" and is "a preference,
+legitimately held, not an improvement". Raising it therefore RAISES return in
+proportion -- about 1.79x -- and raises drawdown by the same factor, leaving
+return-over-drawdown where it was. It buys nothing and hides nothing; it
+expresses whatever edge exists more strongly, including an edge of zero.
+
+The original justification also weakened on measurement: the schedule fell to
+zero approaching a weekend whose flatten was priced at -0.213R per trade, and
+that measured -0.012R.
+
 A risk schedule. Capital committed falls as the market approaches a window in
 which nothing can be managed, and reaches zero on Thursday where the wind-down
 already refuses new positions. Exposure and return scale together on this

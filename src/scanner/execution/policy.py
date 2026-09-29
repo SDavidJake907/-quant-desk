@@ -252,8 +252,15 @@ class TradingPolicy(Frozen):
     #: EXPECT THE DAILY-LOSS GUARD TO START BINDING. It is inert at 0.108%
     #: risk per trade and will not stay inert at twice the size. A scan that
     #: refuses to trade after a bad morning is the guard working, not a fault.
-    weekday_deployment_pct: tuple[float, float, float, float, float] = (
-        100.0, 80.0, 60.0, 40.0, 0.0)
+    #: FLAT AT 100% from 2026-09-28, was (100, 80, 60, 40, 0)
+    #: averaging 56% of the sleeve. `taper.py` always described the
+    #: schedule as a PREFERENCE that costs return in proportion, with
+    #: return-over-drawdown stable between 4.7 and 5.1 at every level
+    #: tested. Raising it therefore raises return ~1.79x and drawdown
+    #: ~1.79x, leaving that ratio where it was. It expresses whatever
+    #: edge exists more strongly, including an edge of zero.
+    weekday_deployment_pct: tuple[float, ...] = (
+        100.0, 100.0, 100.0, 100.0, 100.0)
 
     #: Weekday from which no NEW positions are opened, Monday being 0.
     #: Thursday, because flattening on Friday alone still allows a position to
@@ -276,7 +283,25 @@ class TradingPolicy(Frozen):
     #: test, and train and holdout disagree about which day wins). Bars
     #: available is not — it is arithmetic, true every week whatever the
     #: sample size. This rule rests on the second thing, not the first.
-    wind_down_from_weekday: int = 4
+    #: RAISED TO 5 (no wind-down) 2026-09-28, on the operator's decision and a
+    #: measurement that removed the original justification.
+    #:
+    #: Friday entries were refused because the Friday flatten was priced at
+    #: -0.213R per trade. `scripts/flatten_cost_test.py` measured it at
+    #: **-0.012R, se 0.020** -- eighteen times smaller. It touches 26% of trades
+    #: and those average +0.528R: they are profitable when closed, not
+    #: sacrificed. The reason for excluding Friday was an estimate that did not
+    #: survive measurement.
+    #:
+    #: And Friday is not a worse day. With the flatten modelled, by trigger day:
+    #:
+    #:     Mon -0.011R n=175   Tue -0.050R n=233   Wed +0.066R n=171
+    #:     Thu +0.015R n=162   Fri -0.002R n=120  (highest win rate, 50.8%)
+    #:
+    #: Friday sits mid-pack and indistinguishable from Monday, while being 14%
+    #: of all setups. Excluding it removed a seventh of the evidence for nothing
+    #: measurable. Set back to 4 to restore the wind-down.
+    wind_down_from_weekday: int = 5
 
     # --- how it ends --------------------------------------------------------
     max_hold_bars: int = 60

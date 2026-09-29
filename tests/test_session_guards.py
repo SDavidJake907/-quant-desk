@@ -97,12 +97,23 @@ class TestPolicy:
         lost in a later edit -- the cost is the reason it needs pinning."""
         assert TradingPolicy().flat_before_weekend is True
 
-    def test_the_wind_down_is_friday_only(self):
-        """Thursday trades; Friday does not. On arithmetic, not on a weekday
-        edge: a Thursday entry has ~17 bars before the flatten against a ~20
-        bar mean hold, a Friday entry has ~11. The weekday expectancy
-        differences are noise; bars available is not."""
-        assert TradingPolicy().wind_down_from_weekday == 4
+    def test_there_is_no_wind_down(self):
+        """Raised to 5 on 2026-09-28: every weekday opens positions.
+
+        The Friday refusal rested on two numbers. A Friday entry has ~11 bars
+        before the flatten against a ~20 bar mean hold -- still true -- and the
+        flatten cost -0.213R per trade, which was not: it measured -0.012R,
+        se 0.020, over 741 setups on the Alpaca store.
+
+        With the flatten modelled, Friday returns -0.002R against Monday's
+        -0.011R. The truncation is visible as the highest win rate of any day
+        (50.8%) at a lower R, which is the same trade-off three other
+        measurements found today. Friday is 14% of all setups, so the exclusion
+        cost a seventh of the evidence and bought nothing measurable.
+
+        Set back to 4 to restore the wind-down.
+        """
+        assert TradingPolicy().wind_down_from_weekday == 5
 
     def test_each_rule_changes_the_fingerprint(self):
         """Two runs under different rules must never share a fingerprint, or
