@@ -67,5 +67,5 @@ REM wanted held? That needs weeks of records. This starts the clock.
 REM
 REM Last, and its exit code deliberately ignored, because it must never
 REM delay or fail a scan. Evidence about a decision, not an input to one.
-".venv\Scripts\python.exe" "scriptseview_positions.py" >> "%LOG%" 2>&1
+".venv\Scripts\python.exe" "scripts\review_positions.py" >> "%LOG%" 2>&1
 exit /b %errorlevel%
