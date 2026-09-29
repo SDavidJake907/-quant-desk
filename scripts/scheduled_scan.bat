@@ -51,4 +51,21 @@ REM blindly restarted.
 ".venv\Scripts\python.exe" "scripts\manage_positions.py" --execute >> "%LOG%" 2>&1
 
 ".venv\Scripts\python.exe" "scripts\trade.py" --submit-paper >> "%LOG%" 2>&1
+
+REM --- stage 4: the model reads every open position -------------------
+REM
+REM RECORDED, NOT ENFORCED. Three things watch a position today and all are
+REM mechanical: the bracket's stop and target, the 60-bar limit, and the
+REM Friday flatten. Nothing READS it. A name can lose its trend or have its
+REM thesis contradicted overnight and the system holds until a price level
+REM is touched.
+REM
+REM review_positions.py has no --execute and no close path. It writes a
+REM hold/exit_early call to the audit log so the question can be settled
+REM later: did the positions it wanted out of do worse than the ones it
+REM wanted held? That needs weeks of records. This starts the clock.
+REM
+REM Last, and its exit code deliberately ignored, because it must never
+REM delay or fail a scan. Evidence about a decision, not an input to one.
+".venv\Scripts\python.exe" "scriptseview_positions.py" >> "%LOG%" 2>&1
 exit /b %errorlevel%
