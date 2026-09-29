@@ -86,6 +86,11 @@ PROMPT = """You are reviewing an OPEN position in an automated trading system.
 THE RULES IT RUNS UNDER, generated from the live policy so they cannot be stale:
 {rules}
 
+WHAT THIS SYSTEM DID IN THE LAST 24 HOURS, and what it has learned overall:
+{recent}
+
+{memory}
+
 Your only question: is there a reason to leave EARLY, before any of those fire?
 
 What that means here. The money in this strategy comes from the minority of
@@ -155,6 +160,13 @@ async def main(model: str) -> int:
             print(f"{DIM}no open positions{RESET}")
             return 0
 
+        # Built once per run, not per position: it is the same facts for all
+        # of them, and rebuilding it would invite the model to think the
+        # picture changed between two reviews in the same scan.
+        from scanner.llm import memory
+        recent = memory.last_24h(settings.audit_log_path)
+        learned = memory.build_block(settings.audit_log_path)
+
         names = tuple(p["symbol"] for p in positions)
         try:
             benchmark = technicals.compute(
@@ -191,7 +203,9 @@ async def main(model: str) -> int:
             print(f"\n{BOLD}{'=' * 68}{RESET}")
             print(block)
             try:
-                out = await chat_json(PROMPT.format(rules=V.as_prose(), block=block), SCHEMA,
+                out = await chat_json(PROMPT.format(rules=V.as_prose(),
+                                  recent=recent, memory=learned,
+                                  block=block), SCHEMA,
                                       client, model=model)
             except Exception as exc:                         # noqa: BLE001
                 print(f"  {YELLOW}model unavailable: {exc}{RESET}")

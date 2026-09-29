@@ -167,7 +167,23 @@ class TradingPolicy(Frozen):
     #: laggard and deep-laggard bands are 45% of setups, so this roughly halves
     #: the trade rate in exchange for an edge the data does not confirm. Set it
     #: to -100.0 to disable.
-    min_relative_strength: float = -10.0
+    #: DISABLED 2026-09-28, the same day it was enabled.
+    #:
+    #: It was turned on against its own measurement, on the operator's
+    #: judgement and a mechanism argument. The measurement has not improved:
+    #: holdout favoured leaders (+0.596R n=104) while TRAIN ranked deep
+    #: laggards best and leaders third, the chosen gap was +0.000R at p=0.999,
+    #: and the halves disagreed -- the signature of noise.
+    #:
+    #: What settled it is the cost. It discards 45% of setups, and setup
+    #: scarcity is the binding constraint on every open question here: 224
+    #: trades are needed to exclude zero and the scan finds about 1.2 a
+    #: session. A filter with no measured benefit that halves the evidence rate
+    #: makes every other question slower to answer.
+    #:
+    #: -100.0 disables it. The field stays declared and fingerprinted so
+    #: enabling it remains one number and stays visible in the audit trail.
+    min_relative_strength: float = -100.0
 
     # --- what stops a trade -----------------------------------------------
     block_structural_news: bool = True
@@ -358,7 +374,22 @@ class TradingPolicy(Frozen):
     #: model is unreachable nothing is vetoed -- the same fail-open direction
     #: the news gate already takes, because a dead model must not become a
     #: silent halt.
-    llm_veto_enabled: bool = True
+    #: DISABLED 2026-09-28 on measurement, hours after being enabled.
+    #:
+    #: `scripts/llm_compliance.py` asked the same input five times at
+    #: temperature 0. On a pending all-cash acquisition -- the clearest case in
+    #: its own prompt -- the model called it `weak` 5/5 and escalated to a veto
+    #: 1/5. The judgement is stable; the action is a coin flip.
+    #:
+    #: A gate that fires on 20% of identical inputs is not a gate, and this one
+    #: also UNDER-fires on the case it reliably recognises. Leaving it on means
+    #: a live trade is blocked or not by which sample was drawn.
+    #:
+    #: The fix is not more prompt text. Derive the veto from `conviction ==
+    #: weak` plus a named category, so it is deterministic given the judgement
+    #: -- and the judgement IS stable. Until that exists this stays off, and
+    #: the opinion continues to be recorded in the slate where it can be scored.
+    llm_veto_enabled: bool = False
 
     @property
     def fingerprint(self) -> str:

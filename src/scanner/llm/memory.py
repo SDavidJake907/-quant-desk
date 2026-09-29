@@ -156,6 +156,95 @@ def in_cooldown(path: str | Path, symbol: str, *,
     return moment < until
 
 
+#: The rolling window for "what just happened". Matches COOLDOWN_HOURS on
+#: purpose: a name stopped out yesterday and a name refused yesterday are the
+#: same kind of fact, and two different horizons for them would invite the
+#: model to treat one as fresher than the other.
+RECENT_HOURS = 24.0
+
+
+def last_24h(path: str | Path, hours: float = RECENT_HOURS,
+             now: datetime | None = None) -> str:
+    """Everything the system did in the last `hours`, as prose.
+
+    WHY THIS IS SEPARATE FROM THE TRADE RECORD
+    `build_block` answers "what has this system learned", which needs a sample
+    and refuses to speak below one. This answers "what just happened", which
+    needs no sample at all -- a refusal is a fact about yesterday whether or
+    not it is a fact about the strategy.
+
+    Keeping them apart matters. Ten trades cannot support a per-symbol claim,
+    and a block that mixed last night's four refusals into that record would
+    read like evidence and act like noise.
+
+    COUNTS AND REASONS, NOT VERDICTS. It reports what the funnel did and what
+    the model said, without judging either. The judging is the model's job and
+    it should be doing it on the facts rather than on a summary's opinion.
+    """
+    moment = now or datetime.now().astimezone()
+    cutoff = moment - timedelta(hours=hours)
+    fresh = []
+    for row in _rows(path):
+        stamp = row.get("at") or ""
+        try:
+            when = datetime.fromisoformat(stamp)
+        except ValueError:
+            continue
+        if when.tzinfo is None:
+            continue
+        if when >= cutoff:
+            fresh.append((when, row))
+    if not fresh:
+        return (f"RECENT ({hours:.0f}h): nothing recorded. Either the system "
+                f"did not run or it found nothing.")
+
+    by_event: dict[str, int] = defaultdict(int)
+    refusals: dict[str, int] = defaultdict(int)
+    opened: list[str] = []
+    closed: list[str] = []
+    reviews: list[str] = []
+    for when, row in fresh:
+        event = str(row.get("event", ""))
+        by_event[event] += 1
+        symbol = str(row.get("symbol", "") or "")
+        if event == "candidate_refused" and row.get("reason"):
+            refusals[str(row["reason"])[:60]] += 1
+        elif event == "order_submitted" and symbol:
+            opened.append(symbol)
+        elif event == "trade_outcome":
+            out = row.get("outcome") or {}
+            closed.append(f"{out.get('symbol', symbol)} "
+                          f"{float(out.get('realized_r', 0)):+.2f}R "
+                          f"({out.get('exit_reason', '?')})")
+        elif event == "position_review" and symbol:
+            reviews.append(f"{symbol}: {str(row.get('reason', ''))[:70]}")
+
+    lines = [f"RECENT ({hours:.0f}h) — what this system actually did."]
+    slates = by_event.get("candidate_slate", 0)
+    lines.append(f"  {slates} scan(s) produced a ranked slate; "
+                 f"{by_event.get('trade_intent', 0)} intent(s), "
+                 f"{by_event.get('order_submitted', 0)} order(s) sent.")
+    if opened:
+        lines.append(f"  opened: {', '.join(sorted(set(opened)))}.")
+    if closed:
+        lines.append(f"  closed: {'; '.join(closed)}.")
+    if refusals:
+        lines.append("  refused, by reason:")
+        for reason, count in sorted(refusals.items(), key=lambda kv: -kv[1]):
+            lines.append(f"    {count}x  {reason}")
+    if reviews:
+        lines.append("  position reviews recorded (advisory, not acted on):")
+        lines += [f"    {r}" for r in reviews[-6:]]
+    if by_event.get("news_gate_degraded"):
+        lines.append(f"  WARNING: the news gate failed open "
+                     f"{by_event['news_gate_degraded']}x -- names passed the "
+                     f"news check unrefused.")
+    if by_event.get("protection_restored"):
+        lines.append(f"  WARNING: {by_event['protection_restored']} position(s) "
+                     f"were found unprotected and re-armed.")
+    return '\n'.join(lines)
+
+
 def build_block(path: str | Path, min_sample: int = MIN_SAMPLE) -> str:
     """The memory as prose the model can be shown.
 

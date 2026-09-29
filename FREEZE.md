@@ -1120,5 +1120,7 @@ costs a real sample.
 | 2026-09-28 | **second trade: CMG**, 631 sh @ 32.14, R:R 1.91, build `7cd2f07` clean | 2 |
 | 2026-09-28 | **window 10 superseded** — both trades were deep laggards (MLM -29.2pp, CMG -21.2pp vs S&P) and nothing in the pipeline objected. Trend gate and model veto added | 2, both open |
 | 2026-09-28 | **window 11 opened** at `07c4cda1e9ab`; `min_relative_strength=-10.0` and `llm_veto_enabled=True`. The RS filter TESTED NULL (p=0.999, halves disagree) and is enabled on the operator's judgement, not the measurement. Same hard end 2026-12-04 | 0 |
+| 2026-09-28 | **windows 12/13 superseded**, then simplified: the two gates added on judgement were removed on measurement. `min_relative_strength` (p=0.999, cost 45% of setups) and `llm_veto_enabled` (fired 1/5 on identical input at temperature 0) both OFF | 0 |
+| 2026-09-28 | **window 14 opened** at `ba95546dbdbb`; six gates instead of fourteen, `require_value_sweep` off, deployment flat at 100%, Friday trades. Roughly 3x the setup rate of 2026-09-27. Same hard end 2026-12-04 | 0 |
 | 2026-09-28 | **window 11 superseded** — the deployment taper ran OPPOSITE to the data (Monday 100% for -0.011R, Wednesday 60% for the best +0.066R) and Friday was excluded on a flatten cost of -0.213R that measured -0.012R | 0 |
 | 2026-09-28 | **window 12 opened** at `6a1576995f61`; deployment flat at 100% (was 56% average), Friday trades (+14% of setups). Both are PREFERENCE dials turned up by the operator: ~1.79x return and ~1.79x drawdown, ratio unchanged. Same hard end 2026-12-04 | 0 |
