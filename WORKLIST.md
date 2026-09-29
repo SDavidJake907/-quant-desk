@@ -968,6 +968,72 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 25. Breadth as regime — null (24th). And what the three PDFs actually say.
+
+**Breadth**, borrowed from `OMEGA_907/trading_playbook.py`, which aggregates
+trend across ALL assets rather than reading one index. Genuinely different from
+what had been tested here (S&P vs its own averages, p=0.201; VIX bands,
+confounded) and it is what the morning scan's own headline pointed at: "nearly
+half the stocks in the S&P 500 are at cross purposes with the rest of the
+market". Median breadth in sample: 57% of names trending up.
+
+```
+              TRAIN              HOLDOUT
+weak <40%   -0.197R n=292      +0.411R n=126
+40-55%      -0.170R n=263      +0.385R n=121
+55-70%      -0.038R n=306      +0.371R n=214
+strong 70%+ -0.117R n=100      -0.453R n=19
+
+train picked 55-70% over weak; holdout gap -0.041R, p=0.854, SIGN FLIPPED
+```
+
+Every band negative on train, every band positive on holdout, ordering
+scrambled between them. The same shape as everything else.
+
+### "Designing Structure-Aware Exits and Maker-First Execution" — the useful one
+
+It diagnoses a mistake made here. `structure_exit_test.py` and three others all
+raised win rate and cut expectancy, and the reason is that they fired FROM THE
+FIRST BAR, cutting into the 25% of trades that reach target at +2.383R. The
+paper's item 12 is the fix: do not tighten into a trail until the trade has
+demonstrated it can run, reaching an MFE threshold such as 1R, "keeping
+early-stage risk control separate from late-stage profit protection".
+
+That separation does not exist here. One stop is both the invalidation level and
+the only profit protection. The paper's layered contract:
+
+  invalidation       structural break of the last higher low, PLUS a volatility
+                     buffer so noise is not mistaken for a break
+  profit protection  activates only after an MFE threshold, then Chandelier or
+                     structure-step
+  regime awareness   multi-timeframe, so the noisiest timeframe does not govern
+  cost realism       "too tight" increases churn enough to overwhelm the edge
+
+This repo has the first layer without the buffer, and none of the others.
+
+It also independently describes the LLM architecture built here on 2026-09-28:
+a deterministic execution engine with the model OUTSIDE the decision loop as a
+reviewer, schema-constrained rather than free-form. Its own example of a useful
+reviewer output is "MFE suggests trailing too early".
+
+### "Universe Construction, Turnover, and Segmentation" — right playbook, wrong engine
+
+About momentum ROTATION, so it applies to `momentum_factor.py` rather than the
+sweep screen. Two transferable pieces: HYSTERESIS (rotate only when a new
+candidate beats the held one by a margin covering costs), and a formal statement
+of what was measured here all day -- "the lower L, the more likely it is that
+the constituents will change hands from one holding period to the next", i.e.
+selectivity raises turnover without raising quality. It also confirms the
+liquidity floor from the other direction: momentum performs better among larger
+names.
+
+### "Algorithmic_Trading_Bot.pdf" — not useful
+
+A 2021 conference paper surveying what algorithmic trading is, plus Indian
+broker platforms. No methodology to act on and no result to replicate.
+
+---
+
 ## 22. HTF liquidity pools — null, and the premise was wrong
 
 The idea, and it was the best one of 2026-09-28: a sweep only matters if it runs
