@@ -1,7 +1,28 @@
 # stock-scanner
 
 Deterministic-first equity scanner and paper-trading system, with a local
-Gemma 3 analyst layer kept strictly out of the trading path.
+Gemma 3 layer that advises on every candidate, may refuse one, and reads every
+open position — while remaining unable to emit a price.
+
+*(Until 2026-09-28 this line read "kept strictly out of the trading path". That
+stopped being true when `llm_veto_enabled` was turned on, and a stale sentence
+at the top of a README is the same fault this project keeps finding in its own
+prompts.)*
+
+## Read this first
+
+**This strategy is unproven, and the repository is built to keep saying so.**
+
+Over two years of independent data, 861 setups, the configuration that actually
+runs earns **+0.000R per trade** (se 0.058). Twenty-three ideas have been tested
+against a train/holdout split and twenty-three were rejected. The one result
+long described here as validated — the 20M liquidity floor at p=0.022 — does not
+clear a Bonferroni threshold at the current trial count.
+
+What the project is genuinely good at is knowing that. Every number below is
+computed from cached bars at run time, every refusal is written to an audit log,
+every evaluation window is fingerprinted, and the model layer is graded rather
+than admired. Paper only. See **What is actually known** and `FREEZE.md`.
 
 ## The core idea
 
@@ -438,6 +459,95 @@ real low, both wrong, and would invent swing pivots months later), and a
 re-fetch overwrites what it overlaps, so running it five times a day equals
 running it once.
 
+## Twenty-three ideas tested, twenty-three rejected — and what that means
+
+Updated 2026-09-28. The count below is the headline number in this repository,
+because it bounds how much anything else here should be believed.
+
+Each was measured the same way: chronological train/holdout split, chosen on
+train only, holdout looked at once, permutation tested, and checked for a SIGN
+FLIP between halves. Four are described in detail in the sections that follow;
+the rest live in `WORKLIST.md` with their numbers.
+
+Thirteen tried to RANK one setup against another — RSI divergence, take-profit
+ladders, four shadow dimensions, delayed entry, four horizons, sweep rejection
+shape, and the strategy's own thesis that a pool of equal lows beats an isolated
+one (+0.616R on train, **−0.674R** on holdout). Every one flipped sign.
+
+The rest tried structure: a bearish-divergence exit, a structural lower-low
+exit, gap risk, relative strength, higher-timeframe liquidity pools, an
+accumulation signal borrowed from another project, VIX regime, and the joint
+risk/reward geometry. All null.
+
+**Two things did not die**, and both are statements about market STATE rather
+than stock quality:
+
+| | result |
+|---|---|
+| 20M liquidity floor | +0.114R below vs +0.776R above, p=0.022 |
+| S&P regime filter | below both averages −0.086R (n=179), p=0.201, and it HELD its value when the sample grew 57% |
+
+**And the trial count undermines the first one.** Declared trials are near
+seventy, so a Bonferroni threshold sits around 0.0007. The liquidity floor at
+p=0.022 does not clear it. The one result this project has called validated does
+not survive its own multiple-comparisons correction, and the deflated Sharpe of
+0.82 was computed against fifty trials rather than seventy.
+
+### The pattern underneath all of it
+
+Every test shows the same shape: **train half negative, holdout half positive.**
+Seven hold-duration arms, five timeframes, four VIX bands, four relative-strength
+bands. The variance between the two halves of the sample is larger than the
+variance between any strategy variant that can be constructed.
+
+Asked to argue against this analysis, the model gave the reading that has not
+been refuted: *"it is far more probable that this difference IS a symptom of a
+deeper, unaddressed flaw — perhaps a spurious correlation exploited by the
+system that breaks down when conditions shift."* That was treated here as a
+confound to explain away. It has not been shown to be one.
+
+### What the traded configuration actually earns
+
+Over two years of independent Alpaca SIP data, 861 setups, with the Friday
+flatten modelled and Friday-excluded entries removed — the configuration that
+actually runs:
+
+**+0.000R per trade, standard error 0.058.**
+
+Not proof of no edge. Fairly strong evidence of no LARGE one. Live paper trading
+disagrees — ten closed trades at a mean +0.477R, +$1,860 — but one trade
+(+3.197R) carries most of that and the interval contains zero.
+
+### What the filters do contribute
+
+Stacking them one at a time over 12,259 unfiltered setups:
+
+```
+raw pattern, no filters        12259   -0.027R
++ price >= $5                  12259   -0.027R
++ dollar volume >= 20M          6488   -0.032R
++ stop distance >= 1.5%         1889   +0.084R
++ reward:risk >= 1.5             528   +0.264R
+```
+
+The lift comes from RISK GEOMETRY, not from stock selection — which is exactly
+why thirteen selection ideas failed. It costs 96% of raw setups to get there,
+and that is where setup scarcity comes from.
+
+### Six routes to "more" that are now closed, with measurements
+
+| route | result |
+|---|---|
+| bigger stocks | all 22 mega-caps are already in the universe; NVDA trades $1.1B per bar |
+| more stocks | all 1504 symbols adds **20** tradeable names |
+| smaller stocks | $1–5B companies fail the liquidity floor by 10x |
+| finer bars | 15m gives **0.56x** the setups and worse results |
+| coarser bars | 90m/120m/240m significantly worse (p=0.028 / 0.006 / 0.014) |
+| day trading | −0.075R; only 1% of trades reach target |
+
+30m is now bracketed on both sides and looks like a genuine optimum rather than
+a default.
+
 ## Four ideas tested against the holdout, four rejected
 
 Each was measured with the same protocol: chronological split, choose on train
@@ -850,6 +960,66 @@ Ollama's `keep_alive` defaults to `45m`, not `-1`. Forever pinned 8.7 GB of RAM
 and 9.6 GB of VRAM around the clock for a model used seconds per half hour;
 45m outlives the scan cadence so it never reloads mid-session, then releases.
 
+## Where the model is measured, and where it is not
+
+Updated 2026-09-28. The distinction matters more than the headline.
+
+**Measured, and good.** `scripts/gemma_audit.py` hands the model this project's
+own facts and marks its answers against conclusions established by measurement.
+It scores **2/2** on the gradeable questions, and unprompted it identified the
+outlier trade skewing the live mean and the optimistic fill assumption — both
+later confirmed independently. Asked for an open assessment it returns
+`probably_no_edge` and `fund it: no`, and its criticism of the analysis has not
+been refuted.
+
+**Measured, and clean.** `scripts/llm_compliance.py` asks the same input five
+times at temperature 0 and checks each instruction against the prompt line that
+states it. **Zero violations across 15 opinions**: no enum breaches, no figures
+leaked into prose, no quote taken from another company's headlines, no veto
+without a reason, no ungrounded veto surviving.
+
+**Measured, and NOT good.** The veto is unstable. On a pending all-cash
+acquisition — the clearest case in the prompt — the model called it `weak` 5/5
+times and escalated to a veto **1/5**. The judgement is stable; the action is a
+coin flip, and `llm_veto_enabled` is currently True. A gate firing on 20% of
+identical inputs is not a gate.
+
+**Not measured at all.** Whether its per-candidate ranking predicts outcomes.
+`candidate_slate` records every candidate it ranked, taken and untaken, exactly
+so this can be scored later. There are three slates. It also cannot be
+backtested: the news store holds two days, so asking the model about 2025 gives
+it either no news or today's news, and the second is lookahead that would
+fabricate a spectacular result.
+
+### What it cannot do, by construction
+
+The ranking schema has **no numeric field**. The model cannot emit an entry, a
+stop, a target or a size — those come from `screens/smc.py` and
+`execution/sizing.py`. Asking whether it will follow the trading rules is the
+wrong question: it cannot reach them. Every claim it makes must also quote that
+company's own headline verbatim, and an ungrounded opinion has its veto
+discarded and its conviction reset to neutral by `ranking.order()`.
+
+### The rules it is given are generated, not typed
+
+`TradingPolicy.as_prose()` renders the live rules in English with every number
+taken from the field beside it. Turning a rule off removes its sentence.
+
+This is not tidiness. Typing rules into a prompt creates a second copy that goes
+stale silently, and that failed three times on 2026-09-28 alone — the capital
+taper described a schedule that had changed, `ranking.py` claimed the model
+"never sees prices" after it had been handed four, and the ranking prompt told
+it price was not its job while asking it to judge price. A human reading a stale
+docstring is mildly misled. A model reading a stale prompt reasons confidently
+from a false premise and cannot check.
+
+`scripts/review_positions.py` now runs as stage 4 of every scan, giving the
+model the full desk for each open position and recording a hold/exit call to the
+audit log. **Recorded, not enforced** — there is no `--execute` and no close
+path. An exit is the most dangerous authority to hand over: a wrong entry costs
+one R, while a model-driven close overrides the bracket, which is the only
+guaranteed protection this system has.
+
 ## The model layer is not measured yet
 
 The screens have a backtest, a random control and a clustered t-statistic. The
@@ -966,6 +1136,48 @@ real market data. There is no live-trading flag in this repo. Pointing it at a
 funded account is a decision to make deliberately, and the evidence behind the
 strategy is currently ~200 trades from 86 days of data, with its own stop
 threshold chosen by looking at those same trades.
+
+## What to do next, in order
+
+Updated 2026-09-28. Everything here is chosen because it either ADDS evidence or
+SETTLES a question — not because it adds a rule. Twenty-three attempts at the
+latter have failed.
+
+**1. Collect 2021 to now.** Not for significance. For the question the model
+sharpened and this project cannot currently answer: *does the strategy behave
+consistently across regimes, or does it only look like it works in aggregate?*
+Every test shows train negative and holdout positive, and the halves saw
+different markets — 48% of train setups in elevated/stressed volatility against
+24% of holdout. With 2022's nine-month bear market in the sample, that either
+keeps flipping (a clean, final answer) or it holds (something real for the first
+time). `MAX_STORED_BARS[30] = 5_000` caps the store at ~1.5 years and must be
+raised first, or deeper history is silently trimmed.
+
+**2. Fix the veto, or switch it off.** It fires on 20% of identical inputs at
+temperature 0 and under-fires on the clearest case in its own prompt. Deriving
+it from `conviction == weak` plus a named category would make it deterministic.
+Until then `llm_veto_enabled = False` costs nothing that is actually working.
+
+**3. Measure the fill rate.** Every backtest here assumes a GTC limit always
+fills. Live it only fills if price returns to the trigger close, so setups that
+gap away are counted and never entered. This is the largest unquantified gap
+between the published number and a real one, and it can only make the number
+worse.
+
+**4. Score the slate.** `candidate_slate` and `position_review` records exist so
+the model's calls can be checked against realised R. Three slates so far. This
+is the only path to giving it more authority as a measurement rather than a bet.
+
+**5. The short side.** Bearish sweeps are invisible to the screen rather than
+rejected by it. It roughly doubles the sample, covers the regime where long-only
+loses (−0.086R below both averages), and is the only thing that makes a
+higher-timeframe bias a SELECTOR rather than one more filter. Real work: a
+mirrored `detect()`, a `side` on `Setup`, an inverted `resolve()`, borrow costs,
+and asymmetric gap risk.
+
+**What not to do:** add filters. The search space has been sampled twenty-three
+times with one near-survivor, and every further test now costs more in
+multiple-comparisons correction than it can plausibly return.
 
 ## Roadmap
 
