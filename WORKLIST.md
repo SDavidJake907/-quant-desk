@@ -905,6 +905,69 @@ than another filter.
 
 ---
 
+## 24. The filters ARE the wrong shape. Exploiting it still fails.
+
+The operator's point, and it was right as a description: `min_risk_pct` and
+`min_reward_risk` are NOT independent. Both come from the same three prices --
+a tighter stop lowers risk_pct and RAISES reward_risk at the same time. So two
+separate floors measure one thing twice from opposite directions, and cut a
+RECTANGLE out of a space that is not box-shaped.
+
+The surface, 12259 raw setups, no filters:
+
+```
+stop %        rr 0-1.0  rr 1.0-1.5  rr 1.5-2.5  rr 2.5-4.0   rr 4+
+0-0.75           -0.01       -0.02       -0.00       -0.07    -0.18
+0.75-1.5         -0.01       -0.04       +0.01       +0.01    -0.12
+1.5-2.5          +0.02       -0.03       +0.03       +0.13    +0.41
+2.5-4.0          +0.01       -0.07       +0.07       +0.33    +0.21
+4.0+             +0.05       -0.01       -0.50         .        .
+
+live rectangle (stop>=1.5 AND rr>=1.5): n=900, +0.100R
+```
+
+The good region is the diagonal bottom-right: wide stop AND high reward:risk
+together. The rectangle also scoops up the +0.03 and -0.50 cells and excludes a
+mildly positive region at wide stops with low R:R. Worst cell on the grid is
+tight stop with high R:R (-0.18) -- a lottery ticket, a half-percent stop with a
+target four times away.
+
+### The fix that follows, and does not survive
+
+Multiply them and the diagonal becomes one number:
+`target distance % = risk_pct x reward_risk = (target-entry)/entry`.
+
+```
+            TRAIN              HOLDOUT
+<2%       +0.002R n=5531     -0.072R n=2453
+2-4%      -0.093R n=1648     -0.082R n=946
+4-6%      +0.189R n=553      -0.057R n=381
+6-10%     -0.224R n=312      +0.271R n=216
+10%+      -0.258R n=132      +0.323R n=87
+
+train picked 4-6% over 10%+, gap +0.447R
+holdout gap -0.380R, p=0.125, SIGN FLIPPED
+```
+
+Train's best band is holdout's second-worst; train's worst is holdout's best.
+
+### What this actually establishes
+
+This is the twenty-third null and the most informative one, because the
+DESCRIPTION was right and the exploitation still failed. The diagonal exists in
+the full sample and inverts when the sample is cut.
+
+It confirms what the model said unprompted before any of it was run: "a
+spurious correlation exploited by the system that breaks down when conditions
+shift". The train/holdout inversion was treated here as a volatility confound to
+explain away. It is not a confound. It is the finding, and it reproduces at
+every level examined -- filters, timeframes, exits, hold durations, VIX bands,
+relative strength, and now risk geometry.
+
+Structure that vanishes under every split is structure that is not there.
+
+---
+
 ## 22. HTF liquidity pools — null, and the premise was wrong
 
 The idea, and it was the best one of 2026-09-28: a sweep only matters if it runs

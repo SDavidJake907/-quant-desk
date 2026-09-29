@@ -34,14 +34,37 @@ def test_the_fingerprint_is_stable_across_field_order():
     assert a.fingerprint == b.fingerprint
 
 
-def test_defaults_match_what_the_holdout_validated():
-    """These four are the configuration the +0.218R out-of-sample result was
-    measured on. Changing a default silently would orphan that evidence."""
+def test_the_holdout_configuration_is_recorded_even_where_it_no_longer_holds():
+    """The +0.218R out-of-sample result was measured on FOUR defaults. Three
+    still hold. One does not, and that is written down rather than quietly
+    re-pinned.
+
+    `require_value_sweep` was True when +0.218R was measured and is now False.
+    Measured against itself on the 30m Alpaca store, same scan, flag toggled:
+
+        True   n=860   +0.054R  se 0.058   total +46.3R
+        False  n=1468  +0.039R  se 0.044   total +57.1R
+
+    The quality difference is +0.015R against standard errors near 0.05 --
+    indistinguishable from zero -- while the filter discards 41% of the sample.
+
+    SO +0.218R NO LONGER DESCRIBES THE LIVE CONFIGURATION. It was already
+    weakened: it came from a 96-session Yahoo window that contained no
+    down-trending sessions, the same window that produced +0.311R while two
+    years of the same rules produce +0.000R, and it sits at a p-value that does
+    not survive a Bonferroni correction at ~70 declared trials.
+
+    This test now pins the three that still hold, and pins the fourth as
+    CHANGED so nobody quotes +0.218R as though it described what runs.
+    """
     p = TradingPolicy()
     assert p.interval_minutes == 30
     assert p.swing_k == 2
-    assert p.require_value_sweep is True
     assert p.min_risk_pct == 1.5
+    assert p.require_value_sweep is False, (
+        "if this is True again, the orphaning above no longer applies and this "
+        "docstring must be revisited rather than the assertion flipped"
+    )
 
 
 def test_the_hold_limit_matches_the_backtest():

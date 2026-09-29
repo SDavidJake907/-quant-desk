@@ -56,7 +56,28 @@ class TradingPolicy(Frozen):
     # `test_policy.py` pins these so a default cannot drift again.
     interval_minutes: int = 30
     swing_k: int = 2
-    require_value_sweep: bool = True
+    #: TURNED OFF 2026-09-28 after being measured against itself.
+    #:
+    #: Same scan, flag toggled, 30m Alpaca store:
+    #:
+    #:     True   n=860   +0.054R  se 0.058   total +46.3R
+    #:     False  n=1468  +0.039R  se 0.044   total +57.1R
+    #:
+    #: The effect on per-trade quality is +0.015R against standard errors near
+    #: 0.05 -- indistinguishable from zero. It does not measurably improve the
+    #: trades it keeps. It discards 41% of the sample to do it, and total return
+    #: is 23% HIGHER without it.
+    #:
+    #: Setup scarcity is the binding constraint on everything here: 224 trades
+    #: are needed to exclude zero and the scan finds about 1.2 a session. This
+    #: buys 70% more evidence per unit time at no measurable cost in quality.
+    #:
+    #: WHAT IS GIVEN UP. This encoded the strategy's own thesis, that a sweep
+    #: should occur at a volume-profile value area, so removing it removes part
+    #: of the idea rather than a parameter. And the difference sits inside the
+    #: error bars, so the filter is not proven useless -- only unproven useful.
+    #: Set back to True to restore it.
+    require_value_sweep: bool = False
     min_risk_pct: float = 1.5
     min_reward_risk: float = 1.5
     #: How many bars back a trigger may be and still be acted on. TWO, not
