@@ -857,6 +857,54 @@ survivorship bias.
 
 ---
 
+## 23. 15-minute bars: fewer setups AND worse. 30m is bracketed.
+
+Section 18 found a monotonic trend -- 30m beat 60/90/120/240, significantly from
+90m out -- and 30m was the FINEST interval in the store. That was a data limit,
+not a finding, so 501 symbols of native 15m SIP bars were collected (6,693,701
+bars, 13,440 per symbol, 26 per session, validated).
+
+The extrapolation was that finer would be better and would roughly DOUBLE the
+setups. Both halves of that were wrong.
+
+```
+  bar   setups   hold       ALL     TRAIN   HOLDOUT     win
+  15m      412   120b    -0.045    -0.076    +0.016   31.6%
+  30m      741    60b    +0.012    -0.125    +0.288   35.9%
+
+  15m vs 30m on holdout: -0.271R  n=138/247  p=0.161
+  setup rate: 15m gives 0.56x the opportunities
+```
+
+**Fewer setups: 0.56x, not 2x.** The likely cause is `min_risk_pct = 1.5`. On
+15m bars swing lows sit closer together, so entry-to-stop distance is smaller
+and far more setups fail the floor. The pattern must also complete within the
+same number of BARS, which is half the wall-clock time. A finer bar does not
+create more structure; it fragments the same structure into pieces that no
+longer clear the risk floor.
+
+**And worse: -0.045R against +0.012R.** Not significant (p=0.161) but consistent
+in direction across ALL and HOLDOUT.
+
+So the trend REVERSES below 30m. 30m is now bracketed on both sides and looks
+like a genuine optimum rather than merely the best available.
+
+### What this closes
+
+"More opportunity" is not reachable by widening in the two obvious directions:
+
+  universe    all 1504 symbols adds 20 tradeable names (section 20)
+  timeframe   finer bars produce FEWER setups and worse ones (here)
+
+Setup scarcity -- which Gemma named as the top priority when audited, and which
+is the binding constraint on every "we cannot tell yet" in this project -- has
+one remaining source: THE SHORT SIDE. Bearish sweeps are invisible to the
+screen rather than rejected by it, and adding them roughly doubles the sample
+while being the only thing that makes higher-timeframe bias a SELECTOR rather
+than another filter.
+
+---
+
 ## 22. HTF liquidity pools — null, and the premise was wrong
 
 The idea, and it was the best one of 2026-09-28: a sweep only matters if it runs
