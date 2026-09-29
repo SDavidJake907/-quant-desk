@@ -243,3 +243,33 @@ def test_the_context_gate_is_free_when_it_constrains_nothing():
     with patch.object(intraday_context, "compute") as never:
         assert intraday_context.passes(object()) is True
         never.assert_not_called()
+
+
+def test_the_generated_prose_tracks_the_fields_it_describes():
+    """The model is given the rules in English. If that English is TYPED it
+    becomes a second copy that goes stale silently, and a model reading a stale
+    prompt reasons confidently from a false premise and cannot check.
+
+    That failure happened three times on 2026-09-28 alone: the capital taper
+    described a schedule that had changed, ranking.py claimed the model "never
+    sees prices" after it had been given four, and the ranking prompt told it
+    price was not its job while asking it to judge price.
+
+    So the prose is generated, and this pins that turning a rule off turns its
+    sentence off with it.
+    """
+    on = TradingPolicy(require_value_sweep=True).as_prose()
+    off = TradingPolicy(require_value_sweep=False).as_prose()
+    assert "value area" in on
+    assert "value area" not in off
+
+    loose = TradingPolicy(min_relative_strength=-100.0).as_prose()
+    assert "12-1 momentum" not in loose
+    assert "12-1 momentum" in TradingPolicy(min_relative_strength=-10.0).as_prose()
+
+    assert "1.5% below the entry" in TradingPolicy(min_risk_pct=1.5).as_prose()
+    assert "2.5% below the entry" in TradingPolicy(min_risk_pct=2.5).as_prose()
+
+    held = TradingPolicy(flat_before_weekend=True).as_prose()
+    free = TradingPolicy(flat_before_weekend=False).as_prose()
+    assert "before the weekend" in held and "before the weekend" not in free

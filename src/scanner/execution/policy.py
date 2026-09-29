@@ -368,6 +368,72 @@ class TradingPolicy(Frozen):
         blob = json.dumps(self.model_dump(mode="json"), sort_keys=True)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
 
+    def as_prose(self) -> str:
+        """The live rules in English, GENERATED from the fields.
+
+        WHY GENERATED AND NOT WRITTEN
+        A model needs the rules in language, and the obvious way to give it
+        them is to type them into the prompt. That creates a second copy of
+        every rule, and the copy goes stale silently. It has already happened
+        three times in this repository on one day: this module's own taper
+        described a schedule that had changed; `ranking.py` claimed the model
+        "never sees prices" after it had been given four of them; and the
+        ranking prompt told the model price was not its job in the same breath
+        as asking it to judge price.
+
+        A human reading a stale docstring is mildly misled. A MODEL reading a
+        stale prompt reasons confidently from a false premise and cannot check.
+
+        So nothing here is typed. Every number and every clause comes from the
+        field beside it, which means turning a rule off turns its sentence off
+        too, and `test_policy.py` pins the correspondence.
+
+        This describes the RULES only. The measured behaviour of the strategy
+        -- how often it stops out, where the money comes from -- is evidence
+        about it rather than policy, changes without the policy changing, and
+        belongs in the caller's prompt, not here.
+        """
+        lines = [
+            f"The screen looks for a liquidity sweep on {self.interval_minutes}"
+            f"-minute bars: price takes out a prior swing low, makes a higher "
+            f"low, breaks character, then breaks structure. Swings are "
+            f"confirmed {self.swing_k} bars either side. It is LONG ONLY -- "
+            f"there is no short side, so a bearish setup is invisible to it "
+            f"rather than rejected.",
+            f"Entry is the close of the break bar. The stop is the higher low, "
+            f"and must sit at least {self.min_risk_pct}% below the entry. The "
+            f"target is the highest swing high before the sweep, and must pay "
+            f"at least {self.min_reward_risk} times the risk.",
+            f"A name is only tradeable above ${self.min_price:.0f} and above "
+            f"${self.min_dollar_volume / 1e6:.0f}M of trading per bar.",
+        ]
+        if self.min_range_pct > 0:
+            lines.append(
+                f"It must also average at least {self.min_range_pct}% of range "
+                f"per bar.")
+        if self.min_relative_strength > -100:
+            lines.append(
+                f"And it must not lag the S&P 500 by more than "
+                f"{abs(self.min_relative_strength):.0f} points of 12-1 "
+                f"momentum.")
+        if self.require_value_sweep:
+            lines.append("The sweep must occur at a volume-profile value area.")
+        closes = [f"the stop or the target, held by the broker",
+                  f"a limit of {self.max_hold_bars} bars in the position"]
+        if self.flat_before_weekend:
+            closes.append("a forced close before the weekend")
+        lines.append("A trade ends at " + ", or ".join(closes) + ".")
+        lines.append(
+            f"At most {self.max_positions} positions are open at once, each "
+            f"risking {self.risk_pct}% of equity in principle and capped at "
+            f"{self.max_position_pct}% of equity in size -- the cap usually "
+            f"binds, so real risk per trade is smaller than the headline.")
+        if self.block_earnings_within_days:
+            lines.append(
+                f"A name reporting earnings within {self.block_earnings_within_days} "
+                f"days is refused.")
+        return '\n'.join(lines)
+
     def describe(self) -> str:
         return (f"{self.interval_minutes}m k={self.swing_k} "
                 f"stop>={self.min_risk_pct}% rr>={self.min_reward_risk} "

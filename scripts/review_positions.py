@@ -82,10 +82,9 @@ SCHEMA = {
 }
 
 PROMPT = """You are reviewing an OPEN position in an automated trading system.
-It was entered on a liquidity-sweep setup: price swept a prior swing low, made
-a higher low, broke character, then broke structure. It is long. A broker-held
-bracket will close it at the stop or the target without your involvement, and a
-separate rule closes it before the weekend.
+
+THE RULES IT RUNS UNDER, generated from the live policy so they cannot be stale:
+{rules}
 
 Your only question: is there a reason to leave EARLY, before any of those fire?
 
@@ -192,7 +191,7 @@ async def main(model: str) -> int:
             print(f"\n{BOLD}{'=' * 68}{RESET}")
             print(block)
             try:
-                out = await chat_json(PROMPT.format(block=block), SCHEMA,
+                out = await chat_json(PROMPT.format(rules=V.as_prose(), block=block), SCHEMA,
                                       client, model=model)
             except Exception as exc:                         # noqa: BLE001
                 print(f"  {YELLOW}model unavailable: {exc}{RESET}")

@@ -81,20 +81,20 @@ SCHEMA = {
                  "exit_trigger", "evidence_quote"],
 }
 
-PROMPT = """A mechanical screen found a liquidity-sweep setup: price swept a
-prior swing low, made a higher low, broke character, then broke structure. It
-checked the pattern, the stop, the reward:risk and the liquidity. You are not
-re-checking the pattern and you cannot see the chart.
+PROMPT = """A mechanical screen found a setup and checked it against every
+rule below. You are not re-checking the pattern and you cannot see the chart.
+
+THE RULES, generated from the live policy so they cannot be stale:
+{rules}
 
 You are being shown everything the system computed and normally throws away --
 every indicator, the daily trend, and the verdict of every filter including the
 ones that would REJECT this candidate. Judge the whole picture.
 
-Be aware of what this strategy actually is. It is long only. It holds for a few
-sessions, not minutes. Its target is a structural level, not a round number. Its
-stop is a swing low, not a percentage. About 60% of its trades stop out and the
-money comes from the 25% that reach target, so a trade that merely looks likely
-to win small is not what it wants.
+MEASURED BEHAVIOUR, which is evidence about the strategy rather than policy and
+so is stated separately: about 60% of its trades stop out and the money comes
+from the 25% that reach target. A trade that merely looks likely to win small is
+not what it wants.
 
 decision: take or skip.
 conviction: strong, neutral, or weak.
@@ -232,7 +232,7 @@ async def main(symbols: list[str], store: str, model: str, limit: int) -> int:
                   f"{(GREEN + 'TAKE' if mechanical else RED + 'SKIP')}{RESET}"
                   f"   {DIM}(every gate must pass){RESET}")
             try:
-                out = await chat_json(PROMPT.format(block=block), SCHEMA,
+                out = await chat_json(PROMPT.format(rules=V.as_prose(), block=block), SCHEMA,
                                       client, model=model)
             except Exception as exc:                         # noqa: BLE001
                 print(f"  {YELLOW}model unavailable: {exc}{RESET}")
