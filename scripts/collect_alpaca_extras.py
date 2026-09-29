@@ -110,6 +110,23 @@ async def _paged(client: httpx.AsyncClient, url: str, params: dict,
     return out
 
 
+def _months(start: str) -> list[tuple[str, str]]:
+    """Inclusive month windows from `start` to today, as ISO date pairs."""
+    begin = date.fromisoformat(start)
+    today = date.today()
+    out: list[tuple[str, str]] = []
+    year, month = begin.year, begin.month
+    while (year, month) <= (today.year, today.month):
+        first = date(year, month, 1)
+        if month == 12:
+            nxt = date(year + 1, 1, 1)
+        else:
+            nxt = date(year, month + 1, 1)
+        out.append((max(first, begin).isoformat(), nxt.isoformat()))
+        year, month = nxt.year, nxt.month
+    return out
+
+
 async def collect_news(client: httpx.AsyncClient, symbols: list[str],
                        start: str) -> int:
     """Point-in-time news, written one JSONL file per PUBLICATION day."""
@@ -117,11 +134,27 @@ async def collect_news(client: httpx.AsyncClient, symbols: list[str],
     by_day: dict[str, list[dict]] = {}
     seen: set[str] = set()
     done = 0
+    # MONTH BY MONTH, NOT ONE LONG PAGE WALK.
+    #
+    # The first version asked for the whole range at once and relied on
+    # pagination. It hit the page cap partway through and produced coverage
+    # that was complete to 2025-07 and then collapsed to 4-11 days a month.
+    # That is worse than no history: a gap looks identical to "no news
+    # existed", so every recent setup would have scored as uncovered and any
+    # LLM backtest would have been biased toward the period that happened to
+    # be dense.
+    #
+    # Bounding each request to one month bounds the pages it needs, so the cap
+    # can never silently truncate the range.
+    windows = list(_months(start))
     for offset in range(0, len(symbols), 20):
         batch = symbols[offset:offset + 20]
-        items = await _paged(client, f"{DATA}/v1beta1/news", {
-            "symbols": ",".join(batch), "start": start, "limit": 50,
-            "sort": "asc"}, "news")
+        items: list = []
+        for window_start, window_end in windows:
+            items += await _paged(client, f"{DATA}/v1beta1/news", {
+                "symbols": ",".join(batch), "start": window_start,
+                "end": window_end, "limit": 50, "sort": "asc"}, "news")
+            await asyncio.sleep(0.1)
         for item in items:
             ident = str(item.get("id", ""))
             if not ident or ident in seen:
