@@ -85,12 +85,20 @@ def _headers() -> dict[str, str]:
 
 
 async def fetch_symbol(client: httpx.AsyncClient, symbol: str,
-                       start: str) -> list[list[float]] | str:
-    """Every SIP bar for one symbol, paginated. Returns rows or an error."""
+                       start: str, minutes: int = 30
+                       ) -> list[list[float]] | str:
+    """Every SIP bar for one symbol, paginated. Returns rows or an error.
+
+    THE TIMEFRAME FOLLOWS `minutes`. It used to be hardcoded "30Min" while
+    `--minutes` controlled only the SAVE, so `--minutes 15` fetched 30-minute
+    bars and stored them labelled as 15-minute ones. Nothing downstream could
+    have detected that: the file name, the bar count and the session grouping
+    would all look plausible, and every number computed from it would be wrong.
+    """
     rows: list[list[float]] = []
     token = None
     while True:
-        params = {"timeframe": "30Min", "start": start, "limit": 10000,
+        params = {"timeframe": f"{minutes}Min", "start": start, "limit": 10000,
                   "feed": "sip", "adjustment": "all"}
         if token:
             params["page_token"] = token
@@ -127,8 +135,13 @@ async def fetch_symbol(client: httpx.AsyncClient, symbol: str,
             # also carry a fraction of the volume, which would drag the
             # dollar-volume average exactly the way the 16:00 placeholder did.
             #
-            # 09:30 through 15:30 inclusive is the 13 buckets of a US session.
-            if not ((9, 30) <= (local.hour, local.minute) <= (15, 30)):
+            # The LAST bucket of a session STARTS at 16:00 minus the bar
+            # width: 15:30 for 30m, 15:45 for 15m, 15:55 for 5m. Hardcoding
+            # 15:30 here silently dropped the final bar of every session at
+            # any interval finer than 30 minutes.
+            last_start = 16 * 60 - minutes
+            minute_of_day = local.hour * 60 + local.minute
+            if not (9 * 60 + 30) <= minute_of_day <= last_start:
                 continue
 
             rows.append([when.timestamp(), float(bar["o"]), float(bar["h"]),
@@ -150,7 +163,7 @@ async def main(index: str, start: str, limit: int, minutes: int) -> int:
         if limit:
             symbols = symbols[:limit]
 
-        print(f"{DIM}{len(symbols)} symbol(s), 30m SIP bars from {start}"
+        print(f"{DIM}{len(symbols)} symbol(s), {minutes}m SIP bars from {start}"
               f"{RESET}")
         print(f"{DIM}store: {STORE}  (the Yahoo store is untouched){RESET}")
 
@@ -164,7 +177,7 @@ async def main(index: str, start: str, limit: int, minutes: int) -> int:
             for offset in range(0, len(symbols), CONCURRENCY):
                 batch = symbols[offset:offset + CONCURRENCY]
                 results = await asyncio.gather(
-                    *(fetch_symbol(client, s, start) for s in batch))
+                    *(fetch_symbol(client, s, start, minutes) for s in batch))
                 for symbol, result in zip(batch, results):
                     if isinstance(result, str):
                         failed += 1
@@ -193,7 +206,7 @@ async def main(index: str, start: str, limit: int, minutes: int) -> int:
         depths.sort()
         median = depths[len(depths) // 2]
         print(f"{DIM}bars per symbol: min {depths[0]}  median {median}  "
-              f"max {depths[-1]}   ~{median / 13 / 252:.1f} years{RESET}")
+              f"max {depths[-1]}   ~{median / (390 / minutes) / 252:.1f} years{RESET}")
         print(f"{DIM}total bars: {sum(depths):,}{RESET}")
     for problem in problems:
         print(f"  {YELLOW}{problem}{RESET}")
