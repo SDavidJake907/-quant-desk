@@ -67,22 +67,20 @@ _SCHEMA = {
     "required": ["opinions"],
 }
 
-_PROMPT = """You are reviewing companies that have already passed a mechanical \
-price screen. The screen has decided these are valid setups. You are NOT \
-judging the chart — you cannot see it, and price is not your job.
+_PROMPT = """A mechanical screen has already found a valid structural setup in each company below. It checked the pattern, the stop, the reward:risk and the liquidity. You are not re-checking any of that, and you cannot see the chart.
 
-Your only question for each company: is there anything in its recent news that \
-makes it a WORSE candidate than the others here?
+WHAT THE SCREEN DOES NOT KNOW. It has no opinion about trend: it flags a setup in a company that has fallen all year exactly as readily as one in a market leader. And it cannot read. So you are given two things it could not use — the company's recent news, and a few facts it computed and discarded.
 
-Each company is listed with its SECTOR and how that sector stands against the market, then with facts the screen computed and did not act on: its 12-1 relative strength against the S&P 500, how far it sits from its 200-day average, how far below its 52-week high, and the setup's reward:risk. Use them together with the news — a falling stock with bad news is a different case from a falling stock with none.
+Your question for each company: taking the news and those facts TOGETHER, is there a reason this particular setup is less trustworthy than the others here?
 
-YOU MAY REFUSE. Set veto true to stop a trade outright, with veto_reason giving the ground in a few words. Refuse when the news and the price picture together say the structure is unreliable — a company in a sustained decline whose news explains why, a pending merger, litigation, or a withdrawn outlook. Do NOT refuse merely because a stock is weak: weakness after a sweep is the pattern being traded. Refuse when you can say what is wrong, not when you are unsure.
+A falling stock whose news explains the fall is a different case from a falling stock with no news at all. The first is a company in trouble. The second may be exactly the shakeout this strategy trades. Judge the combination, not either half alone.
 
-- strong   nothing in the news works against it; the move is unexplained by news
+conviction:
+- strong   nothing works against it; the decline or the move is unexplained
 - neutral  ordinary news; nothing that changes what the price means
-- weak     something that makes price structure unreliable — a merger or \
-acquisition, litigation, a restructuring, a guidance withdrawal, or a move \
-that is entirely explained by a one-off announcement
+- weak     something makes the price structure unreliable — a merger or acquisition, litigation, a restructuring, a guidance withdrawal, a sustained decline the news accounts for, or a move entirely explained by one announcement
+
+YOU MAY REFUSE. Set veto true to stop the trade outright, with veto_reason giving the ground in a few words. Refuse when you can name what is wrong: a pending merger, active litigation, a withdrawn outlook, or a decline whose cause is in the headlines and has not finished. Do NOT refuse because a stock is merely weak — weakness into a sweep is the pattern being traded. Refuse when you can say what is wrong, never when you are simply unsure. A veto with no quote behind it is discarded, so do not guess.
 
 driver: what is moving this stock, judged from the headlines —
   "company"  something specific to this business
@@ -90,15 +88,13 @@ driver: what is moving this stock, judged from the headlines —
              decision for banks, a drug-pricing rule for health care)
   "market"   a broad risk-on or risk-off move affecting everything
   "none"     no news explains it
-This matters: a price move caused by a sector-wide event is not the same event as one caused by the company, even when the chart looks identical.
+A move caused by a sector-wide event is not the same event as one caused by the company, even when the chart looks identical.
 
 concern: name the specific worry in a few words, or "none".
-evidence_quote: copy a span VERBATIM from that company's headlines that \
-supports your call. Copy exactly. If there is no news, use an empty string and \
-say conviction "neutral".
 
-Report no prices, percentages, targets or figures of any kind. You are ranking \
-by context only.
+evidence_quote: copy a span VERBATIM from THAT COMPANY'S OWN headlines. Copy it exactly. Every company below has its own list — a quote taken from another company's headlines is discarded and its veto with it. If a company has no news, use an empty string and say conviction "neutral".
+
+Do not repeat the figures back, and invent no prices, targets or percentages of your own. The numbers are context for your judgement, not output.
 
 Companies:
 {companies}
