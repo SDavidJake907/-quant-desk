@@ -77,6 +77,20 @@ EARLIEST = "2016-01-01"
 CONCURRENCY = 8
 
 STORE = Path("data/intraday_alpaca")
+#: EXTENDED HOURS GO SOMEWHERE ELSE, ALWAYS.
+#:
+#: Every structural rule in this project assumes a 13-bar regular session with
+#: a gap between them: `crosses_session`, `is_stale_session`, `session_slot`,
+#: the Friday flatten and the 60-bar hold limit of "about 4.6 sessions". A
+#: 32-bucket extended session is not more of the same data, it is a different
+#: instrument, and mixing the two would silently invalidate every measurement
+#: taken on the first.
+#:
+#: So `--extended` writes here and the trading path never reads it. It exists
+#: to answer questions the regular store cannot -- what the pre-market range
+#: does to the open, whether an overnight gap was already visible at 08:00 --
+#: and those are research questions.
+EXTENDED_STORE = Path("data/intraday_extended")
 
 
 def _headers() -> dict[str, str]:
@@ -85,7 +99,8 @@ def _headers() -> dict[str, str]:
 
 
 async def fetch_symbol(client: httpx.AsyncClient, symbol: str,
-                       start: str, minutes: int = 30
+                       start: str, minutes: int = 30,
+                       extended: bool = False
                        ) -> list[list[float]] | str:
     """Every SIP bar for one symbol, paginated. Returns rows or an error.
 
@@ -139,10 +154,11 @@ async def fetch_symbol(client: httpx.AsyncClient, symbol: str,
             # width: 15:30 for 30m, 15:45 for 15m, 15:55 for 5m. Hardcoding
             # 15:30 here silently dropped the final bar of every session at
             # any interval finer than 30 minutes.
-            last_start = 16 * 60 - minutes
-            minute_of_day = local.hour * 60 + local.minute
-            if not (9 * 60 + 30) <= minute_of_day <= last_start:
-                continue
+            if not extended:
+                last_start = 16 * 60 - minutes
+                minute_of_day = local.hour * 60 + local.minute
+                if not (9 * 60 + 30) <= minute_of_day <= last_start:
+                    continue
 
             rows.append([when.timestamp(), float(bar["o"]), float(bar["h"]),
                          float(bar["l"]), float(bar["c"]), float(bar["v"])])
@@ -152,7 +168,8 @@ async def fetch_symbol(client: httpx.AsyncClient, symbol: str,
     return rows
 
 
-async def main(index: str, start: str, limit: int, minutes: int) -> int:
+async def main(index: str, start: str, limit: int, minutes: int,
+               extended: bool = False) -> int:
     if not settings.alpaca_key_id or not settings.alpaca_secret_key:
         print(f"{RED}Alpaca keys are not configured{RESET}")
         return 2
@@ -165,19 +182,21 @@ async def main(index: str, start: str, limit: int, minutes: int) -> int:
 
         print(f"{DIM}{len(symbols)} symbol(s), {minutes}m SIP bars from {start}"
               f"{RESET}")
-        print(f"{DIM}store: {STORE}  (the Yahoo store is untouched){RESET}")
+        print(f"{DIM}store: {EXTENDED_STORE if extended else STORE}"
+          f"  (the Yahoo store is untouched){RESET}")
 
         stored = failed = 0
         depths: list[int] = []
         problems: list[str] = []
         began = time.perf_counter()
         original = history.STORE_DIR
-        history.STORE_DIR = STORE
+        history.STORE_DIR = EXTENDED_STORE if extended else STORE
         try:
             for offset in range(0, len(symbols), CONCURRENCY):
                 batch = symbols[offset:offset + CONCURRENCY]
                 results = await asyncio.gather(
-                    *(fetch_symbol(client, s, start, minutes) for s in batch))
+                    *(fetch_symbol(client, s, start, minutes, extended)
+                      for s in batch))
                 for symbol, result in zip(batch, results):
                     if isinstance(result, str):
                         failed += 1
@@ -224,5 +243,9 @@ if __name__ == "__main__":
                    help=f"earliest available is {EARLIEST}")
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--minutes", type=int, default=V.interval_minutes)
+    p.add_argument("--extended", action="store_true",
+                   help="keep 04:00-19:30 bars, into a SEPARATE store "
+                        "the trading path never reads")
     a = p.parse_args()
-    raise SystemExit(asyncio.run(main(a.index, a.start, a.limit, a.minutes)))
+    raise SystemExit(asyncio.run(
+        main(a.index, a.start, a.limit, a.minutes, a.extended)))

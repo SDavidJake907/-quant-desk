@@ -23,7 +23,8 @@ $tasks = @(
     "stock-scanner-flatten",
     "stock-scanner-outcomes",
     "stock-scanner-news",
-    "stock-scanner-sector"
+    "stock-scanner-sector",
+    "stock-scanner-extended"
 )
 
 if ($Remove) {
@@ -148,3 +149,19 @@ $sectorSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTim
 $sectorAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_sector.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-sector" -Trigger $sectorTrigger -Action $sectorAction -Settings $sectorSettings -Description "Median sector relative strength, written before the first scan (05:00 AK)" -Force | Out-Null
 Write-Output "registered stock-scanner-sector  05:00 AK daily"
+
+# --- extended-hours research data -------------------------------------------
+# 18:00 AK = 22:00 ET, after the post-market session closes, so the day is
+# complete. Writes to data/intraday_extended, which the trading path never
+# reads: a 32-bucket session is a different instrument from a 13-bucket one.
+#
+# Bars not saved cannot be recovered later, and these cost nothing. Measured:
+# regular hours are 82.3% of dollar volume, the "London" window 1.4% and Asia
+# 0.3%, so this is research data rather than a second market -- but the
+# pre-market range and the 09:00 hour that carries 16.6% of volume are real,
+# and the regular store cannot see either.
+$extTrigger = New-ScheduledTaskTrigger -Daily -At 6:00PM
+$extSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 3) -MultipleInstances IgnoreNew
+$extAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_extended.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-extended" -Trigger $extTrigger -Action $extAction -Settings $extSettings -Description "Extended-hours SIP bars 04:00-19:30 ET into a separate research store (18:00 AK)" -Force | Out-Null
+Write-Output "registered stock-scanner-extended 18:00 AK daily"
