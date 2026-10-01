@@ -43,13 +43,17 @@ if (-not $running) {
     if (Test-Path $ollama) {
         Write-Output "       starting Ollama..."
         Start-Process -FilePath $ollama -ArgumentList "serve" -WindowStyle Hidden
-        Start-Sleep -Seconds 6
     }
 }
+# Polled, not slept. A cold start after a reboot took longer than the fixed 6s
+# this used to wait, and the check reported Ollama down while it was coming up.
 $tags = $null
-try {
-    $tags = Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -TimeoutSec 10
-} catch { }
+$deadline = (Get-Date).AddSeconds(45)
+while (-not $tags -and (Get-Date) -lt $deadline) {
+    try {
+        $tags = Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -TimeoutSec 5
+    } catch { Start-Sleep -Seconds 2 }
+}
 Report ($null -ne $tags) "Ollama API" "http://localhost:11434"
 
 # --- 2. The model the triage layer actually asks for -----------------------
@@ -73,7 +77,9 @@ $expected = @(
     "stock-scanner-flatten",
     "stock-scanner-outcomes",
     "stock-scanner-news",
-    "stock-scanner-sector"
+    "stock-scanner-sector",
+    "stock-scanner-extended",
+    "stock-scanner-extras"
 )
 $registered = @(Get-ScheduledTask -TaskName "stock-scanner-*" -ErrorAction SilentlyContinue)
 foreach ($name in $expected) {
@@ -82,7 +88,7 @@ foreach ($name in $expected) {
         $info = Get-ScheduledTaskInfo -TaskName $name
         Report ($task.State -ne "Disabled") $name "$($task.State), next $($info.NextRunTime)"
     } else {
-        Report $false $name "NOT REGISTERED - run scriptsegister_tasks.ps1"
+        Report $false $name "NOT REGISTERED - run scripts\register_tasks.ps1"
     }
 }
 foreach ($task in $registered) {

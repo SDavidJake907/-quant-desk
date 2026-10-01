@@ -20,5 +20,5 @@ set LOG=logs\scheduled.log
 echo. >> "%LOG%"
 echo ===== SECTOR %DATE% %TIME% ===== >> "%LOG%"
 
-".venv\Scripts\python.exe" "scriptsefresh_sector_rs.py" --index sp500 >> "%LOG%" 2>&1
+".venv\Scripts\python.exe" "scripts\refresh_sector_rs.py" --index sp500 >> "%LOG%" 2>&1
 exit /b 0
