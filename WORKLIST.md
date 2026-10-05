@@ -1067,6 +1067,23 @@ No edge on its own and the sweep adds nothing distinguishable from chance.
 The one stable cell is a warning: gaps of 4% or more lose in all four rows --
 news-driven gaps continue, the model's own named risk. Do not fade them.
 
+### Volatility buffer under the stop -- null, the familiar flip
+
+`stop_buffer_test.py`: stop = higher low - k x ATR(14, 30m) at the trigger;
+entry and target unchanged; R against each arm's own risk; Friday flatten.
+
+```
+buffer      TRAIN    HOLDOUT  stopped  vs live (holdout)
+0 (live)    -0.128   +0.185   48%
+0.25 ATR    -0.118   +0.168   44%      -0.017R p=0.401  FLIP
+0.5 ATR     -0.102   +0.132   41%      -0.053R p=0.031  FLIP
+1.0 ATR     -0.078   +0.120   35%      -0.065R p=0.063  FLIP
+```
+
+Every buffer helps on train and hurts on holdout. It does cut stop-outs
+(48% -> 35%), but a wider stop shrinks every winner in R. The paper's
+invalidation-plus-buffer layer does not earn its place on this setup.
+
 ---
 
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
