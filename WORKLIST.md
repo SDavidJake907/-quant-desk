@@ -149,9 +149,11 @@ cores while using one:
       "clustered" t of **+2.42** treats rebalances as independent and overstates
       confidence. Use a lag of at least `horizon/step − 1` (= 2), or block
       bootstrap.
-- [ ] Re-test after costs. Published large-cap momentum implementation runs
+- [x] Re-test after costs (see above: 50bps leaves +2.18%/hold). Published large-cap momentum implementation runs
       **2–4% annually** against ~7% gross excess — potentially half the result.
-- [ ] Only after both: decide whether +1.73% excess survives.
+- [x] Only after both: decide whether the excess survives. It survives costs;
+      it does not clear |t|=2 after the overlap correction (1.89). A lead for a
+      second engine in its own window, not a proven edge.
 
 ## 6. Momentum as a separate engine — not grafted onto trade.py
 
