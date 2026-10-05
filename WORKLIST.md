@@ -968,6 +968,37 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 29. resolve() holds through the weekend; live does not. -0.063R/trade
+
+`backtest.setups.resolve` has no Friday flatten. Nearly every backtest here
+resolves through it; live closes everything before the weekend
+(`flat_before_weekend=True`). `flatten_gap_test.py`, 1468 setups, 2y:
+
+```
+resolve              +0.039R  total  +57.1R
+walk, no flatten     +0.039R  total  +57.1R   identical on 1468/1468
+walk, flatten        -0.024R  total  -35.6R   <- what live runs
+flattened 549/1468 (37%): held +0.553R, flattened +0.384R
+```
+
+The simulators agree on everything else; the whole gap is the weekend.
+resolve() does model the gap risk (a Monday open through the stop fills at
+the open), and the sample includes the 2025 drawdown. On the 307 gated
+setups since 2026-03-17: +0.395R resolved vs +0.216R flattened.
+
+Consequences:
+- Absolute R from any resolve-based test overstates live by ~0.06R/trade
+  (more in the recent sample). Between-group comparisons share the bias and
+  mostly stand; quoted levels (e.g. sector-leading +0.692R) are inflated.
+- The flatten's measured cost has moved: -0.213R (HANDOFF), -0.012R (window
+  11 note), -0.063R here. It was adopted as a RISK decision, not an edge
+  one. With 23x5 trading from 2026-12-06 the weekend changes anyway.
+- [ ] Window 16: decide flat_before_weekend on this, as a risk preference.
+- [ ] Give resolve() an optional flatten and make new tests use it, so a
+      backtest measures the strategy that runs. Until then, use the walk.
+
+---
+
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
 
 Decided 2026-10-04: run TradingAgents BESIDE the pipeline through window 15
