@@ -1069,6 +1069,30 @@ the histogram positive almost by construction. The indicator is not bad; it
 is redundant with the pattern. Same for the 9 EMA and "healthy" RSI. And
 stacking confirmations selects for entries after the move has happened.
 
+### Per-position exit plan (`gemma_exit_plan_test.py`) -- the model is WORSE, p=0.021
+
+The model picks one of five mechanical plans at entry, point-in-time.
+307 gated setups since 2026-03-17:
+
+```
+one plan for every trade      standard +0.216R  short_clock +0.134  quick +0.121
+                              runner +0.091  breakeven +0.085
+model's per-trade pick        +0.086R   (short_clock 153, runner 141, quick 13,
+                                         standard 0)
+model vs standard             -0.130R/trade, -39.9R total, paired p=0.021
+hindsight ceiling             +0.586R   (+180R) -- unknowable at entry
+```
+
+Today's plan beats every alternative applied uniformly, and the model never
+chose it. The first significant result of the night is against the model.
+The ceiling says exit choice is worth a lot in principle; nothing here can
+see it at entry.
+
+Open: this test's standard (+0.216R) and gemma_graded's take-all (+0.395R) on
+the same setups differ. gemma_exit_plan_test's walk applies the Friday
+flatten; `backtest.setups.resolve` may not. Reconcile before either number
+is quoted as THE baseline.
+
 ---
 
 ## 26. Sector leadership -- held direction, p=0.030. A lead, not a rule.
