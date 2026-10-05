@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "alpaca-us": {
+      "type": "http",
+      "url": "https://docs.alpaca.markets/mcp?projects=alpaca-us"
+    }
+  }
+}

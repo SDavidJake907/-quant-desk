@@ -1146,6 +1146,25 @@ quiet in BOTH halves, but that was not the hypothesis: a lead for the
 2019-2024 news on the unseen store. Descriptive, all periods: analyst
 downgrade -0.367R (n=117) is the worst common event.
 
+### MPC against the live sweep: less bad, not an edge (`mpc_vs_sweep.py`)
+
+Same calendar halves (split 2025-09-14), same account simulation and live
+sizing (1% risk, 20% cap, 5 slots, cash, 10bps, Friday flatten):
+
+```
+per trade           1st half           2nd half
+sweep (live)        -0.206R n=371      +0.134R n=545
+MPC                 -0.058R n=1453     -0.051R n=1560
+account             2 years   max DD   1st half   2nd half
+sweep (live)        -11.6%    23.9%    -7.0%      -5.2%
+MPC                  +5.3%    17.3%    +2.3%      +2.7%
+```
+
+The account's +5.3% is slot selection, not edge: all 3,013 MPC trades average
+-0.054R, the 1,139 the five slots happened to take +0.018R; stop width shows
+no pattern. MPC is steadier and closer to breakeven than the sweep in both
+halves -- a candidate for the unseen 2018-2024 test, not a replacement yet.
+
 ---
 
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer

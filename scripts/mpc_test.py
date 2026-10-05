@@ -83,6 +83,21 @@ def _resolve(bars, i, entry, stop, target, last):
     return (bars.closes[last] - entry) / risk
 
 
+def _exit(bars, i, stop, target, last):
+    """(exit price, exit index) under the same rules as _resolve."""
+    for j in range(i + 1, last + 1):
+        o, h, lo = bars.opens[j], bars.highs[j], bars.lows[j]
+        if o <= stop or o >= target:
+            return o, j
+        if lo <= stop:
+            return stop, j
+        if h >= target:
+            return target, j
+        if bars.times[j].weekday() == 4 and (j == last or bars.times[j + 1].date() != bars.times[j].date()):
+            return bars.closes[j], j
+    return bars.closes[last], last
+
+
 def _work(args):
     symbol, daily = args
     from scanner.features import history
@@ -128,6 +143,9 @@ def _work(args):
             risk = entry - stop
             last = min(entry_i + CAP, n - 1)
             row["r_retest"] = _resolve(bars, entry_i, entry, stop, entry + TARGET_R * risk, last) - cost(entry, risk)
+            px, xi = _exit(bars, entry_i, stop, entry + TARGET_R * risk, last)
+            row.update({"entry": entry, "stop": stop, "exit": px, "exit_at": bars.times[xi],
+                        "entry_at": bars.times[entry_i]})
             b_stop_pct = risk / entry
         pct = b_stop_pct if b_stop_pct else max(MIN_STOP, 2 * atr / b_entry)
         b_stop = b_entry * (1 - pct)
