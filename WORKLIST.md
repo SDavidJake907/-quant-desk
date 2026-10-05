@@ -968,6 +968,40 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 26. Sector leadership -- held direction, p=0.030. A lead, not a rule.
+
+From the 2026-10-04 morning scan against 2026-07-14's: one sector of eleven up
+on the month against six, 29% of names trending up against 49%. Live trades
+split the same way, IT +1.45R (3/5) and everything else -0.19R (2/10), n=15.
+
+`sector_leadership_test.py` bands each setup by its SECTOR's point-in-time
+median 12-1 relative strength -- what `features/sector_strength.py` computes
+live -- rather than the stock's own (that was §RS, null at p=0.999). Bands
+fixed first: leading >= +5pp, lagging <= -5pp.
+
+```
+              TRAIN (2024-09..2026-03)   HOLDOUT (2026-03..2026-09)
+leading       -0.045R n=146              +0.692R n=108  win 48%
+neutral       -0.118R n=364              +0.277R n=133
+lagging       -0.118R n=469              +0.203R n=248
+
+train picked leading over lagging, gap +0.073R; holdout gap +0.489R, p=0.030
+```
+
+Against it: the train gap is small and the effect lives in the holdout, where
+every band is positive -- breadth's shape. Roughly the 25th idea tested, so one
+p=0.03 is about what chance supplies. Leading sectors were 17% of setups; as a
+gate it would cut ~83% of an already scarce trade count.
+
+For it: it is the first sector-shaped test not to flip sign, and it fits the
+mechanism argument (a sweep needs someone defending the level; money is
+flowing INTO a leading sector).
+
+Next: the 2018/2020/2022 data, the same bar as the regime filter. Nothing
+reaches the trading path during window 15.
+
+---
+
 ## 25. Breadth as regime — null (24th). And what the three PDFs actually say.
 
 **Breadth**, borrowed from `OMEGA_907/trading_playbook.py`, which aggregates
