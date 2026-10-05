@@ -18,8 +18,13 @@ Must say ALL CLEAR: Ollama + `gemma4:12b` present, 10 tasks Ready, `.env`,
 kill switch clear, Alpaca reachable. It also sets `OLLAMA_CONTEXT_LENGTH=24576`
 and `OLLAMA_NUM_PARALLEL=2` when it has to start Ollama.
 
-**Claude Code:** `.mcp.json` adds Alpaca's documentation MCP server
-(read-only docs, no keys). It loads on restart; approve it once. Not yet used.
+**Claude Code — Alpaca docs MCP server.** `.mcp.json` (committed) adds
+`alpaca-us` = `https://docs.alpaca.markets/mcp?projects=alpaca-us`: Alpaca's
+API documentation, read-only, no keys, cannot see the account or trade.
+`claude mcp list` shows it **Pending approval** -- start `claude` in this
+folder and **approve it when asked** (once). First use: confirm the real-time
+SIP plan details (Algo Trader Plus) before the window-16 data-feed switch.
+`MCP_DOCKER` fails to connect (Docker not running) -- unrelated, harmless.
 
 ## 1. What runs (all times Alaska; AK = ET − 4)
 
