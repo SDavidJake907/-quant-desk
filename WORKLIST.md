@@ -1187,6 +1187,26 @@ the histogram positive almost by construction. The indicator is not bad; it
 is redundant with the pattern. Same for the 9 EMA and "healthy" RSI. And
 stacking confirmations selects for entries after the move has happened.
 
+### Model managing the exit bar by bar (`gemma_exit_graded.py`) -- it never acts
+
+100 sampled gated trades since 2026-03-17, reviewed every 2 bars, bracket
+kept, exit_early closes at the next open. Arm A is review_positions' live
+prompt; arm B adds stop, target, open R, best R, bars left, every indicator
+and swing structure since entry -- the live review is never told the stop.
+
+```
+baseline (bracket)   +0.183R  total +18.3R
+A live prompt        +0.203R  2 early exits in 885 reviews, p=0.503
+B full picture       +0.183R  0 early exits in 889 reviews
+```
+
+The live review's 118/118 "hold" is not missing information: given the full
+picture it held 889 times out of 889. The prompt's "be reluctant" plus the
+model's disposition make it a constant. It costs 14-32 calls a trading day
+and cannot inform an exit -- first to go at window 16 (needs
+scheduled_scan.bat, frozen), or be replaced by TradingAgents' while-open
+rating if that earns it.
+
 ### Per-position exit plan (`gemma_exit_plan_test.py`) -- the model is WORSE, p=0.021
 
 The model picks one of five mechanical plans at entry, point-in-time.
