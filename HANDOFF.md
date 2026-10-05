@@ -1,4 +1,145 @@
-# Handoff — 2026-08-18
+# Handoff — 2026-10-05 (Monday, 09:50 AK)
+
+Branch `momentum-swing-research`, clean at `8211779`. **995 tests green.**
+Paper account only, $102,041 equity, **flat** (no positions, no working orders).
+
+**Policy fingerprint `69da227b506e`, window 15** (FREEZE.md). Window 15 has
+**zero completed trades** — it was re-declared three times on 10-04/10-05
+for genuine defects while empty. **From here, changes to the trading path
+wait for window 16 (after 2026-12-04).** New ideas go to the research queue.
+
+---
+
+## After a restart
+
+    powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1
+
+Must say ALL CLEAR: Ollama + `gemma4:12b` present, 10 tasks Ready, `.env`,
+kill switch clear, Alpaca reachable. It also sets `OLLAMA_CONTEXT_LENGTH=24576`
+and `OLLAMA_NUM_PARALLEL=2` when it has to start Ollama.
+
+**Claude Code:** `.mcp.json` adds Alpaca's documentation MCP server
+(read-only docs, no keys). It loads on restart; approve it once. Not yet used.
+
+## 1. What runs (all times Alaska; AK = ET − 4)
+
+| task | when | does |
+|---|---|---|
+| `stock-scanner-scan` | 05:33–12:03 every 30 min, 7 days | scan → gates → news gate → bracket order; position review |
+| `stock-scanner-advisor-pre` | 03:30 weekdays | TradingAgents rates held + last slate (record-only) |
+| `stock-scanner-advisor-live` | :06/:36, 05:36–11:36 weekdays | TradingAgents between scans; pauses at :02/:32 |
+| `stock-scanner-flatten` | **weekdays** 08:45, 08:52, 11:45, 11:52 | acts only on the last session before a 3+ day closure |
+| `stock-scanner-sector` | 05:00 | sector medians → `data/sector_rs.json` |
+| `stock-scanner-data` / `outcomes` / `news` | 13:00 / 13:30 / 14:00 | bars, realized outcomes + `score_gemma.py`, news archive |
+| `stock-scanner-extended` / `extras` | 18:00 / 19:00 | extended-hours bars, news history + auctions |
+
+`MorningRead` (old LLM-Quant-Engine PDF) is **disabled** at the user's request.
+
+## 2. Changed 2026-10-04/05 (all committed)
+
+**Model.** gemma3:12b → **gemma4:12b**, `SCANNER_LLM_THINK=false`,
+`SCANNER_TRIAGE_NUM_CTX=24576` (.env). Gate benchmark 14/14 (was 12/14),
+1.45 s/case. Ollama 0.35.1, auto-update OFF, LAN exposure OFF, desktop-app
+context set to 24576 (it overrides the env var). Only `gemma4:12b` and
+`nomic-embed-text` remain installed — **one big model only, or the PC crashes.**
+
+**Trading path (each fixed while window 15 was empty):**
+- **Flatten** waits for cancels to land before closing (INTC 10-02 bug).
+- **Flatten is calendar-aware**: weekdays, acts before any 3+ day closure
+  (covers holiday Fridays: 12-24, 12-31, 2027-03-25, 06-17), retries at :52,
+  writes `FLATTEN_ALERT.txt` to the Desktop if still not flat.
+- **Late-signal guard** (`max_entry_drift_pct=0.5`): a setup seen a scan late
+  (Yahoo lag) whose price is already 0.5% below entry is skipped — APP and
+  PSX filled beside their stops this way.
+- **Entry limit +0.30% above the signal** (`entry_limit_offset_pct=0.3`):
+  at-signal limits filled 91% and missed net winners (META, LULU, SLB touched
+  but never filled). +0.30% fills ~99%, best total R, checked against Yahoo lag.
+
+**Advisory layer.** TradingAgents (TauricResearch, own venv at
+`C:\Users\kitti\TradingAgents`) records 5-tier ratings in the audit log as
+`tradingagents_rating`; `score_gemma.py` scores them daily. Record-only.
+Position review now skips closed markets; its memory shows only the current
+model's calls. Audit rows carry `model`.
+
+## 3. Today, 2026-10-05 — window 15, day one
+
+- 03:30 TradingAgents: INTC **Overweight**, TSCO **Overweight**.
+- INTC (window 14): the queued Sunday sell was cancelled by the operator
+  overnight; `protect.py` re-armed the stop at 06:03, filled 115.85 → **−1.0R**.
+- SLB entry sent 06:34, never filled (before the +0.30% change), cancelled
+  stale 08:03. TradingAgents rated SLB Hold.
+- Every task `0x0`. Only ~1 fresh setup so far — normal (1–2/day).
+
+## 4. What the research says (WORKLIST §26–29, all on 2y Alpaca SIP)
+
+**The live strategy has no proven edge.** With costs and the Friday flatten,
+2024-09 → 2026-09: −0.024R/trade, account **−11.6%** (DD 23.9%). Backtests via
+`resolve()` never applied the Friday flatten (−0.063R/trade overstatement).
+
+**Nulls:** model take/skip (p=0.42), model per-stock exit plans (**worse**,
+p=0.021), model bar-by-bar exits (never acts), indicator layers (MACD positive
+on 98.6% of setups), trailing/structure exits, stop buffer, 5-day sector RS,
+gap reversion, position cap 30% (worse), all sizing schemes (`SIZING.md`).
+
+**Candidates for window 16 — need the unseen 2018–2024 data first:**
+1. `min_reward_risk` 2.0 (the 1.5–2R band loses in both halves)
+2. sector leadership (p=0.030)
+3. fast daily movers (daily ATR ≥ 4.8%) — hint only
+4. positive news before a setup (both halves, not pre-registered)
+5. MPC breakout→retest→confirm (−0.05R/trade, steadier; account +5.3% by slot luck)
+6. momentum engine (+2.68%/hold, Newey-West t 1.89) — separate engine
+7. insider buying before a setup (data collected)
+8. short volume into the sweep (data collected)
+
+**Model's role:** reads text well (news triage 14/14, labels 2,421 headlines in
+15 min), judges numbers badly. Keep it on the news gate; drop the record-only
+ranking and the always-hold position review at window 16.
+
+## 5. Data now on disk (data/ is gitignored)
+
+| store | content |
+|---|---|
+| `data/intraday_alpaca` | 30m SIP, 2024-09 → 2026-09, 501 names (where ideas were found) |
+| **`data/intraday_alpaca_2018`** | **30m SIP, 2018 → now, 501 names, ~8.7y — UNSEEN, for Gate 1** |
+| `data/short_volume/` | FINRA daily short volume, 2018-08 → now, 2,052 days |
+| `data/insiders/form4.csv` | SEC Form 4 purchases/sales, 2018 → now, 205,650 rows |
+| `data/news_history/` | point-in-time headlines, 2019 → |
+| `data/news_labels.jsonl` | gemma4 labels for 2,421 headlines |
+| `data/broker_archive/` | dated Alpaca order/account snapshots |
+
+## 6. Next session, in order
+
+1. **Gate 1 (GO_LIVE.md): run the baseline and all 8 candidates on
+   `data/intraday_alpaca_2018`** (2018 → 2024-08, never used for discovery),
+   with the Friday flatten and costs, including 2020 and 2022. The single most
+   important result for the funding decision.
+2. Review `GO_LIVE.md` (DRAFT): the operator should set the numbers (25%
+   starter slice, 3/6/15% stops) before results arrive.
+3. Friday 10-09: watch the first calendar-aware flatten (11:45/11:52 AK).
+4. FRED key: operator signs up at fred.stlouisfed.org → `.env FRED_API_KEY`.
+5. Before real money: Alpaca real-time SIP ($99/mo) for live bars — live reads
+   Yahoo while every backtest reads SIP (GO_LIVE Gate 3).
+
+## 7. Operator preferences (also in Claude memory)
+
+- **Stocks only — no crypto.**
+- Read FREEZE.md before touching the trading path.
+- One big model on the GPU at a time.
+- Commit at end of day unless told otherwise.
+
+## Useful commands
+
+    python scripts/trade_timeline.py [--symbol X]   # real Alpaca trades, bar by bar
+    python scripts/trade_anatomy.py                  # every trade with context
+    python scripts/score_gemma.py                    # model + TradingAgents scorecard
+    python scripts/levels.py SYMBOL                  # support/resistance zones
+    python scripts/tradingagents_pass.py --dry-run   # what TradingAgents would rate
+    python scripts/flatten.py                        # dry run of the weekend flatten
+
+---
+
+# Previous handoff — 2026-08-18
+
 
 Branch `momentum-swing-research`, 12 commits ahead of `master`. 576 tests green.
 Nothing merged to `master`. Paper account only; no live-trading flag exists.
