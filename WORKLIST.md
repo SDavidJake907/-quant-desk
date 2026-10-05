@@ -1048,6 +1048,25 @@ Size amplifies an edge; with costs and the weekend flatten there is none to
 amplify. The cap stays. Note also 258 setups skipped for a full book: slots
 bind in the backtest, so trade count is not only setup rarity.
 
+### Model's idea: opening-gap reversion -- null as a strategy
+
+`gap_reversion_test.py`, long-only, rules fixed first: gap down >= 2%, bar 2
+sweeps bar 1's low and closes back above it, entry at bar 2's close, stop the
+session low, target the prior close, out by the session close. 10bps in R.
+
+```
+                         TRAIN               HOLDOUT
+sweep (the idea)         +0.062R n=542       -0.012R n=256   t +0.62 / -0.10
+all gap-downs (control)  +0.051R n=2598      -0.129R n=1336
+sweep vs no sweep        +0.014R             +0.146R  p=0.536
+gaps >= 4%, sweep        -0.339R n=153       -0.210R n=71
+gaps >= 4%, control      -0.193R n=858       -0.171R n=467
+```
+
+No edge on its own and the sweep adds nothing distinguishable from chance.
+The one stable cell is a warning: gaps of 4% or more lose in all four rows --
+news-driven gaps continue, the model's own named risk. Do not fade them.
+
 ---
 
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
