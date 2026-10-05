@@ -31,10 +31,12 @@ two-thirds by time; nothing here was tuned on either half.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import statistics
 import sys
 from concurrent.futures import ProcessPoolExecutor
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -99,10 +101,10 @@ def _exit(bars, i, stop, target, last):
 
 
 def _work(args):
-    symbol, daily = args
+    symbol, daily, store = args
     from scanner.features import history
     from scanner.features.intraday import SESSION_ALIGNED
-    history.STORE_DIR = Path(STORE)
+    history.STORE_DIR = Path(store)
     bars = history.accumulated(symbol, 30, SESSION_ALIGNED)
     if bars is None or len(bars) < 200 or daily is None:
         return []
@@ -165,17 +167,19 @@ def stats(v):
     return f"{m:+.3f}R se {se:.3f} n={len(v):<5} win {sum(x > 0 for x in v) / len(v) * 100:.0f}%"
 
 
-async def main() -> int:
+async def main(store: str, until: date | None, range_: str, workers: int | None) -> int:
     from scanner.features.bars import fetch_many
-    symbols = sorted({f.name.split("__")[0] for f in Path(STORE).glob("*.json")})
+    symbols = sorted({f.name.split("__")[0] for f in Path(store).glob("*.json")})
     async with httpx.AsyncClient(timeout=60) as client:
-        daily, _ = await fetch_many(tuple(symbols), client, range_="5y")
-    jobs = [(s, (list(daily[s].dates), list(daily[s].closes)) if s in daily else None) for s in symbols]
+        daily, _ = await fetch_many(tuple(symbols), client, range_=range_)
+    jobs = [(s, (list(daily[s].dates), list(daily[s].closes)) if s in daily else None, store)
+            for s in symbols]
     rows = []
-    with ProcessPoolExecutor() as pool:
+    with ProcessPoolExecutor(workers) as pool:
         for chunk in pool.map(_work, jobs, chunksize=8):
             rows.extend(chunk)
-    rows.sort(key=lambda r: r["at"])
+    rows = sorted((r for r in rows if until is None or r["at"].date() <= until),
+                  key=lambda r: r["at"])
     cut = len(rows) * 2 // 3
     print(f"\n{len(rows)} qualifying breakouts (trend + volume), "
           f"{sum(r['retested'] for r in rows)} retested and confirmed; train to "
@@ -187,8 +191,34 @@ async def main() -> int:
         print(f"    retest + confirmation (MPC)          {stats([r['r_retest'] for r in conf])}")
         print(f"    breakout entry, SAME breakouts as MPC {stats([r['r_breakout'] for r in conf])}")
         print(f"    breakouts that never retested        {stats([r['r_breakout'] for r in part if not r['retested']])}")
+    if until is not None:
+        by_period(rows)
     return 0
 
 
+def by_period(rows) -> None:
+    """Gate 1 view: MPC entries per period, and as a 5-slot account."""
+    sys.path.insert(0, "scripts")
+    from gate1_test import PERIODS, account
+    trades = [{"symbol": r["symbol"], "at": r["entry_at"], "exit_at": r["exit_at"],
+               "entry": r["entry"], "stop": r["stop"], "exit": r["exit"], "r": r["r_retest"]}
+              for r in rows if r["retested"]]
+    acct = account(trades)
+    print(f"\n  GATE 1 VIEW  MPC all {stats([t['r'] for t in trades])}  account "
+          f"{acct['return']:+.1f}%  DD {acct['dd']:.1f}%")
+    for label, lo, hi, scored in PERIODS:
+        part = [t for t in trades if lo <= t["at"].date() <= hi]
+        if part:
+            a = account(part)
+            print(f"    {label:<12}{stats([t['r'] for t in part]):<44} account {a['return']:+6.1f}%"
+                  f"  DD {a['dd']:4.1f}%{'' if scored else '  (not scored)'}")
+
+
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(main()))
+    p = argparse.ArgumentParser()
+    p.add_argument("--store", default=STORE)
+    p.add_argument("--until", type=date.fromisoformat, default=None)
+    p.add_argument("--range", dest="range_", default="5y")
+    p.add_argument("--workers", type=int, default=None)
+    a = p.parse_args()
+    raise SystemExit(asyncio.run(main(a.store, a.until, a.range_, a.workers)))

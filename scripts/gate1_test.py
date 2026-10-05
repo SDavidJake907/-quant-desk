@@ -273,13 +273,26 @@ def verdict(trades):
         print(f"     [{'x' if ok else ' '}] {label}")
 
 
-def main(store: str, since: date, until: date, workers: int) -> int:
+def load_trades(store: str, since: date, until: date, workers: int) -> list[dict]:
+    """The gated baseline trades, cached in tmp/ (the 2018 scan takes ~30 min)."""
+    import pickle
+    cache = Path("tmp") / f"gate1_{Path(store).name}_{since}_{until}.pkl"
+    if cache.exists():
+        return pickle.loads(cache.read_bytes())
     symbols = sorted({f.name.split("__")[0] for f in Path(store).glob("*.json")})
     print(f"scanning {len(symbols)} symbols in {store}, {since}..{until}, {workers} workers")
     with ProcessPoolExecutor(workers) as pool:
         trades = [row for rows in pool.map(_work, [(s, store, since, until) for s in symbols])
                   for row in rows]
     trades.sort(key=lambda t: t["at"])
+    cache.parent.mkdir(exist_ok=True)
+    cache.write_bytes(pickle.dumps(trades))
+    return trades
+
+
+def main(store: str, since: date, until: date, workers: int) -> int:
+    symbols = sorted({f.name.split("__")[0] for f in Path(store).glob("*.json")})
+    trades = load_trades(store, since, until, workers)
     print(f"{len(trades)} gated setups {trades[0]['at']:%Y-%m-%d}..{trades[-1]['at']:%Y-%m-%d}")
     asyncio.run(sector_feature(trades, symbols))
     insider_feature(trades)
