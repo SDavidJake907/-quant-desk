@@ -1,0 +1,50 @@
+# Kraken "Stocks & ETFs" movers, pasted 2026-10-05. One ticker per line.
+# Left out: IBIT (a bitcoin fund), MSTR and COIN (bitcoin proxies) -- stocks only.
+# Add or remove lines freely; scripts/watch_list.py reads this file.
+EWZ
+CBRS
+SPCX
+MRNA
+WDC
+APP
+STX
+VST
+TSM
+TQQQ   # 3x leveraged
+TSLA
+AVGO
+NVDA
+META
+MDT
+MSFT
+ON
+HOOD
+ABBV
+XLE
+GOOG
+KO
+CRWD
+QQQ
+GOOGL
+PANW
+WMT
+XLF
+LITE
+RSP
+IWM
+VOO
+SPY
+IVV
+NFLX
+XLK
+SMH
+BAC
+AMAT
+XLU
+COST
+BRK-B   # Yahoo spells BRK.B this way
+PLTR
+CAT
+SOXL   # 3x leveraged
+SOXX
+VTEB
