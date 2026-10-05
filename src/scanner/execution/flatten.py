@@ -113,6 +113,32 @@ def is_flat(*, positions, orders) -> bool:
     )
 
 
+def held_back(positions, symbols) -> tuple[str, ...]:
+    """Which of `symbols` still have shares reserved by a working order.
+
+    A cancel is accepted before it is processed. Until it is, the cancelled
+    leg's shares stay in `held_for_orders` and a close is refused for
+    insufficient quantity -- which is how INTC went into the weekend of
+    2026-10-02 open. A position missing `qty_available` is treated as held:
+    absence of the field is not evidence the shares are free.
+    """
+    wanted = set(symbols)
+    held: list[str] = []
+    for position in positions:
+        symbol = str(position.get("symbol") or "")
+        if symbol not in wanted:
+            continue
+        try:
+            free = abs(float(position["qty_available"]))
+            total = abs(float(position.get("qty") or 0))
+        except (KeyError, TypeError, ValueError):
+            held.append(symbol)
+            continue
+        if free < total:
+            held.append(symbol)
+    return tuple(held)
+
+
 def closing_within(now: datetime, *, close_at: datetime | None,
                    minutes: int) -> bool:
     """Whether the session ends within `minutes` from `now`.

@@ -49,6 +49,7 @@ from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.audit import append_event
 from scanner.execution.flatten import closing_within, is_flat, plan_flatten
+from scanner.execution.flatten_run import close_when_released
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.provenance import build_id
 from scanner.models import AuditEvent
@@ -123,13 +124,16 @@ async def main(submit: bool, only_within: int | None) -> int:
             except BrokerError as exc:
                 print(f"  {YELLOW}cancel {order_id}: {exc}{RESET}")
 
-        # 2. Close what the BROKER says is held, at market.
+        # 2. Close what the BROKER says is held, at market -- but only once the
+        #    cancels have landed. A cancel is accepted before it is processed,
+        #    and a close sent in between is refused for insufficient quantity.
+        #    That is how INTC went into the weekend of 2026-10-02 open.
+        failed = await close_when_released(broker, plan.close)
         for symbol in plan.close:
-            try:
-                await broker.close_position(symbol)
+            if symbol in failed:
+                print(f"  {RED}close {symbol}: {failed[symbol]}{RESET}")
+            else:
                 print(f"  {GREEN}closing {symbol}{RESET}")
-            except BrokerError as exc:
-                print(f"  {RED}close {symbol}: {exc}{RESET}")
 
         # 3. Poll. Cancels and closes are asynchronous, and a single glance can
         #    see a stale book and call it success.
@@ -147,7 +151,8 @@ async def main(submit: bool, only_within: int | None) -> int:
         append_event(settings.audit_log_path, AuditEvent(
             event="weekend_flatten", at=datetime.now().astimezone(), symbol="",
             stage="flatten", policy=POLICY.fingerprint, build=build_id(),
-            reason=(f"cancelled {len(plan.cancel_first)}, closed {len(plan.close)}, "
+            reason=(f"cancelled {len(plan.cancel_first)}, "
+                    f"closed {len(plan.close) - len(failed)} of {len(plan.close)}, "
                     f"flat={flat}"
                     + (f", STILL OPEN: {', '.join(stuck)}" if stuck else "")),
         ))
