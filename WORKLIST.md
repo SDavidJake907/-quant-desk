@@ -997,6 +997,25 @@ Consequences:
 - [ ] Give resolve() an optional flatten and make new tests use it, so a
       backtest measures the strategy that runs. Until then, use the walk.
 
+### Model's idea: 5-day strength vs the stock's own sector -- null, and backwards
+
+From gemma4's strategy brainstorm, the one idea genuinely unlike the RS nulls
+(short horizon, sector-relative). `short_sector_rs_test.py`, 1458 setups,
+Friday flatten applied, bands +/-2pp fixed first:
+
+```
+                 TRAIN               HOLDOUT
+beating sector   -0.225R n=100       +0.202R n=45
+in line          -0.171R n=301       +0.012R n=142
+lagging sector   -0.092R n=571       +0.269R n=299
+train picked lagging over beating; holdout +0.067R, p=0.800
+```
+
+The model's mechanism predicted the top row wins; the bottom row did, in both
+halves, though not significantly. 59% of setups lag their sector into the
+trigger -- a sweep IS recent weakness -- so a strength filter mostly filters
+out the pattern. The same lesson as the stock-RS null.
+
 ---
 
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
