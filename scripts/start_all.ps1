@@ -39,6 +39,15 @@ Write-Output ("-" * 62)
 
 # --- 1. Ollama ------------------------------------------------------------
 $running = Get-Process ollama* -ErrorAction SilentlyContinue
+# One model, one window for every job (2026-10-04). TradingAgents reaches
+# Ollama through /v1 and cannot ask for a size, so the server default must be
+# the scanner's SCANNER_TRIAGE_NUM_CTX: a mismatch reloads the model each
+# time the jobs alternate, and a short window silently drops the front of a
+# long prompt. 2 slots keep gemma4:12b + the embedder on 16 GB of VRAM.
+# NOTE the Ollama desktop app's own context setting (db.sqlite) overrides
+# OLLAMA_CONTEXT_LENGTH; it was set to 24576 to match.
+$env:OLLAMA_CONTEXT_LENGTH = "24576"
+$env:OLLAMA_NUM_PARALLEL = "2"
 if (-not $running) {
     if (Test-Path $ollama) {
         Write-Output "       starting Ollama..."
@@ -57,7 +66,12 @@ while (-not $tags -and (Get-Date) -lt $deadline) {
 Report ($null -ne $tags) "Ollama API" "http://localhost:11434"
 
 # --- 2. The model the triage layer actually asks for -----------------------
+# Read from .env, the same place the scanner reads it. A copy here drifted
+# the moment the model changed: this check would pass on gemma3:12b while the
+# gate asked for gemma4:12b and failed open.
 $wanted = "gemma3:12b"
+$envLine = Get-Content "$root\.env" -ErrorAction SilentlyContinue | Where-Object { $_ -match '^\s*SCANNER_TRIAGE_MODEL\s*=' } | Select-Object -Last 1
+if ($envLine) { $wanted = ($envLine -split '=', 2)[1].Trim().Trim('"') }
 $have = $false
 if ($tags) { $have = @($tags.models | Where-Object { $_.name -eq $wanted }).Count -gt 0 }
 Report $have "model $wanted" $(if ($have) { "present" } else { "MISSING - news gate will pass everything" })
@@ -79,7 +93,9 @@ $expected = @(
     "stock-scanner-news",
     "stock-scanner-sector",
     "stock-scanner-extended",
-    "stock-scanner-extras"
+    "stock-scanner-extras",
+    "stock-scanner-advisor-pre",
+    "stock-scanner-advisor-live"
 )
 $registered = @(Get-ScheduledTask -TaskName "stock-scanner-*" -ErrorAction SilentlyContinue)
 foreach ($name in $expected) {
@@ -119,7 +135,7 @@ if ($problems.Count -eq 0) {
 }
 Write-Output "PROBLEMS: $($problems -join ', ')"
 Write-Output ""
-Write-Output "If 'model gemma3:12b' is among them, the news gate is FAILING OPEN:"
+Write-Output "If 'model $wanted' is among them, the news gate is FAILING OPEN:"
 Write-Output "it will approve takeover targets and structural-news names it would"
 Write-Output "normally refuse, and nothing in the logs will look wrong."
 Write-Output "Either fix Ollama or create the kill switch:  New-Item '$kill'"

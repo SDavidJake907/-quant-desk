@@ -172,6 +172,12 @@ class AuditEvent(Frozen):
     #: exist beneath drifting rules, nothing can un-mix them afterwards.
     policy: str = ""
 
+    #: The Ollama model configured when this record was written. The model
+    #: lives in .env, outside both the fingerprint and git, so a swap from
+    #: gemma3:12b to gemma4:12b (2026-10-04) moved neither. Stamped by
+    #: `append_event` when left empty.
+    model: str = ""
+
 
 class NewsItem(Frozen):
     """A single raw article as ingested from a source. Never edited after birth."""

@@ -56,7 +56,8 @@ async def chat_json(
     resident, and a 12B beside a 9B does not fit in 16GB alongside the
     embedding model.
 
-    Note on `think`: it is deliberately NOT sent. Ollama has a reported bug
+    Note on `think`: NOT sent unless `settings.llm_think` is set (gemma4:12b
+    sets it false; see config). Ollama has a reported bug
     where `think=false` combined with `format` silently drops the schema
     constraint on models with thinking templates (Nemotron, Qwen3). Gemma 3
     has no thinking template and is unaffected, but any model swapped in here
@@ -73,6 +74,8 @@ async def chat_json(
         },
         "messages": [{"role": "user", "content": prompt}],
     }
+    if settings.llm_think is not None:
+        payload = {**payload, "think": settings.llm_think}
 
     try:
         response = await client.post(

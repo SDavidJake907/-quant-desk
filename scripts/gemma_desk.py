@@ -47,6 +47,7 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.config import settings
 from scanner.backtest.setups import resolve
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.session import crosses_session
@@ -263,7 +264,7 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--symbol", nargs="*", default=[])
     parser.add_argument("--store", default="data/intraday")
-    parser.add_argument("--model", default="gemma3:12b")
+    parser.add_argument("--model", default=settings.triage_model)
     parser.add_argument("--limit", type=int, default=3)
     args = parser.parse_args()
     raise SystemExit(asyncio.run(

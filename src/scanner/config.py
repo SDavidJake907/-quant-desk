@@ -1,5 +1,7 @@
 """Runtime configuration, loaded from environment / .env."""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +47,16 @@ class Settings(BaseSettings):
     #: cadence — so the model stays warm all through the session and never
     #: reloads mid-run — then releases everything once scanning stops.
     llm_keep_alive: str = "45m"
+    #: Ollama's `think` flag. None sends nothing (the model's own default).
+    #: Gemma 4 thinks by default -- ~10x slower per triage batch and once an
+    #: empty answer -- so .env sets this false for it. Checked on Ollama
+    #: 0.35.1: think=false kept the JSON schema on gemma4:12b.
+    llm_think: bool | None = None
+
+    #: Interpreter of the separate TradingAgents venv (C:\Users\kitti\
+    #: TradingAgents). Its packages never enter this one; see ta_worker.py.
+    tradingagents_python: str = str(
+        Path.home() / "TradingAgents" / ".venv" / "Scripts" / "python.exe")
 
     # Networking
     http_timeout_s: float = 30.0

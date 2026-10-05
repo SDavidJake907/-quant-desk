@@ -112,3 +112,22 @@ def test_a_torn_final_line_does_not_lose_the_whole_log(tmp_path):
     with path.open("a", encoding="utf-8") as handle:
         handle.write('{"event": "order_submitted", "symbol": "IP", "int')
     assert submitted_levels(path) == {"CEG": (265.0, 280.0)}
+
+
+def test_every_row_names_the_model_that_was_configured(tmp_path, monkeypatch):
+    # The fingerprint says which rules ran and the build which code; neither
+    # says which model. Without this, calls before and after a model swap
+    # score as one population.
+    from scanner.config import settings
+    monkeypatch.setattr(settings, "triage_model", "gemma4:12b")
+    path = tmp_path / "audit.jsonl"
+    append_event(path, AuditEvent(event="position_review",
+                                  at=datetime(2026, 10, 5, tzinfo=timezone.utc)))
+    assert json.loads(path.read_text())["model"] == "gemma4:12b"
+
+
+def test_an_explicit_model_is_not_overwritten(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    append_event(path, AuditEvent(event="position_review", model="gemma3:12b",
+                                  at=datetime(2026, 10, 5, tzinfo=timezone.utc)))
+    assert json.loads(path.read_text())["model"] == "gemma3:12b"

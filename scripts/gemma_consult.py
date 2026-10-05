@@ -35,6 +35,7 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.config import settings
 from scanner.llm.ollama import chat_json
 
 DIM, BOLD, RESET = "\033[2m", "\033[1m", "\033[0m"
@@ -193,6 +194,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", default="gemma3:12b")
+    parser.add_argument("--model", default=settings.triage_model)
     args = parser.parse_args()
     raise SystemExit(asyncio.run(main(args.model)))

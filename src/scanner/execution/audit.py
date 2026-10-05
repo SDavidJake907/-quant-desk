@@ -5,11 +5,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scanner.config import settings
 from scanner.models import AuditEvent
 
 
 def append_event(path: str | Path, event: AuditEvent) -> None:
-    """Append one JSON object, creating the log directory if needed."""
+    """Append one JSON object, creating the log directory if needed.
+
+    A record that does not name its model is stamped with the configured one.
+    """
+    if not event.model:
+        event = event.model_copy(update={"model": settings.triage_model})
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:

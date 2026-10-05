@@ -244,6 +244,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", default="gemma3:12b")
+    parser.add_argument("--model", default=settings.triage_model)
     args = parser.parse_args()
     raise SystemExit(asyncio.run(main(args.model)))

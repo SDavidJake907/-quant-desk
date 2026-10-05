@@ -51,6 +51,7 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.config import settings
 from scanner.llm import ranking
 from scanner.llm.grounding import _collapse
 
@@ -162,6 +163,6 @@ if __name__ == "__main__":
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--runs", type=int, default=5)
-    parser.add_argument("--model", default="gemma3:12b")
+    parser.add_argument("--model", default=settings.triage_model)
     args = parser.parse_args()
     raise SystemExit(asyncio.run(main(args.runs, args.model)))
