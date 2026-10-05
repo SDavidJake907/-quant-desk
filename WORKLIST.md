@@ -1014,6 +1014,15 @@ Candidate 6 (momentum engine) has no unseen data here: its 10y run already
 covered 2018-2024. Candidate 4 (news) needs headlines before 2024 (15 days on
 disk); backfill + gemma labelling would be needed.
 
+Exits, same day (`target_test.py` 850d994, `ladder_test.py` cd603e3, both
+fixed before running): closer targets (0.5/0.75/1/1.5R, 0.5/1 x daily ATR)
+are negative per trade on BOTH stores -- 0.5R wins 64% on 2018-24 and needs
+67%. Ladders of 3-4 rungs, with or without the stop moved to breakeven, lose
+more than the plain bracket on the 2y store (-0.081 to -0.102R vs -0.059R);
+not run on 2018 for that reason. A fixed-stop ladder is arithmetically the
+average of single-target arms. The exit only re-divides the loss: the
+setups that go straight to the stop are -1R whatever the target.
+
 Reading: the sweep setup is break-even before costs and slightly negative
 after, across 8.7 years and every regime tried. Daily ATR >= 4.8% is the only
 lead left, and it is weak.
