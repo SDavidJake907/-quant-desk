@@ -980,6 +980,44 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 30. Gate 1 on the unseen 2018-2024 store -- the baseline fails, every candidate fails
+
+`gate1_test.py`, `breadth_test.py`, `time_of_day_test.py`, `mpc_test.py`, all
+rules committed before the 2018 store was read (08a4bee, 573d765, 49df1e6).
+1,646 gated setups, 2018-01 to 2024-08, live gates, Friday flatten, 10bps.
+
+```
+baseline                    -0.041R  n=1646  account +35.9%  DD 21.9%
+  2018-19 -0.061R   2020 -0.117R   2021 +0.067R   2022-23 -0.063R
+1 R:R >= 2.0                -0.018R  gap +0.064R  p=0.381
+2 sector leading            -0.027R  gap +0.030R  p=0.735   (2y lead p=0.030 gone)
+3 daily ATR >= 4.8%         +0.035R  gap +0.113R  p=0.116   lost in 2020
+7 insider buy, 90d          -0.104R  gap -0.076R  wrong direction
+8 short ratio rising        -0.113R  gap -0.082R  wrong direction
+5 MPC retest                -0.041R  n=6533  account -30.9%  DD 36.4%
+breadth >= 6 of 11 sectors  -0.008R  gap +0.059R  p=0.400   2y: p=0.058
+skip the 09:30 ET bar       -0.032R  gap +0.037R  p=0.648   2y: p=0.014
+```
+
+**Gate 1 fails on its first box (expectancy > 0).** The account's +35.9% is
+SLOT LUCK, not edge: the 1,191 setups the 5-slot account took averaged
++0.078R, the 455 it skipped -0.354R. On the 2y store the same split is
+-0.047R vs -0.087R. A selection effect that size in one store and not the
+other is not something to fund.
+
+Both new ideas from today (sector breadth, opening bar) passed or nearly
+passed on the 2y store and vanished on the unseen one -- the pattern of this
+whole list. Sector breadth is the second null for breadth (see §25).
+MPC's "breakout entry on the same breakouts" (+0.15R both halves) is
+LOOKAHEAD: it picks breakouts that later retested. Not tradeable.
+Candidate 6 (momentum engine) has no unseen data here: its 10y run already
+covered 2018-2024. Candidate 4 (news) needs headlines before 2024 (15 days on
+disk); backfill + gemma labelling would be needed.
+
+Reading: the sweep setup is break-even before costs and slightly negative
+after, across 8.7 years and every regime tried. Daily ATR >= 4.8% is the only
+lead left, and it is weak.
+
 ## 29. resolve() holds through the weekend; live does not. -0.063R/trade
 
 `backtest.setups.resolve` has no Friday flatten. Nearly every backtest here

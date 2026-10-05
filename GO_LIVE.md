@@ -10,7 +10,7 @@ that the change would rescue.
 ## Where things stand (2026-10-05)
 
 - Two years of backtest, with costs and the Friday flatten as live runs it:
-  **−0.024R per trade, account −11.6%** (`position_size_test.py`,
+  **−0.059R per trade (live gates, 10bps), account −11.6%** (`position_size_test.py`,
   `sizing_research.py`). The last six months were positive (+0.185R); the
   eighteen before them negative.
 - Live record: 15 closed trades, inconclusive. Two of the worst were an
@@ -37,9 +37,14 @@ flatten and 10bps costs:
 Any window-16 rule (reward:risk 2.0, sector leadership, …) is judged here
 first. A rule that only works on 2024-26 is not a rule.
 
+**RESULT 2026-10-05: FAIL.** 1,646 setups, 2018-01 → 2024-08:
+−0.041R/trade ✗ · account +35.9% ✓ · DD 21.9% ✓ · positive in 3 of 4 periods ✓.
+The account result is slot luck (taken +0.078R, skipped −0.354R; not repeated
+on the 2y store). No window-16 candidate passed. WORKLIST §30.
+
 ## Gate 2 — live trading behaves like the backtest
 
-Window 15, `9ed12e112119`, by its end or by funding day, whichever is later:
+Window 15, `69da227b506e`, by its end or by funding day, whichever is later:
 
 - [ ] at least 20 closed trades (fewer cannot distinguish anything)
 - [ ] mean R not below −0.25 — worse than that means live differs from the
@@ -88,3 +93,5 @@ research; the next evaluation is the end of the following window.
 |---|---|---|
 | 2026-10-05 | drafted | before window 15's first scan |
 | 2026-10-05 | Gate 3: real-time SIP feed added | live/backtest data mismatch and Yahoo lag found |
+| 2026-10-05 | −0.024R → −0.059R; Gate 2 fingerprint 9ed12e → 69da22 | −0.024R was ungated and pre-cost; window 15 was re-declared at 69da227b506e |
+| 2026-10-05 | Gate 1 run: FAIL | WORKLIST §30 |
