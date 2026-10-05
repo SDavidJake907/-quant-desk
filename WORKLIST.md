@@ -143,8 +143,8 @@ cores while using one:
       NW t 1.54. Costs are NOT what limits this; significance is. The
       strongest candidate for a second engine, on outside evidence as much as
       this repo's -- a lead, not a finding.
-- [ ] ~~HAC / Newey–West standard errors.~~ (original item below, kept for its reasoning)
-- [ ] **HAC / Newey–West standard errors.** A 63-day hold with 21-day steps
+      Original item, for its reasoning:
+      **HAC / Newey–West standard errors.** A 63-day hold with 21-day steps
       makes consecutive rebalances overlap by two-thirds. The engine's
       "clustered" t of **+2.42** treats rebalances as independent and overstates
       confidence. Use a lag of at least `horizon/step − 1` (= 2), or block
