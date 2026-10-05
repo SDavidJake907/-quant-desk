@@ -968,6 +968,45 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
+
+Decided 2026-10-04: run TradingAgents BESIDE the pipeline through window 15
+(record-only, `tradingagents_pass.py`), and decide this at the window's end
+from what it measured. Nothing below is built.
+
+```
+inside the scan (fast, mechanical)          between scans (TradingAgents)
+1 scan -> 2 filter -> 3 watch               pre-market + :06/:36 passes
+4 confirm: NEWS GATE (only model call)      rates held + new slate names,
+  + look up latest TA rating (no wait) <--- checkpointed, paused per scan
+5 enter: rating stored on the trade
+Gemma ranking: removed. Gemma review: replaced by TA's while-open rating.
+```
+
+Why: the ranking (~5 calls/day) and review (14-32/day) are record-only and
+unscored-or-null, and they share the GPU with the one enforced model call.
+
+TradingAgents cannot run INSIDE the scan: ~2 min/ticker against an entry
+priced at the trigger bar's close, on the GPU the gate needs at that moment.
+
+THE OPEN PROBLEM -- COVERAGE. Most entries are setups first seen by the scan
+that trades them, so a rate-ahead design has no rating for them at entry.
+Rating all ~500 names is ~16h. Candidate fix: a pre-market "near-setup"
+watchlist (leading sectors, swing low forming), ~20-30 names, ~1h.
+
+Measure during window 15, from what already runs:
+- [ ] coverage: share of entries with a TA rating in the 3 days before
+      (score_gemma.py, "before entry" group sizes vs trades)
+- [ ] value: realized R by rating before entry and while open
+- [ ] review replacement: TA while-open rating vs the Gemma review's calls
+- [ ] mechanics after week 1: passes completed, pauses resumed, failures,
+      seconds per ticker (logs/scheduled.log TRADINGAGENTS sections)
+
+Enforcement ("skip entries rated Sell") only if value is measured, and only
+at a window boundary.
+
+---
+
 ## 27. Three nulls in one night: model take/skip, trend exits, indicator layers
 
 All on the 2024-09..2026-09 Alpaca store, policy `ba95546dbdbb`, 2026-10-04.
