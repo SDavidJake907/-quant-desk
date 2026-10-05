@@ -151,6 +151,16 @@ async def main(model: str) -> int:
     async with httpx.AsyncClient(timeout=600) as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key,
                         client=client, paper=True)
+        # NOTHING TO REVIEW WHILE THE MARKET IS SHUT. The scan runs seven days
+        # a week and this ran with it: 14 reviews on Saturday 2026-10-03 and
+        # 14 on Sunday, of a price that could not move. Record-only calls,
+        # holding the GPU for nothing. A failed clock read reviews anyway.
+        try:
+            if not await broker.market_open():
+                print(f"{DIM}market closed — no review{RESET}")
+                return 0
+        except Exception:                                    # noqa: BLE001
+            pass
         try:
             positions = await broker._get("/v2/positions")
         except Exception as exc:                             # noqa: BLE001
