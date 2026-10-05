@@ -968,6 +968,70 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 27. Three nulls in one night: model take/skip, trend exits, indicator layers
+
+All on the 2024-09..2026-09 Alpaca store, policy `ba95546dbdbb`, 2026-10-04.
+
+### Model take/skip (`gemma_graded.py`), outcome hidden
+
+gemma_desk.py documented a `--graded` mode that was never built, and its live
+path read today's daily closes and today's headlines -- not point-in-time.
+Built properly: 30m bars to the trigger, daily closes before the trigger's
+date, headlines from `data/news_history` created before it. Only setups that
+pass every live gate are asked (190 of 497 did not), since live never trades
+the rest.
+
+```
+307 setups since 2026-03-17, gemma4:12b, think off
+take all      +0.395R n=307  total +121.1R
+model take    +0.481R n=161  total  +77.4R
+model skip    +0.300R n=146  total  +43.7R
+take - skip   +0.181R  p=0.420
+```
+
+Right direction, not distinguishable from chance -- and the skips were
+PROFITABLE, so following the model would have given up 43.7R. Conviction
+carries nothing: "strong" on 159 of 161 takes. Same night, `gemma_audit.py`
+scored gemma4 2/2 and `gemma_consult.py` said "probably no edge, stop testing
+judgement overlays". The model agrees with this result.
+
+### Trend exits (`mfe_trail_test.py`), never before recorded
+
+```
+arm             ALL     TRAIN   HOLDOUT  win
+baseline       -0.024  -0.134  +0.195   39.9%
+trail @1R      -0.015  -0.084  +0.122   48.1%
+trail @1.5R    -0.019  -0.107  +0.156   43.4%
+structure @1R  -0.033  -0.107  +0.117   43.4%
+```
+
+Every arm beats baseline on train and loses to it on holdout. Win rate up,
+expectancy down -- the same signature as `structure_exit_test.py`. The
+two-stage idea (leave the stop alone until +1R, then trail higher lows) does
+not survive. Note the baseline across both years: -0.024R.
+
+### Indicator layers (`indicator_layers_test.py`)
+
+A layered read brought in 2026-10-04 (200/50/21/9 EMA, RSI, MACD, volume, and
+an evidence score of layers agreeing). 1468 setups, bar p<0.006 for 8 tests.
+
+```
+above 200 EMA   SIGN FLIPPED  holdout -0.099R p=0.590
+swing stack     SIGN FLIPPED  holdout -0.236R p=0.378
+RSI 50-70       SIGN FLIPPED  holdout -0.125R p=0.723
+volume >=1.5x   high volume WORSE both halves, holdout -0.204R p=0.282
+MACD positive   TRUE ON 965/979 -- carries no information
+above 9 EMA     true on 950/979; RSI >=70 on 28/979 -- too lopsided to test
+evidence 4-5    holdout +0.141R vs 2-3 +0.375R -- more agreement, WORSE
+```
+
+The MACD row explains itself: the setup is a sweep and a break, which makes
+the histogram positive almost by construction. The indicator is not bad; it
+is redundant with the pattern. Same for the 9 EMA and "healthy" RSI. And
+stacking confirmations selects for entries after the move has happened.
+
+---
+
 ## 26. Sector leadership -- held direction, p=0.030. A lead, not a rule.
 
 From the 2026-10-04 morning scan against 2026-07-14's: one sector of eleven up
