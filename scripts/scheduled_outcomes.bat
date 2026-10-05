@@ -21,6 +21,10 @@ echo ===== OUTCOMES %DATE% %TIME% ===== >> "%LOG%"
 
 ".venv\Scripts\python.exe" "scripts\record_outcomes.py" --write >> "%LOG%" 2>&1
 
+REM Mark the model's recorded calls against outcomes, the day they land.
+REM Read-only, advisory; its exit code is ignored like the archive's.
+".venv\Scripts\python.exe" "scripts\score_gemma.py" >> "%LOG%" 2>&1
+
 REM --- archive what the broker holds -------------------------------
 REM The audit log records what was DECIDED; the broker records what
 REM FILLED, and only the first is in git. reconcile.py already names the

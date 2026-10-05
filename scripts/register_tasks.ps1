@@ -25,7 +25,9 @@ $tasks = @(
     "stock-scanner-news",
     "stock-scanner-sector",
     "stock-scanner-extended",
-    "stock-scanner-extras"
+    "stock-scanner-extras",
+    "stock-scanner-advisor-pre",
+    "stock-scanner-advisor-live"
 )
 
 if ($Remove) {
@@ -178,3 +180,32 @@ $xtSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLim
 $xtAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_extras.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-extras" -Trigger $xtTrigger -Action $xtAction -Settings $xtSettings -Description "Point-in-time news history and auction prints (19:00 AK)" -Force | Out-Null
 Write-Output "registered stock-scanner-extras   19:00 AK daily"
+
+# --- TradingAgents second opinion, recorded only -----------------------------
+# Rates held positions and the latest candidates; appends tradingagents_rating
+# to the audit log; sends no order and gates nothing. Weekdays only: on a
+# weekend there is no session to have an opinion about.
+#
+# SHARES THE ONE MODEL WITH THE NEWS GATE. During scan hours a pass stops at
+# :02/:32 so the gate has the GPU, and TradingAgents' checkpoint lets the next
+# pass resume the same name -- one long run, cut into the gaps between scans.
+# Pre-market runs from 03:30 until the 05:32 deadline before the first scan;
+# the 2h05 limit outlasts that, so Windows never kills the driver mid-run and
+# loses a rating whose checkpoint the finished run already cleared.
+$weekdays = @("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+$advSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2 -Minutes 5) -MultipleInstances IgnoreNew
+$advPreTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At 3:30AM
+$advPreAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_tradingagents.bat" -Argument "premarket" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-advisor-pre" -Trigger $advPreTrigger -Action $advPreAction -Settings $advSettings -Description "TradingAgents ratings before the open, recorded only (03:30 AK weekdays)" -Force | Out-Null
+Write-Output "registered stock-scanner-advisor-pre  03:30 AK weekdays"
+
+# :06/:36 -- three minutes after each scan fires, and the pass waits out a scan
+# still running. 05:36 to 11:36: the 12:03 scan is the session's last.
+$advLiveSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 28) -MultipleInstances IgnoreNew
+$advLiveTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At 5:36AM
+$advRepeat = New-ScheduledTaskTrigger -Once -At 5:36AM -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Hours 6 -Minutes 1)
+$advLiveTrigger.Repetition = $advRepeat.Repetition
+$advLiveAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_tradingagents.bat" -Argument "live" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-advisor-live" -Trigger $advLiveTrigger -Action $advLiveAction -Settings $advLiveSettings -Description "TradingAgents ratings between scans, recorded only (05:36-11:36 AK weekdays)" -Force | Out-Null
+Write-Output "registered stock-scanner-advisor-live 05:36-11:36 AK weekdays, every 30 min"
+
