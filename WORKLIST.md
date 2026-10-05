@@ -1016,6 +1016,26 @@ halves, though not significantly. 59% of setups lag their sector into the
 trigger -- a sweep IS recent weakness -- so a strength filter mostly filters
 out the pattern. The same lesson as the stock-RS null.
 
+### Position-size cap 20% -> 30%: worse. And the account loses over two years.
+
+`position_size_test.py` runs the account as it trades: 908 gated setups
+2024-09..2026-09, time order, max 5 open, compounding, cash-limited, 10bps
+round trip, Friday flatten. The 20% cap -- not risk_pct -- sets real risk:
+at 1% risk it only stops binding beyond a 5% stop, so actual risk is ~0.44%.
+
+```
+config               return   max DD   risk/trade
+cap 20% (live)       -11.1%   23.6%    0.44%
+cap 25%              -14.5%   28.5%    0.50%
+cap 30%              -13.4%   30.0%    0.55%
+cap 30%, 2x margin   -17.3%   32.6%    0.63%
+both halves negative at every cap (20%: -9.7%, -1.6%)
+```
+
+Size amplifies an edge; with costs and the weekend flatten there is none to
+amplify. The cap stays. Note also 258 setups skipped for a full book: slots
+bind in the backtest, so trade count is not only setup rarity.
+
 ---
 
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
