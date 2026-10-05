@@ -2,7 +2,7 @@
 
     window               15
     policy fingerprint   9ed12e112119  (max_entry_drift_pct=0.5 added 2026-10-04; was ba95546dbdbb)
-    code build           see the window log -- the late-signal fix commit
+    code build           a17d842  — the last commit that can change behaviour
     llm environment      gemma4:12b, think=false, num_ctx 24576 + nomic-embed-text
                          Ollama 0.35.1, 2 parallel slots, auto-update OFF,
                          desktop-app context_length 24576 (it overrides the env)
