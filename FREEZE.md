@@ -1,15 +1,20 @@
 # Evaluation window — FROZEN
 
-    window               8
-    policy fingerprint   5b091652a8ab
-    code build           add46f1  — the last commit that can change behaviour
-    llm environment      gemma3:12b + nomic-embed-text, dedup WORKING
+    window               15
+    policy fingerprint   ba95546dbdbb  (unchanged from window 14)
+    code build           6b71008  — the last commit that can change behaviour
+    llm environment      gemma4:12b, think=false, num_ctx 24576 + nomic-embed-text
+                         Ollama 0.35.1, 2 parallel slots, auto-update OFF,
+                         desktop-app context_length 24576 (it overrides the env)
     branch               momentum-swing-research
-    started              2026-09-25, first scan 05:33 AK
-    first entry possible 2026-09-28  (Friday takes no entries)
+    started              2026-10-05, first scan 05:33 AK
     ends                 2026-12-04, fixed in advance — see the stop rules
     account              Alpaca paper, opened 2026-08-06 at $100,000
-                         equity $101,862.13 at window open, flat
+                         equity $102,396.18 at window open; INTC x169 open
+                         from window 14, market close queued for the 10-05 open
+
+The header above was still describing window 8 until 2026-10-04; windows 9-14
+were recorded only in the log at the bottom. See "Window 14 closed" below.
 
 Window 1 ran 2026-08-18 to 2026-09-24 and was **truncated at 3 trades**. Its
 closing record is below; its trades do not pool with these. Windows 2 and 3
@@ -1084,6 +1089,54 @@ costs a real sample.
 
 ---
 
+## Window 14 closed, 2026-10-04: frozen files changed, one for a bug
+
+Window 14 opened 2026-09-28 at `ba95546dbdbb` with gemma3:12b. On 2026-10-04
+the following frozen items changed, and by this file's own rule a window
+whose frozen list changes ends, bug or not:
+
+| frozen item | change | reason |
+|---|---|---|
+| `scripts/flatten.py`, `execution/flatten.py` | closes wait for cancels to land (`cb28bf5`) | **bug**: INTC went into the 10-02 weekend open, unstopped, its close refused for insufficient quantity |
+| model environment, `config.triage_model` | gemma3:12b -> gemma4:12b | gate benchmark 14/14 vs 12/14, 1.45s vs 3.0s a case |
+| `config.triage_num_ctx` | 8192 -> 24576 | one window shared with TradingAgents; a mismatch reloads the model |
+| `llm/ollama.py` | sends `think` when configured; .env sets false | gemma4 thinking filled an 8192 window once and returned nothing |
+| scheduled tasks | two added (`advisor-pre`, `advisor-live`); all re-registered | TradingAgents, recorded only, sharing the GPU between scans |
+
+The flatten fix alone ends the window; the model change would have ended it
+had the fix not. The policy fingerprint did not move -- no `TradingPolicy`
+field changed -- so window 15 runs the same rules on new code and a new model.
+
+**These changes were made before this file was read.** The freeze was
+discovered afterwards, while comparing the July and October morning scans.
+Recorded so the order of events is not mistaken for a decision made with
+the rules in view.
+
+### Window 14's record
+
+    entries sent   6   META, DASH, AON (09-29); INTC, SNPS (09-30); LULU (10-01)
+    closed         3   DASH -1.060R  SNPS +4.434R  AON -1.009R
+                       mean +0.788R, sd 3.157, n=3 -- unreadable at this size
+    open           INTC x169, close queued 2026-10-04 for the 10-05 open
+    no outcome     META, LULU (no trade_outcome recorded)
+
+INTC's result will be written under `ba95546dbdbb` by the outcomes job and
+belongs to window 14, not 15.
+
+### Market context at the change
+
+The 2026-10-04 morning scan against 2026-07-14's: names in an uptrend 29%
+(31/106) against 49% (37/75); one of eleven sectors up on the month
+(Technology +8.8%) against six; Dow futures -3.1% on the month while Nasdaq
++6.4%; 10y yield +10% on the month. A narrow, semis-led tape -- the regime
+note above says the sample has never seen a down-trending session, and this
+is the nearest it has come. Live trades split the same way: IT +1.45R (3/5
+won), everything else -0.19R (2/10), n=15. Not a rule: the RS filter tested
+null (p=0.999) and breadth tested null. A sector-leadership test is queued as
+research.
+
+---
+
 ## Window log
 
 | date | event | trades so far |
@@ -1126,3 +1179,5 @@ costs a real sample.
 | 2026-09-30 | **`scheduled_sector.bat` had never once run.** Its path held a carriage-return byte where `\r` should be (`scripts<CR>efresh_sector_rs.py`), so the 05:00 task failed on 09-29 and 09-30. **No restart:** the scan's fallback computed the same medians on its first candidate (06:03 cache = 19:09 manual refresh, value for value), so no rule and no input the scan saw changed — a frozen file fixed for a defect, not an improvement. Same stray byte fixed in `start_all.ps1` | AON, INTC, SNPS open; DASH stopped -1.06R |
 | 2026-09-28 | **window 11 superseded** — the deployment taper ran OPPOSITE to the data (Monday 100% for -0.011R, Wednesday 60% for the best +0.066R) and Friday was excluded on a flatten cost of -0.213R that measured -0.012R | 0 |
 | 2026-09-28 | **window 12 opened** at `6a1576995f61`; deployment flat at 100% (was 56% average), Friday trades (+14% of setups). Both are PREFERENCE dials turned up by the operator: ~1.79x return and ~1.79x drawdown, ratio unchanged. Same hard end 2026-12-04 | 0 |
+| 2026-10-04 | **window 14 CLOSED** — flatten fix (`cb28bf5`, a bug), gemma3 -> gemma4:12b, num_ctx 24576, think=false, two TradingAgents tasks. Frozen items changed before this file was read; see "Window 14 closed" | 3 closed, INTC open |
+| 2026-10-04 | **window 15 declared** at `ba95546dbdbb` / `6b71008`, gemma4:12b + nomic-embed-text; first scan 2026-10-05 05:33 AK. Same hard end 2026-12-04 | 0 |
