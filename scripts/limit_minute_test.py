@@ -86,7 +86,7 @@ def outcome(bars, s, fill, fill_t):
     return (bars.closes[last] - fill) / risk - COST * fill / risk
 
 
-async def main(since: str) -> int:
+async def main(since: str, arrival_min: float = 3.5, guard_pct: float = 0.0) -> int:
     rows = [r for r in collect(Path("data/intraday_alpaca"), date.fromisoformat(since))
             if all(ok for _, ok, _ in gates_for(r[1].upto(r[2].trigger_index), r[2], None))]
     print(f"{len(rows)} gated setups since {since}; fetching 1-minute bars...", flush=True)
@@ -96,8 +96,16 @@ async def main(since: str) -> int:
     async with httpx.AsyncClient() as client:
         for n, (when, bars, s, _) in enumerate(rows, 1):
             close_t = (when if when.tzinfo else when.replace(tzinfo=timezone.utc)) + timedelta(minutes=30)
-            arrive = close_t + timedelta(minutes=3.5)
-            mins = [m for m in await minutes(client, s.symbol, close_t, close_t + timedelta(minutes=70))
+            arrive = close_t + timedelta(minutes=arrival_min)
+            # LATE-SIGNAL GUARD (guards.late_signal): when the setup is first
+            # seen a bar late, skip it if the newest completed close is already
+            # guard_pct below the entry -- that close is the trigger's next bar.
+            if guard_pct and arrival_min >= 30:
+                nxt = s.trigger_index + 1
+                if nxt < len(bars) and bars.closes[nxt] <= s.entry_price * (1 - guard_pct / 100):
+                    res.setdefault("guarded", []).append(1)
+                    continue
+            mins = [m for m in await minutes(client, s.symbol, close_t, arrive + timedelta(minutes=65))
                     if m[0] >= arrive - timedelta(seconds=30)]
             if not mins:
                 continue
@@ -105,7 +113,7 @@ async def main(since: str) -> int:
             for k in KS:
                 limit = s.entry_price * (1 + k)
                 hit = next(((t, min(o, limit)) for t, o, lo in mins
-                            if t < close_t + timedelta(minutes=63.5) and lo < limit), None)
+                            if t < arrive + timedelta(minutes=60) and lo < limit), None)
                 if hit is None:
                     misses[k] += 1
                     continue
@@ -113,7 +121,8 @@ async def main(since: str) -> int:
             if n % 50 == 0:
                 print(f"  {n}/{len(rows)}", flush=True)
     total = len(res["market"])
-    print(f"\n{total} setups with minute data; order arrives 3.5 min after the bar closes")
+    print(f"\n{total} setups with minute data; order arrives {arrival_min} min after the bar closes"
+          + (f"; {len(res.get('guarded', []))} skipped by the late-signal guard" if guard_pct and arrival_min >= 30 else ""))
     print(f"  {'entry':<18}{'filled':>8}{'mean R':>9}{'total R':>9}{'win':>6}")
     for k in KS:
         got = [r for r in res[k] if r is not None]
@@ -129,4 +138,9 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--since", default="2026-03-17")
-    raise SystemExit(asyncio.run(main(p.parse_args().since)))
+    p.add_argument("--arrival", type=float, default=3.5,
+                   help="minutes after the trigger bar closes the order lands; 33.5 = seen a scan late")
+    p.add_argument("--guard", type=float, default=0.0,
+                   help="late-signal guard %%: skip a late setup already this far below its entry")
+    a = p.parse_args()
+    raise SystemExit(asyncio.run(main(a.since, a.arrival, a.guard)))

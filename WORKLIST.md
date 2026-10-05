@@ -1165,6 +1165,23 @@ The account's +5.3% is slot selection, not edge: all 3,013 MPC trades average
 no pattern. MPC is steadier and closer to breakeven than the sweep in both
 halves -- a candidate for the unseen 2018-2024 test, not a replacement yet.
 
+### The entry limit: +0.30% above the signal, checked against Yahoo's lateness
+
+`limit_minute_test.py`, a year of gated setups (538) on 1-minute SIP bars.
+Live orders land ~3.5 min after the trigger bar closes; 2 of 14 since the
+August fixes landed a scan late (~33.5 min), when Yahoo delivered that
+stock's bar late (market-wide the newest bar was on time in 71 of 72 scans).
+
+```
+entry           on time (3.5 min)    a scan late (33.5, after the guard)   weighted 86/14
+at the signal   91%  +34.5R          75%  +26.3R                           +33.4R
++0.30%          99%  +46.7R          90%  +50.4R                           +47.2R  <- live
+market          100% +43.7R          100% +55.6R                           +45.4R
+```
+
+The guard removed 99 late setups (18%) already 0.5% below entry. Applied
+2026-10-05 as entry_limit_offset_pct (fingerprint 69da227b506e).
+
 ---
 
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
