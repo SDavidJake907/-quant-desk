@@ -1105,6 +1105,47 @@ tested in August on 60 days of Yahoo data.
 - [ ] Window 16 candidate: `min_reward_risk` 2.0. Needs a permutation test
       and the 2018-2022 data before it moves.
 
+### Momentum Pullback Confirmation (breakout -> retest -> confirm) -- loses less, still loses
+
+`mpc_test.py`, rules fixed first (daily trend, 40-bar resistance, close above
+on 1.5x volume, retest within 0.5% holding resistance - 0.5 ATR, confirmation
+close above the prior high, stop under the retest low, 2R target). 7,180
+breakouts, 10bps, Friday flatten:
+
+```
+                                        TRAIN     HOLDOUT
+buy every breakout candle               -0.126R   -0.173R
+retest + confirmation (MPC)             -0.034R   -0.099R
+breakouts that never retested           -0.323R   -0.330R
+(hindsight) breakout entry, later-retested  +0.131R   +0.072R  -- not tradeable
+```
+
+Waiting for the retest filters out failed breakouts and loses far less than
+buying them all -- but still loses. A breakout that holds its retest was a
+good breakout; bought at the breakout it earned +0.13R, but which ones will
+retest is unknowable at the breakout, and the later, wider-stopped MPC entry
+gives the edge back.
+
+### The model labels the news; the news does not predict (pre-registered null)
+
+`news_event_test.py`: gemma4:12b labelled 2,421 point-in-time headlines (3
+days before each of 916 gated setups) by event type, direction and
+materiality in ~15 minutes -- the job it is good at.
+
+```
+                     TRAIN              HOLDOUT
+material negative    -0.285R n=174      +0.337R n=72    hypothesis: worse
+material positive    -0.034R n=147      +0.569R n=82
+quiet                -0.090R n=289      +0.040R n=152
+negative - quiet     -0.194R p=0.176    +0.297R p=0.166  SIGN FLIPPED
+```
+
+The stated hypothesis -- bad news before a sweep resolves worse, after
+Lopez-Lira & Tang's underreaction to bad news -- flips. Positive news beat
+quiet in BOTH halves, but that was not the hypothesis: a lead for the
+2019-2024 news on the unseen store. Descriptive, all periods: analyst
+downgrade -0.367R (n=117) is the worst common event.
+
 ---
 
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
