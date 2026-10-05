@@ -169,7 +169,8 @@ async def fetch_symbol(client: httpx.AsyncClient, symbol: str,
 
 
 async def main(index: str, start: str, limit: int, minutes: int,
-               extended: bool = False) -> int:
+               extended: bool = False, store: str = "") -> int:
+    target = Path(store) if store else (EXTENDED_STORE if extended else STORE)
     if not settings.alpaca_key_id or not settings.alpaca_secret_key:
         print(f"{RED}Alpaca keys are not configured{RESET}")
         return 2
@@ -182,7 +183,7 @@ async def main(index: str, start: str, limit: int, minutes: int,
 
         print(f"{DIM}{len(symbols)} symbol(s), {minutes}m SIP bars from {start}"
               f"{RESET}")
-        print(f"{DIM}store: {EXTENDED_STORE if extended else STORE}"
+        print(f"{DIM}store: {target}"
           f"  (the Yahoo store is untouched){RESET}")
 
         stored = failed = 0
@@ -190,7 +191,7 @@ async def main(index: str, start: str, limit: int, minutes: int,
         problems: list[str] = []
         began = time.perf_counter()
         original = history.STORE_DIR
-        history.STORE_DIR = EXTENDED_STORE if extended else STORE
+        history.STORE_DIR = target
         try:
             for offset in range(0, len(symbols), CONCURRENCY):
                 batch = symbols[offset:offset + CONCURRENCY]
@@ -246,6 +247,10 @@ if __name__ == "__main__":
     p.add_argument("--extended", action="store_true",
                    help="keep 04:00-19:30 bars, into a SEPARATE store "
                         "the trading path never reads")
+    p.add_argument("--store", default="",
+                   help="write here instead -- e.g. data/intraday_alpaca_2018, so "
+                        "an older history stays apart from the store ideas were "
+                        "found in")
     a = p.parse_args()
     raise SystemExit(asyncio.run(
-        main(a.index, a.start, a.limit, a.minutes, a.extended)))
+        main(a.index, a.start, a.limit, a.minutes, a.extended, a.store)))
