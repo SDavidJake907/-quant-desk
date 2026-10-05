@@ -134,6 +134,16 @@ cores while using one:
 
 ## 5. Momentum factor — costs and valid inference
 
+- [x] **HAC / Newey–West standard errors.** Done 2026-10-04,
+      `momentum_hac_test.py`. 10y, 63d hold, 21d step, top 10, point-in-time:
+      +2.68% excess per hold (random control -0.51%); clustered t 2.48 ->
+      **Newey-West t 1.89** (lag 2; 1.87/1.88 at lags 3/5). 5y: +3.74%, NW t
+      1.36. Positive at every lag and cost, beats its control, but under |t|=2.
+- [x] **Costs.** 50bps round trip costs ~0.5% per 63-day hold: 10y +2.18%,
+      NW t 1.54. Costs are NOT what limits this; significance is. The
+      strongest candidate for a second engine, on outside evidence as much as
+      this repo's -- a lead, not a finding.
+- [ ] ~~HAC / Newey–West standard errors.~~ (original item below, kept for its reasoning)
 - [ ] **HAC / Newey–West standard errors.** A 63-day hold with 21-day steps
       makes consecutive rebalances overlap by two-thirds. The engine's
       "clustered" t of **+2.42** treats rebalances as independent and overstates
