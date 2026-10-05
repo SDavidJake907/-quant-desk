@@ -1193,6 +1193,14 @@ that trades them, so a rate-ahead design has no rating for them at entry.
 Rating all ~500 names is ~16h. Candidate fix: a pre-market "near-setup"
 watchlist (leading sectors, swing low forming), ~20-30 names, ~1h.
 
+Data feed for window 16: live scans read Yahoo 30m bars, every backtest
+reads Alpaca SIP. Yahoo is also late -- PSX's 13:30 ET bar missing at the
+14:03 ET scan (2026-09-24, the late-signal fill). Move live bars to Alpaca
+real-time SIP (Algo Trader Plus, $99/mo); the free tier cannot do it (SIP
+delayed 15 min, real-time is IEX only). Trading-path change: window 16.
+- [ ] `features/intraday.fetch_intraday` -> Alpaca SIP bars, same
+      session alignment and drop_incomplete as the store
+
 Measure during window 15, from what already runs:
 - [ ] coverage: share of entries with a TA rating in the 3 days before
       (score_gemma.py, "before entry" group sizes vs trades)

@@ -57,6 +57,14 @@ Window 15, `9ed12e112119`, by its end or by funding day, whichever is later:
 - [ ] the kill switch tested: `STOP_TRADING` created, a scan refuses to
       trade, file removed
 - [ ] the archive (`archive_broker.py`) and outcome jobs ran every day
+- [ ] **live bars from Alpaca real-time SIP** (Algo Trader Plus, $99/month),
+      not Yahoo. Live scans read Yahoo 30m bars while every backtest reads
+      Alpaca SIP bars -- the strategy is measured on one feed and traded on
+      another. Yahoo also delivers late: PSX's 13:30 ET bar was missing at the
+      14:03 ET scan and seen at 14:33, the late signal that filled beside the
+      stop (2026-09-24). Alpaca's free tier cannot replace it: its SIP blocks
+      the newest 15 minutes (later than Yahoo) and its real-time feed is IEX
+      only (~2-3% of volume, breaks the $20M/bar floor).
 
 ## If all three pass
 
@@ -79,3 +87,4 @@ research; the next evaluation is the end of the following window.
 | date | change | why |
 |---|---|---|
 | 2026-10-05 | drafted | before window 15's first scan |
+| 2026-10-05 | Gate 3: real-time SIP feed added | live/backtest data mismatch and Yahoo lag found |
