@@ -308,3 +308,27 @@ def test_trade_py_reconciles_protection_before_it_scans():
         "protection is reconciled after new positions are sized — a naked "
         "position should be found before the scanner looks for more"
     )
+
+
+def test_the_entry_limit_can_sit_a_cushion_above_the_signal():
+    # limit_minute_test.py (538 setups, order arriving 3.5 min late): a limit
+    # AT the signal filled 91%; +0.30% filled 99% and earned the most total R.
+    base = bracket_payload(SETUP, SIZING, AT)
+    padded = bracket_payload(SETUP, SIZING, AT, entry_offset_pct=0.3)
+    assert float(padded["limit_price"]) == pytest.approx(round_tick(SETUP.entry_price * 1.003), abs=0.011)
+    assert float(padded["limit_price"]) > float(base["limit_price"])
+    # the bracket around it does not move
+    assert padded["stop_loss"] == base["stop_loss"]
+    assert padded["take_profit"] == base["take_profit"]
+
+
+def test_no_offset_is_the_old_behaviour():
+    assert bracket_payload(SETUP, SIZING, AT, entry_offset_pct=0.0) == bracket_payload(SETUP, SIZING, AT)
+
+
+def test_the_offset_is_a_declared_policy_field_used_by_trade_py():
+    from pathlib import Path
+    from scanner.execution.policy import TradingPolicy
+    assert TradingPolicy().entry_limit_offset_pct == 0.3
+    source = (Path(__file__).parent.parent / "scripts" / "trade.py").read_text(encoding="utf-8")
+    assert "entry_offset_pct=policy.entry_limit_offset_pct" in source

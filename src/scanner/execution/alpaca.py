@@ -69,7 +69,8 @@ def client_order_id(setup: Setup, at: datetime) -> str:
     return f"smc-{setup.symbol}-{int(at.timestamp())}"
 
 
-def bracket_payload(setup: Setup, sizing: Sizing, at: datetime) -> dict[str, Any]:
+def bracket_payload(setup: Setup, sizing: Sizing, at: datetime,
+                    entry_offset_pct: float = 0.0) -> dict[str, Any]:
     """The order body: buy `shares`, with stop and target attached.
 
     A LIMIT entry at the trigger close, not a market order. The backtest
@@ -91,13 +92,21 @@ def bracket_payload(setup: Setup, sizing: Sizing, at: datetime) -> dict[str, Any
     resting for days could fill long after its setup went stale. `trade.py`
     cancels working entries older than the freshness window for that reason —
     a stale entry we control beats a naked position we do not.
+
+    A CUSHION ABOVE THE SIGNAL (`entry_offset_pct`). The order reaches the
+    broker ~3.5 minutes after the trigger bar closes, and these setups bounce
+    fast: a limit AT the close only filled 91% on 538 setups replayed on
+    1-minute bars, and the misses were net winners (META, LULU, SLB touched
+    their limits and never filled). +0.30% filled 99% and earned the most
+    total R, more than a market order, while still capping what is paid for a
+    spike (limit_minute_test.py). Stop and target are unchanged.
     """
     return {
         "symbol": setup.symbol,
         "qty": str(sizing.shares),
         "side": "buy",
         "type": "limit",
-        "limit_price": f"{round_tick(setup.entry_price):.2f}",
+        "limit_price": f"{round_tick(setup.entry_price * (1 + entry_offset_pct / 100)):.2f}",
         "time_in_force": "gtc",
         "order_class": "bracket",
         "take_profit": {"limit_price": f"{round_tick(setup.target_price):.2f}"},

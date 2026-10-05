@@ -853,7 +853,8 @@ async def main(
                         print(f"         {DIM}{headline[:96]}{RESET}")
                     continue
 
-            payload = bracket_payload(setup, sizing, at)
+            payload = bracket_payload(setup, sizing, at,
+                                      entry_offset_pct=policy.entry_limit_offset_pct)
             intent = TradeIntent(
                 symbol=setup.symbol,
                 action="buy",

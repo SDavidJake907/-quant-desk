@@ -97,6 +97,15 @@ class TradingPolicy(Frozen):
     #: both stopped within the hour; every on-time order filled within 0.34%.
     #: A genuine bug, fixed 2026-10-04 before window 15's first scan.
     max_entry_drift_pct: float = 0.5
+    #: The entry limit sits this far ABOVE the trigger close. The order lands
+    #: ~3.5 minutes after the bar closes and these setups bounce fast: a limit
+    #: AT the close filled 91% of 538 setups replayed on 1-minute bars (live:
+    #: 15 of 18 -- META, LULU, SLB touched and never filled) and the misses
+    #: were net winners. +0.30% filled 99% and earned the most total R (+46.7R
+    #: vs +34.5R), beating a market order while still refusing to pay for a
+    #: spike. Together with max_entry_drift_pct: down 0.5% -> skip, up to 0.3%
+    #: -> fill, beyond -> let it go. limit_minute_test.py, 2026-10-05.
+    entry_limit_offset_pct: float = 0.3
 
     # --- what is tradeable ------------------------------------------------
     min_price: float = 5.0
