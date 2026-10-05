@@ -980,6 +980,27 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 31. Momentum out of sample (S&P 400 + 600) -- STRONG PASS on the pre-set rule
+
+`momentum_oos_test.py`, rules and pass rule committed before running
+(799c331). Same as the S&P 500 run: top 10 by 12-1, 63d hold, 21d step, 10y,
+point-in-time membership, vs the index and a 5-seed random control.
+
+```
+               25bps excess/hold  NW t   random   mom-random   pre-2021   2021-on
+MidCap 400        +3.90%          2.65   +0.94%    +2.96pp      +5.51%     +2.98%
+SmallCap 600      +1.85%          1.28   +1.02%    +0.83pp      -2.35%     +4.26%
+pooled NW t 2.75 (series concatenated -- loose); 50bps: 2.48 / 1.11
+```
+
+The first idea to pass a test on data it was not found on. Caveats, in
+order of weight: (1) delisted members never priced -- 146 of 802 (400) and
+242 of 1090 (600); random picks beat the index by ~1%/hold for that reason,
+so MOMENTUM MINUS RANDOM is the honest number. (2) Small caps lost to
+random 2017-2020. (3) The pooled t joins two series end to end.
+Next: 2000-2015 large caps (covers 2008-09, the momentum crash), then a
+paper dry run of the monthly job in November, outside window 15.
+
 ## 30. Gate 1 on the unseen 2018-2024 store -- the baseline fails, every candidate fails
 
 `gate1_test.py`, `breadth_test.py`, `time_of_day_test.py`, `mpc_test.py`, all
