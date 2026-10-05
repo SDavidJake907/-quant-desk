@@ -164,7 +164,7 @@ RECENT_HOURS = 24.0
 
 
 def last_24h(path: str | Path, hours: float = RECENT_HOURS,
-             now: datetime | None = None) -> str:
+             now: datetime | None = None, model: str | None = None) -> str:
     """Everything the system did in the last `hours`, as prose.
 
     WHY THIS IS SEPARATE FROM THE TRADE RECORD
@@ -180,6 +180,11 @@ def last_24h(path: str | Path, hours: float = RECENT_HOURS,
     COUNTS AND REASONS, NOT VERDICTS. It reports what the funnel did and what
     the model said, without judging either. The judging is the model's job and
     it should be doing it on the facts rather than on a summary's opinion.
+
+    ONE MODEL'S WORDS ONLY. With `model`, review texts written by any other
+    model are left out and counted. Rows from before the `model` field
+    existed (2026-10-04) were gemma3:12b. Facts -- fills, stops, refusals --
+    are shown whoever was configured, because they do not depend on it.
     """
     moment = now or datetime.now().astimezone()
     cutoff = moment - timedelta(hours=hours)
@@ -203,6 +208,8 @@ def last_24h(path: str | Path, hours: float = RECENT_HOURS,
     opened: list[str] = []
     closed: list[str] = []
     reviews: list[str] = []
+    flattens: list[str] = []
+    foreign = 0
     for when, row in fresh:
         event = str(row.get("event", ""))
         by_event[event] += 1
@@ -216,7 +223,12 @@ def last_24h(path: str | Path, hours: float = RECENT_HOURS,
             closed.append(f"{out.get('symbol', symbol)} "
                           f"{float(out.get('realized_r', 0)):+.2f}R "
                           f"({out.get('exit_reason', '?')})")
+        elif event == "weekend_flatten" and row.get("reason"):
+            flattens.append(str(row["reason"])[:120])
         elif event == "position_review" and symbol:
+            if model is not None and row.get("model", "") != model:
+                foreign += 1
+                continue
             reviews.append(f"{symbol}: {str(row.get('reason', ''))[:70]}")
 
     lines = [f"RECENT ({hours:.0f}h) — what this system actually did."]
@@ -228,6 +240,8 @@ def last_24h(path: str | Path, hours: float = RECENT_HOURS,
         lines.append(f"  opened: {', '.join(sorted(set(opened)))}.")
     if closed:
         lines.append(f"  closed: {'; '.join(closed)}.")
+    if flattens:
+        lines.append(f"  flatten (closes sent outside the scan): {flattens[-1]}")
     if refusals:
         lines.append("  refused, by reason:")
         for reason, count in sorted(refusals.items(), key=lambda kv: -kv[1]):
@@ -235,6 +249,8 @@ def last_24h(path: str | Path, hours: float = RECENT_HOURS,
     if reviews:
         lines.append("  position reviews recorded (advisory, not acted on):")
         lines += [f"    {r}" for r in reviews[-6:]]
+    if foreign:
+        lines.append(f"  {foreign} review(s) by an earlier model left out.")
     if by_event.get("news_gate_degraded"):
         lines.append(f"  WARNING: the news gate failed open "
                      f"{by_event['news_gate_degraded']}x -- names passed the "

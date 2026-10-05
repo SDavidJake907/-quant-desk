@@ -164,7 +164,9 @@ async def main(model: str) -> int:
         # of them, and rebuilding it would invite the model to think the
         # picture changed between two reviews in the same scan.
         from scanner.llm import memory
-        recent = memory.last_24h(settings.audit_log_path)
+        # Only this model's own past reviews: a previous model's calls,
+        # shown as what the system did, would put its words in this one's mouth.
+        recent = memory.last_24h(settings.audit_log_path, model=model)
         learned = memory.build_block(settings.audit_log_path)
 
         names = tuple(p["symbol"] for p in positions)
@@ -228,7 +230,7 @@ async def main(model: str) -> int:
             append_event(settings.audit_log_path, AuditEvent(
                 event="position_review", at=datetime.now().astimezone(),
                 symbol=symbol, build=build_id(), policy=V.fingerprint,
-                stage="shadow",
+                stage="shadow", model=model,   # the model that answered, not the default
                 reason=f"{call} ({out.get('confidence')}, "
                        f"{'grounded' if grounded else 'ungrounded'}): "
                        f"{out.get('why', '')}"[:300],
