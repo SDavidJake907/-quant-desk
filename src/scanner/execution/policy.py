@@ -88,6 +88,15 @@ class TradingPolicy(Frozen):
     #: the tighter value leaves live behaviour unchanged and makes the
     #: declaration honest.
     fresh_bars: int = 2
+    #: A setup older than the latest bar is refused when the latest close is
+    #: already this far BELOW its entry. fresh_bars admits a trigger one bar
+    #: old at its old close as the limit; when the price has fallen since, the
+    #: buy limit is above the market and fills at once beside the stop. Live,
+    #: the only two fills more than 1% under the limit (APP 2026-08-20, PSX
+    #: 09-24) were both orders sent one scan late, both 0.5% from the stop,
+    #: both stopped within the hour; every on-time order filled within 0.34%.
+    #: A genuine bug, fixed 2026-10-04 before window 15's first scan.
+    max_entry_drift_pct: float = 0.5
 
     # --- what is tradeable ------------------------------------------------
     min_price: float = 5.0

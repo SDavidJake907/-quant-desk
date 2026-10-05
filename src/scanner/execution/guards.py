@@ -101,3 +101,32 @@ def check_symbol(
     if symbol in pending:
         return Verdict(allowed=False, reason="order already working")
     return ALLOWED
+
+
+def entry_drift_pct(entry: float, latest_close: float | None) -> float:
+    """How far below the entry the latest completed close sits, in percent.
+
+    Positive means price has fallen since the trigger. Zero for a setup whose
+    trigger bar is the latest bar, because its close IS the entry.
+    """
+    if not latest_close or entry <= 0:
+        return 0.0
+    return (entry - latest_close) / entry * 100.0
+
+
+def late_signal(entry: float, latest_close: float | None, max_pct: float) -> Verdict:
+    """Refuse a setup whose price has already fallen `max_pct` below its entry.
+
+    fresh_bars lets a trigger one bar old still be traded, at its OLD close as
+    the limit. If the price has fallen since, that buy limit sits above the
+    market and fills at once beside the stop -- APP (2026-08-20) and PSX
+    (09-24) both filled ~1.1% under the limit, 0.5% from the stop, and were
+    stopped within the hour. A price that rose instead is left alone: the limit
+    then rests below the market and the stale-entry cancel removes it.
+    """
+    drift = entry_drift_pct(entry, latest_close)
+    if drift >= max_pct:
+        return Verdict(allowed=False,
+                       reason=f"late signal: last close {drift:.2f}% below the entry "
+                              f"(limit {max_pct:.2f}%) -- would fill beside the stop")
+    return ALLOWED

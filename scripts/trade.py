@@ -36,7 +36,7 @@ from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError, bracket_payload
 from scanner.execution.audit import append_event
 from scanner.execution import continuity
-from scanner.execution.guards import RiskLimits, check_account, check_symbol
+from scanner.execution.guards import RiskLimits, check_account, check_symbol, late_signal
 from scanner.execution.policy import CONFIRM, SCAN, TRADE, WATCH, Decision, TradingPolicy, rejections
 from scanner.execution.provenance import build_id
 from scanner.execution.funnel import Funnel
@@ -497,12 +497,17 @@ async def main(
 
         candidates = []
         volumes_by_symbol: dict[str, float] = {}
+        # The newest COMPLETED close per symbol (the forming bar was dropped
+        # above). A setup first seen a scan late is checked against it before
+        # sending -- see guards.late_signal.
+        latest_close: dict[str, float] = {}
         funnel = Funnel()
         funnel.scanned(len(symbols))
         for symbol, bars in zip(symbols, loaded):
             if isinstance(bars, Exception) or not _liquid(bars):
                 continue
             volumes_by_symbol[symbol] = _dollar_volume(bars)
+            latest_close[symbol] = bars.closes[-1]
             # READ FROM THE POLICY, NOT HARDCODED.
             #
             # This was `require_value_sweep=True` while the policy said False,
@@ -745,6 +750,18 @@ async def main(
                     target_price=setup.target_price, trigger_at=at.isoformat(),
                     added_at=datetime.now().astimezone().isoformat(),
                 ))
+                continue
+
+            # LATE SIGNAL. A trigger one bar old is still "fresh", and its old
+            # close is still the limit. If the price has fallen since, that buy
+            # limit is above the market and fills at once beside the stop --
+            # APP and PSX, the only two fills >1% under their limits, both sent
+            # one scan late, both stopped within the hour.
+            late = late_signal(setup.entry_price, latest_close.get(setup.symbol),
+                               policy.max_entry_drift_pct)
+            if not late:
+                print(f"  {RED}{setup.symbol:<6} SKIPPED — {late.reason}{RESET}")
+                record(CONFIRM, setup.symbol, late.reason)
                 continue
 
             # Size against the sleeve, never the balance. With capital parked

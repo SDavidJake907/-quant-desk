@@ -1,8 +1,8 @@
 # Evaluation window — FROZEN
 
     window               15
-    policy fingerprint   ba95546dbdbb  (unchanged from window 14)
-    code build           6b71008  — the last commit that can change behaviour
+    policy fingerprint   9ed12e112119  (max_entry_drift_pct=0.5 added 2026-10-04; was ba95546dbdbb)
+    code build           see the window log -- the late-signal fix commit
     llm environment      gemma4:12b, think=false, num_ctx 24576 + nomic-embed-text
                          Ollama 0.35.1, 2 parallel slots, auto-update OFF,
                          desktop-app context_length 24576 (it overrides the env)
@@ -1181,3 +1181,5 @@ research.
 | 2026-09-28 | **window 12 opened** at `6a1576995f61`; deployment flat at 100% (was 56% average), Friday trades (+14% of setups). Both are PREFERENCE dials turned up by the operator: ~1.79x return and ~1.79x drawdown, ratio unchanged. Same hard end 2026-12-04 | 0 |
 | 2026-10-04 | **window 14 CLOSED** — flatten fix (`cb28bf5`, a bug), gemma3 -> gemma4:12b, num_ctx 24576, think=false, two TradingAgents tasks. Frozen items changed before this file was read; see "Window 14 closed" | 3 closed, INTC open |
 | 2026-10-04 | **window 15 declared** at `ba95546dbdbb` / `6b71008`, gemma4:12b + nomic-embed-text; first scan 2026-10-05 05:33 AK. Same hard end 2026-12-04 | 0 |
+| 2026-10-04 | **window 15 re-declared before its first scan** at `9ed12e112119` -- a genuine bug: a setup first seen one scan late was sent at its OLD close as the limit; with the price already below it the buy limit filled at once beside the stop. The only two fills >1% under their limits (APP 08-20, PSX 09-24) were both such orders, both stopped within the hour; every on-time order filled within 0.34%. `guards.late_signal` now refuses a setup whose latest close is already >= `max_entry_drift_pct` (0.5%) below its entry. Same hard end 2026-12-04 | 0, no scans |
+
