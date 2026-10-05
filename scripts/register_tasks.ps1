@@ -92,16 +92,28 @@ Write-Output "registered stock-scanner-data   13:00 AK daily"
 # The wind-down that stops NEW positions from Thursday lives in TradingPolicy
 # (wind_down_from_weekday) and is enforced by trade.py, not here — so a missed
 # run of this task cannot also silently re-enable Thursday and Friday entries.
-# Two triggers. 08:45 AK = 12:45 ET catches a 13:00 ET early close; 11:45 AK =
-# 15:45 ET catches the normal bell. The script asks the broker calendar whether
-# the close is within 25 minutes and only the run in the window acts, so on a
-# normal Friday the early trigger exits having done nothing.
-$flatEarly = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Friday -At 8:45AM
-$flatTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Friday -At 11:45AM
+# EVERY WEEKDAY, FOUR TRIGGERS (2026-10-05). It used to be Fridays only, and
+# when Friday is a market holiday the last session is Thursday: nothing
+# flattened and positions rode a four-day close (FREEZE.md: 2026-12-24, 12-31,
+# 2027-03-25, 06-17). flatten.py --only-before-closure asks the broker calendar
+# for the NEXT session and acts only on the last session before a 3+ day
+# closure, so on an ordinary Monday-Thursday every trigger exits doing nothing.
+#
+#   08:45 AK = 12:45 ET   a 13:00 ET early close          08:52  its retry
+#   11:45 AK = 15:45 ET   the normal bell                 11:52  its retry
+#
+# --only-if-closing-within 25 picks the pair for the day's actual close. The
+# retry re-runs the same idempotent job: flat already means nothing to do, and
+# anything a first run could not close gets a second chance before the bell.
+# Still not flat after the retry: flatten.py writes FLATTEN_ALERT.txt to the
+# Desktop and logs/.
+$weekdays = @("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+$flatTriggers = @("8:45AM", "8:52AM", "11:45AM", "11:52AM") | ForEach-Object {
+    New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At $_ }
 $flatSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
 $flatAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_flatten.bat" -WorkingDirectory $root
-Register-ScheduledTask -TaskName "stock-scanner-flatten" -Trigger @($flatEarly, $flatTrigger) -Action $flatAction -Settings $flatSettings -Description "Close all positions before the weekend (Friday 11:45 AK = 15:45 ET)" -Force | Out-Null
-Write-Output "registered stock-scanner-flatten  Fridays 08:45 + 11:45 AK (early + normal close)"
+Register-ScheduledTask -TaskName "stock-scanner-flatten" -Trigger $flatTriggers -Action $flatAction -Settings $flatSettings -Description "Flat before every weekend-length closure: weekdays 08:45/08:52/11:45/11:52 AK, acts only on the last session before a 3+ day close" -Force | Out-Null
+Write-Output "registered stock-scanner-flatten  weekdays 08:45/08:52/11:45/11:52 AK, last session before a closure only"
 
 # --- outcome recording -----------------------------------------------------
 # Writes back what each closed trade actually produced. The audit log records

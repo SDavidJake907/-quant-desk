@@ -34,5 +34,5 @@ echo ===== FLATTEN %DATE% %TIME% ===== >> "%LOG%"
 REM --only-if-closing-within IS LOAD-BEARING. Without it BOTH triggers flatten
 REM unconditionally, and the 08:45 AK one is 12:45 ET — the middle of the
 REM session. The book would be closed three hours early every Friday.
-".venv\Scripts\python.exe" "scripts\flatten.py" --submit --only-if-closing-within 25 >> "%LOG%" 2>&1
+".venv\Scripts\python.exe" "scripts\flatten.py" --submit --only-if-closing-within 25 --only-before-closure >> "%LOG%" 2>&1
 exit /b %errorlevel%

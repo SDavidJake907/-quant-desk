@@ -48,7 +48,8 @@ import httpx
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.audit import append_event
-from scanner.execution.flatten import closing_within, is_flat, plan_flatten
+from scanner.execution.flatten import (closes_for_weekend, closing_within, flatten_alert_text,
+                                      is_flat, plan_flatten)
 from scanner.execution.flatten_run import close_when_released
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.provenance import build_id
@@ -84,7 +85,32 @@ async def _session_close(broker: Alpaca) -> datetime | None:
     return None
 
 
-async def main(submit: bool, only_within: int | None) -> int:
+async def _next_session(broker: Alpaca):
+    """The first trading date after today, from the broker calendar, or None."""
+    from datetime import date, timedelta
+    today = datetime.now().astimezone().date()
+    try:
+        days = await broker._get("/v2/calendar", start=today.isoformat(),
+                                 end=(today + timedelta(days=12)).isoformat())
+    except BrokerError:
+        return None
+    later = sorted(date.fromisoformat(d["date"]) for d in days or [] if d.get("date") > today.isoformat())
+    return later[0] if later else None
+
+
+def _alert(stuck, working: bool) -> None:
+    """Leave a note where it will be seen: the Desktop, and logs/."""
+    from pathlib import Path
+    text = flatten_alert_text(stuck, working_orders=working,
+                              when=datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z"))
+    for folder in (Path.home() / "Desktop", Path("logs")):
+        try:
+            (folder / "FLATTEN_ALERT.txt").write_text(text, encoding="utf-8")
+        except OSError:
+            pass
+
+
+async def main(submit: bool, only_within: int | None, before_closure: bool = False) -> int:
     async with httpx.AsyncClient() as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
         account = await broker.account()
@@ -102,6 +128,17 @@ async def main(submit: bool, only_within: int | None) -> int:
         ):
             print(f"{DIM}not the closing run — nothing to do{RESET}")
             return 0
+
+        # EVERY WEEKDAY RUNS THIS; only the last session before a 3+ day
+        # closure acts. Friday-only triggers missed every holiday Friday,
+        # leaving Thursday's positions open over four days (FREEZE.md).
+        if before_closure:
+            nxt = await _next_session(broker)
+            if not closes_for_weekend(now.date(), nxt):
+                print(f"{DIM}next session {nxt} -- not the last before a closure; "
+                      f"nothing to do{RESET}")
+                return 0
+            print(f"{DIM}last session before a closure (next session {nxt}){RESET}")
 
         print(f"{DIM}paper account: equity {account.equity:,.2f}, "
               f"status {account.status}{RESET}")
@@ -164,6 +201,7 @@ async def main(submit: bool, only_within: int | None) -> int:
             if not is_flat(positions=[], orders=still_working):
                 print(f"{RED}working orders still live{RESET}")
             print(f"{RED}Close these by hand before the bell.{RESET}")
+            _alert(stuck, not is_flat(positions=[], orders=still_working))
             return 1
 
         print(f"\n{GREEN}{BOLD}flat — no positions, no working orders{RESET}")
@@ -179,5 +217,9 @@ if __name__ == "__main__":
                    metavar="MINUTES",
                    help="act only when the bell is this close; lets several "
                         "triggers share the job across normal and early closes")
+    p.add_argument("--only-before-closure", action="store_true",
+                   help="act only on the last session before a closure of 3+ "
+                        "days (a weekend, or a holiday Friday's Thursday)")
     a = p.parse_args()
-    raise SystemExit(asyncio.run(main(a.submit, a.only_if_closing_within)))
+    raise SystemExit(asyncio.run(main(a.submit, a.only_if_closing_within,
+                                      a.only_before_closure)))

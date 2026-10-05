@@ -159,3 +159,36 @@ def closing_within(now: datetime, *, close_at: datetime | None,
         return False
     remaining = close_at - now
     return timedelta(0) <= remaining <= timedelta(minutes=minutes)
+
+
+#: Calendar days from one session to the next that count as a weekend-length
+#: closure. Friday -> Monday is 3; a one-day midweek holiday is 2 and does not.
+WEEKEND_GAP_DAYS = 3
+
+
+def closes_for_weekend(today, next_session) -> bool:
+    """Whether today's session is the last before a closure of 3+ days.
+
+    The flatten used to be scheduled on Fridays only, so when Friday was a
+    market holiday the last session was Thursday and nothing flattened:
+    2026-12-24 and 12-31, 2027-03-25 and 06-17 (FREEZE.md). Asking the
+    calendar for the NEXT session covers every such week, and an ordinary
+    Friday too. An unknown next session errs toward flattening -- a failed
+    calendar read must not leave positions over a weekend.
+    """
+    if next_session is None:
+        return True
+    return (next_session - today).days >= WEEKEND_GAP_DAYS
+
+
+def flatten_alert_text(stuck, *, working_orders: bool, when: str) -> str:
+    """The note left on the Desktop when the flatten could not get flat."""
+    lines = [f"WEEKEND FLATTEN FAILED -- {when}", "",
+             "Still open going into a market closure:"]
+    lines += [f"  {s}" for s in stuck] or ["  (no positions)"]
+    if working_orders:
+        lines.append("  working orders are still live")
+    lines += ["", "Close these by hand before the bell:",
+              "  python scripts/flatten.py --submit",
+              "or in the Alpaca dashboard. Delete this file once flat."]
+    return "\n".join(lines) + "\n"
