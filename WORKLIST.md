@@ -1084,6 +1084,27 @@ Every buffer helps on train and hurts on holdout. It does cut stop-outs
 (48% -> 35%), but a wider stop shrinks every winner in R. The paper's
 invalidation-plus-buffer layer does not earn its place on this setup.
 
+### Reward:risk: a forced 1:5 fails; the closest natural targets are the losers
+
+`reward_risk_test.py`, 916 gated setups, 10bps in R, Friday flatten.
+
+```
+natural R:R (target = range high)   1st half    2nd half    2y total
+1:1.5-2                             -0.267R     -0.166R     -77R   <- worst in both
+1:2-3                               -0.172R     +0.369R     +20R
+1:3-5                               -0.204R     +0.244R      +5R
+1:5+                                -0.184R     +0.227R      +5R
+target forced to 5R: hit 3.5% (needs 16.7%), -0.080R vs own target -0.051R
+min_reward_risk 2.0 instead of 1.5:  1st half -99R -> -52R, 2nd half +51R -> +82R
+```
+
+Stretching every target to 5R fails in both halves -- the setups rarely run
+that far. But the 1.5-2 band is the worst in both halves and alone loses more
+than the strategy does; dropping it improves both. HANDOFF records 1.5 as
+tested in August on 60 days of Yahoo data.
+- [ ] Window 16 candidate: `min_reward_risk` 2.0. Needs a permutation test
+      and the 2018-2022 data before it moves.
+
 ---
 
 ## 28. Window 16 candidate pipeline: TradingAgents as the advisory layer
