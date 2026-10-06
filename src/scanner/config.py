@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     #: as an operator-visible circuit breaker; removing it is deliberate.
     kill_switch_path: str = "STOP_TRADING"
 
+    #: Phone alerts via ntfy.sh (scanner.ops.notify). The topic is the only
+    #: secret: long and random, set in .env. Empty means alerts print only.
+    ntfy_topic: str = ""
+    ntfy_server: str = "https://ntfy.sh"
+
     finnhub_api_key: str = ""
     tiingo_api_key: str = ""
 
