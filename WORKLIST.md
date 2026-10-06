@@ -1020,6 +1020,29 @@ volatility scaling, broader book), committed first and judged on all three
 datasets at once -- 2000-15 has now been seen, so a guard tuned on it alone
 proves nothing.
 
+### Crash guards (`momentum_guard_test.py`, 4285dab) -- every arm FAILS the pre-set rule; A misses by 0.01
+
+Universe chosen by the operator 2026-10-05: S&P 500 + MidCap 400 (the 400's
+membership log starts 2012, so 2000-15 is the 500 alone).
+
+```
+                CRASH 2000-15 (S&P 500)          LIVE 2016-26 (500 + 400)
+arm        maxDD   mom-rand  NW t   worst     mom-rand  NW t   maxDD  worst  invested
+base       62.4%   +0.24pp   0.22  -49.4%     +3.16pp   1.86   18.7%  -36.9%   100%
+A trend    12.7%   +1.82pp   2.62  -27.4%     +2.38pp   1.49   22.2%  -36.9%  68/83%
+B vol      43.2%   +1.00pp   1.18  -35.0%     +2.99pp   1.90   18.5%  -36.9%  84/88%
+C broad    57.3%   -0.73pp  -0.97  -40.8%     +2.18pp   1.87   18.4%  -32.9%   100%
+PASS needed: crash DD < 25%, crash edge >= 0, live edge > 0 with t >= 1.5
+```
+
+A (cash when the S&P closes below its 210-day average) cut the 2000-15
+drawdown from 62% to 13% and turned that period's edge from zero to t 2.62,
+but its live t is 1.49 against a 1.50 bar set beforehand. Recorded as a FAIL;
+the bar is not moved after the fact. No guard caught the -36.9% book of
+2016-26 (the fast 2020 crash). Strongest candidate found here; the only clean
+evidence left is forward data -- a window-16 PAPER run with criteria set
+before it starts, funding nothing until it earns it.
+
 ## 30. Gate 1 on the unseen 2018-2024 store -- the baseline fails, every candidate fails
 
 `gate1_test.py`, `breadth_test.py`, `time_of_day_test.py`, `mpc_test.py`, all
