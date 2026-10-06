@@ -87,6 +87,7 @@ publication.
 |---|---|---|---|
 | #27 post-earnings drift (PEAD) | Ball & Brown 1968; Bernard & Thomas 1989; replicated for decades, weaker in large caps lately | Nasdaq earnings calendar, 2010→ | rules fixed in `pead_test.py` before any earnings data was seen; collecting |
 | momentum + trend, forward | #20–#25 | live paper, from window 16 | engine built, dry run (c77796b) |
+| #44 TradingAgents rating as a momentum filter | none for this use; Gemma's numbers judgement measured WORSE (p=0.021) | data/momentum/ratings.jsonl, from 2026-10-06, forward only | RULE FIXED 2026-10-06 before the first rating: once 30+ rated picks have completed a 63-trading-day hold, compare return vs ^GSPC from the rating-date close for POS (Buy/Overweight) against NEG (Sell/Underweight); Hold excluded; needs 8+ in each group. PASS: POS minus NEG > 0 with Welch t >= 2. Until then record-only: no rating adds, drops or resizes a pick |
 | Gemma news-sentiment factor | Lopez-Lira & Tang: LLM headline scores predict returns, strongest after bad news; profits fall as LLM use spreads | news 2024->, gemma4 local | queued; start daily score logging |
 | same-month seasonality | Heston & Sadka 2008 | 30y daily | queued, low priority |
 | MAX / lottery stocks | Bali, Cakici & Whitelaw 2011; weaker among past winners | daily | queued, low priority |
