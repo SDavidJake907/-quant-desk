@@ -84,7 +84,7 @@ publication.
 | #27 post-earnings drift (PEAD) | Ball & Brown 1968; Bernard & Thomas 1989; replicated for decades, weaker in large caps lately | Nasdaq earnings calendar, 2010→ | rules fixed in `pead_test.py` before any earnings data was seen; collecting |
 | momentum + trend, forward | #20–#25 | live paper, from window 16 | engine built, dry run (c77796b) |
 | #40–#42 momentum family: volatility-managed (Barroso & Santa-Clara), residual (Blitz et al.), overnight (Lou, Polk & Skouras) | published; long-only adaptations | S&P 500+400 2017–26 and S&P 500 2000–15 | ONE family, t ≥ 2.4 (Bonferroni for 3), top-5-removed check, Sharpe and drawdown vs the engine; rules fixed in `momentum_family_test.py` before the run |
-| opportunistic insider buying | Cohen, Malloy & Pomorski 2012: 0.82%/mo; routine insiders ~0. Trial #5 did not separate them | Form 4, 2018-> (routine needs 3y history, so 2021->) | queued |
+| #43 opportunistic insider buying | Cohen, Malloy & Pomorski 2012: 0.82%/mo; routine ~0. Trial #5 did not separate them | Form 4 2018→ (classifiable 2021→), S&P 500+400 | rules fixed in `insider_opportunistic_test.py` before the run; OPP t ≥ 2 and OPP > ROUT |
 | Gemma news-sentiment factor | Lopez-Lira & Tang: LLM headline scores predict returns, strongest after bad news; profits fall as LLM use spreads | news 2024->, gemma4 local | queued; start daily score logging |
 | same-month seasonality | Heston & Sadka 2008 | 30y daily | queued, low priority |
 | MAX / lottery stocks | Bali, Cakici & Whitelaw 2011; weaker among past winners | daily | queued, low priority |
