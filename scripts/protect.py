@@ -27,13 +27,14 @@ so a different stop means the position is no longer risking what it was
 built to risk. The log is the only record of the original number, so the log
 is what this reads.
 
-WHAT IT WILL NOT DO
-It will not re-arm a position whose stop has already been breached. If the
-price traded through the stop while the position was unprotected, the exit
-the strategy called for has already happened in every sense except the
-broker's — re-arming it at the old level would be pretending otherwise, and
-would leave a stop sitting above the market where it fills instantly. Those
-are reported for a human to close deliberately.
+A BREACHED STOP IS CLOSED, NOT LEFT FOR A HUMAN (changed 2026-10-06)
+It still never re-arms a stop the price has already traded through -- that
+would sit above the market and fill instantly at a worse price. But it no
+longer leaves such a position naked "for a human": on 2026-10-05 INTC sat
+unprotected through the open that way. A breached stop or a reached target is
+now sold at market (queued for the open if the market is shut -- what a stop
+does on a gap), only for the naked shares, never twice, and an alert file is
+written to the Desktop and logs/ for every action. See execution/protection.py.
 """
 
 from __future__ import annotations
@@ -47,12 +48,25 @@ import httpx
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError, protective_payload
 from scanner.execution.audit import append_event, submitted_levels
+from scanner.execution import protection
 from scanner.models import AuditEvent
 
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN, RED, YELLOW, CYAN = "\033[32m", "\033[31m", "\033[33m", "\033[36m"
 
 
+
+
+def write_alert(rows) -> None:
+    """Leave a note where it will be seen: the Desktop, and logs/."""
+    from pathlib import Path
+    text = protection.alert_text(
+        rows, when=datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z"))
+    for folder in (Path.home() / "Desktop", Path("logs")):
+        try:
+            (folder / "PROTECTION_ALERT.txt").write_text(text, encoding="utf-8")
+        except OSError:
+            pass
 
 
 async def main(submit: bool) -> None:
@@ -71,25 +85,34 @@ async def main(submit: bool) -> None:
         }
 
         print(f"\n{BOLD}{len(naked)} unprotected position(s){RESET}\n")
+        closing = protection.closing_shares(
+            await broker._get("/v2/orders", status="open", nested="true"))
         armable: list[tuple[str, int, float, float]] = []
+        to_close: list[tuple[str, int, str]] = []
+        alerts: list[tuple[str, int, str, str]] = []
         for position in naked:
             symbol, qty = position.symbol, position.qty
-            if symbol not in levels:
+            stop, target = levels.get(symbol, (None, None))
+            last = quotes.get(symbol, 0.0)
+            decision = protection.decide(last=last, stop=stop, target=target)
+            if decision == "unknown":
                 print(f"  {RED}{symbol:<6} no submission in the audit log — "
                       f"cannot recover its stop; close or set one by hand{RESET}")
+                alerts.append((symbol, qty, decision, "no stop on record -- act by hand"))
                 continue
-            stop, target = levels[symbol]
-            last = quotes.get(symbol, 0.0)
-
-            # A stop already below the market cannot be re-armed honestly.
-            if last and last <= stop:
-                print(f"  {RED}{symbol:<6} last {last:,.2f} is AT OR BELOW its "
-                      f"stop {stop:,.2f} — this trade was already over; "
-                      f"close it deliberately rather than re-arming{RESET}")
-                continue
-            if last and last >= target:
-                print(f"  {RED}{symbol:<6} last {last:,.2f} is AT OR ABOVE its "
-                      f"target {target:,.2f} — take the profit deliberately{RESET}")
+            # A stop already below the market cannot be re-armed honestly, so
+            # the exit it called for is taken now instead of left for a human.
+            if decision in ("close_stop", "close_target"):
+                edge, level = (("stop", stop) if decision == "close_stop"
+                               else ("target", target))
+                naked_qty = qty - closing.get(symbol, 0)
+                if naked_qty <= 0:
+                    print(f"  {YELLOW}{symbol:<6} past its {edge} {level:,.2f}; "
+                          f"a market sell is already working{RESET}")
+                    continue
+                print(f"  {RED}{symbol:<6} last {last:,.2f} is past its {edge} "
+                      f"{level:,.2f} — exit called: sell {naked_qty} at market{RESET}")
+                to_close.append((symbol, naked_qty, decision))
                 continue
 
             room = (last - stop) / last * 100 if last else 0.0
@@ -101,8 +124,29 @@ async def main(submit: bool) -> None:
 
         if not submit:
             print(f"\n{YELLOW}report only — nothing sent. "
-                  f"Re-run with --submit to arm these.{RESET}")
+                  f"Re-run with --submit to arm and close these.{RESET}")
             return
+
+        for symbol, qty, decision in to_close:
+            now = datetime.now().astimezone()
+            try:
+                order = await broker.submit(protection.exit_payload(symbol, qty, now))
+                append_event(settings.audit_log_path, AuditEvent(
+                    event="protection_closed", at=now, symbol=symbol,
+                    order_id=str(order.get("id", "")), request_id=broker.last_request_id,
+                    stage="trade", reason=f"{decision}: market sell {qty} sh, no live stop",
+                ))
+                alerts.append((symbol, qty, decision, f"market sell sent, id {order.get('id', '?')}"))
+                print(f"  {YELLOW}sold{RESET}  {symbol:<6} {qty} sh at market "
+                      f"{DIM}id {order.get('id', '?')}{RESET}")
+            except BrokerError as exc:
+                append_event(settings.audit_log_path, AuditEvent(
+                    event="protection_failed", at=now, symbol=symbol,
+                    request_id=broker.last_request_id, reason=f"{decision}: {exc}",
+                    stage="trade",
+                ))
+                alerts.append((symbol, qty, decision, f"SELL FAILED: {exc}"))
+                print(f"  {RED}FAILED{RESET} {symbol:<6} {exc}")
 
         print()
         for symbol, qty, stop, target in armable:
@@ -126,6 +170,9 @@ async def main(submit: bool) -> None:
                     reason=str(exc), stage="trade",
                 ))
                 print(f"  {RED}FAILED{RESET} {symbol:<6} {exc}")
+
+        if alerts:
+            write_alert(alerts)
 
         remaining = await broker.unprotected_positions()
         if remaining:
