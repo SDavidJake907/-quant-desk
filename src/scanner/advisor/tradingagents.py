@@ -53,11 +53,14 @@ class WorkerResult(Frozen):
 
 
 def pick_tickers(*, held: tuple[str, ...], rows: list[dict],
-                 skip: frozenset[str], limit: int) -> tuple[str, ...]:
-    """Held positions first, then the most recent slate, deduplicated.
+                 skip: frozenset[str], limit: int,
+                 watch: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """Held positions first, then the most recent slate, then the scan
+    watchlist (advisor/scan_watch.py), deduplicated.
 
     Held names lead because they are money at risk now; the slate is what the
-    scanner last wanted to buy.
+    scanner last wanted to buy; the watchlist is what the scanner is looking
+    at -- the live setups from the last session, ranked by its own score.
     """
     slate: list[str] = []
     for row in reversed(rows):
@@ -65,7 +68,7 @@ def pick_tickers(*, held: tuple[str, ...], rows: list[dict],
             slate = [str(item.get("symbol", "")) for item in row["slate"]]
             break
     picked: list[str] = []
-    for symbol in (*held, *slate):
+    for symbol in (*held, *slate, *watch):
         symbol = symbol.strip().upper()
         if symbol and symbol not in skip and symbol not in picked:
             picked.append(symbol)

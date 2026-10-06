@@ -83,3 +83,22 @@ BA
 HD
 CIEN
 TWLO
+# Third Kraken batch, 2026-10-06 premarket. Left out: MSTR, COIN, IBIT, IREN (bitcoin-linked).
+ARM
+AMD
+SMCI
+GEV
+COHR
+ORCL
+ASML
+CRM
+IBM
+MRVL
+KLAC
+RKLB
+INTC
+SNPS
+QCOM
+GLD  # gold fund, not a company
+GDX  # gold miners fund
+DIA

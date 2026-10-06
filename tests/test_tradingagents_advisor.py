@@ -189,3 +189,26 @@ def test_the_worker_and_the_driver_agree_on_the_deadline_exit_code():
     worker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(worker)
     assert worker.DEADLINE_EXIT == DEADLINE_EXIT
+
+
+def test_scan_watchlist_follows_held_and_slate_without_duplicates():
+    rows = [{"event": "candidate_slate", "slate": [{"symbol": "SLB"}, {"symbol": "MU"}]}]
+    picked = pick_tickers(held=("AON",), rows=rows, skip=frozenset(), limit=10,
+                          watch=("MU", "NVDA", "AON", "WDC"))
+    assert picked == ("AON", "SLB", "MU", "NVDA", "WDC")
+
+
+def test_scan_watch_selection_rules():
+    from datetime import date
+    from scanner.advisor import scan_watch
+    last = date(2026, 10, 5)
+    rows = [  # (symbol, trigger date, live, price, dollar volume, priority)
+        ("A", last, True, 50.0, 30e6, 1.0),
+        ("B", date(2026, 10, 2), True, 50.0, 30e6, 9.0),   # an earlier session
+        ("C", last, False, 50.0, 30e6, 9.0),               # stop or target already hit
+        ("D", last, True, 4.0, 30e6, 9.0),                 # under $5
+        ("E", last, True, 50.0, 5e6, 9.0),                 # under $20M per bar
+        ("F", last, True, 50.0, 30e6, 3.0),
+    ]
+    assert scan_watch.select(rows, sessions={last}, limit=5) == ("F", "A")
+    assert scan_watch.select(rows, sessions={last, date(2026, 10, 2)}, limit=5) == ("B", "F", "A")

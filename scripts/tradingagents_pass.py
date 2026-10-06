@@ -38,6 +38,7 @@ from scanner.advisor.tradingagents import (
     pick_tickers, rated_on, rating_event, scan_deadline, stale_checkpoints,
     worker_deadline,
 )
+from scanner.advisor import scan_watch
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.audit import append_event
@@ -103,6 +104,11 @@ def _cleanup(now: datetime) -> None:
         print(f"  cleaned {removed} stale checkpoint(s)/report(s)")
 
 
+async def _scan_watch() -> tuple[str, ...]:
+    async with httpx.AsyncClient(timeout=60) as client:
+        return await scan_watch.build(client)
+
+
 async def _book() -> dict | None:
     """Positions as TradingAgents' PortfolioContext expects them, or None.
 
@@ -160,7 +166,8 @@ def _run_one(request: dict, log: Path) -> tuple[str, str]:
     return output, outcome(returncode=proc.returncode, killed_for=killed_for)
 
 
-def main(mode: str, tickers: list[str], limit: int, min_minutes: float, dry: bool) -> int:
+def main(mode: str, tickers: list[str], limit: int | None, min_minutes: float, dry: bool) -> int:
+    limit = limit or (30 if mode == "premarket" else 8)
     if not Path(settings.tradingagents_python).exists():
         print(f"TradingAgents venv not found: {settings.tradingagents_python}")
         return 1
@@ -171,10 +178,23 @@ def main(mode: str, tickers: list[str], limit: int, min_minutes: float, dry: boo
     rows = _rows(settings.audit_log_path)
     book = asyncio.run(_book())
     held = tuple(p["ticker"] for p in (book or {}).get("positions", []))
+    # CONNECTED TO THE SCAN (2026-10-06): premarket first runs the live screen
+    # read-only and saves a ranked watchlist of the last session's still-live
+    # setups; every pass then rates held -> slate -> watchlist.
+    watch: tuple[str, ...] = ()
+    if not tickers:
+        if mode == "premarket":
+            try:
+                watch = asyncio.run(_scan_watch())
+            except Exception as exc:                     # noqa: BLE001
+                print(f"  ! scan watchlist unavailable: {exc}")
+        else:
+            watch = scan_watch.saved()
     names = tuple(t.upper() for t in tickers) or pick_tickers(
-        held=held, rows=rows, skip=rated_on(rows, now.date()), limit=limit)
+        held=held, rows=rows, skip=rated_on(rows, now.date()), limit=limit, watch=watch)
     print(f"TRADINGAGENTS {mode}  {now:%Y-%m-%d %H:%M}  model {settings.triage_model}")
-    print(f"  held {list(held) or 'none'}  ->  rating {list(names) or 'nothing'}")
+    print(f"  held {list(held) or 'none'}  scan watchlist {list(watch) or 'none'}")
+    print(f"  ->  rating {list(names) or 'nothing'}")
     if dry or not names:
         return 0
 
@@ -220,7 +240,9 @@ if __name__ == "__main__":
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--mode", choices=["premarket", "live", "manual"], default="manual")
     p.add_argument("--tickers", nargs="*", default=[], help="rate these instead")
-    p.add_argument("--limit", type=int, default=8)
+    p.add_argument("--limit", type=int, default=None,
+                   help="names per pass (default: 30 premarket -- ~110 minutes of GPU "
+                        "before the first scan at ~2 min a name -- else 8)")
     p.add_argument("--min-minutes", type=float, default=15.0,
                    help="during scan hours, the least time before a scan to start a name")
     p.add_argument("--dry-run", action="store_true", help="show the names, run nothing")
