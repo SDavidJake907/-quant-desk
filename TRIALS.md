@@ -21,6 +21,24 @@ every new result is judged against the size of the search that produced it.
   2026 (WORKLIST §32). A strategy has to beat that after costs, on data it was
   not chosen from.
 
+## Rules added 2026-10-05 (evening), before trial #27 ran
+
+- **The vault is forward data.** Every historical dataset here has now judged
+  ideas: the 2018–24 store about 25 times, the 2y store more. None is unseen.
+  From 2026-10-06 on, live and paper data is the only untouched test.
+  2018–24 may still be used, but a result there is now "consistent with", not
+  "confirmed on".
+- **Strategies are judged on risk-adjusted terms.** From trial #27 onward, a
+  strategy competes with buy-and-hold at MATCHED VOLATILITY (lever or delever
+  the strategy's returns to buy-and-hold's volatility, then compare annual
+  return), and on Sharpe ratio. Raw return alone judged the trend rule
+  (#26) on the wrong yardstick; it stays recorded as it was judged.
+- **Signals are judged cross-sectionally where possible.** Quintile sorts
+  across the whole universe, with breakpoints known at the time, ahead of
+  concentrated top-N books; a real signal lines up from worst to best.
+- **Every result carries the trial count at the time it was run**, so the
+  multiple-testing haircut is visible next to the number.
+
 ## Before 2026-10-05
 
 About **35 trials**, nearly all nulls: WORKLIST.md §§1–29 (§25 alone was

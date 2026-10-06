@@ -36,7 +36,15 @@ PASS (decided now), ALL of:
   3  BEAT's mean abnormal return after costs > 0
 BEAT minus ALL is the honest number: survivorship (delisted names unpriced)
 lifts both groups alike. 60-day holds from monthly cohorts overlap, hence
-Newey-West. Trial #27 in TRIALS.md.
+Newey-West. Trial #27 in TRIALS.md (about 61 trials before it).
+
+SECONDARY, ALSO FIXED BEFORE ANY DATA WAS SEEN (added the same evening, from
+an outside review; reported, does not change the PASS above):
+  QUINTILES  every event is placed in a surprise quintile using breakpoints
+             from the surprises of the PRIOR 12 months only (no lookahead);
+             mean 60-day abnormal return per quintile, the Q5-Q1 spread per
+             entry month with Newey-West t, and whether Q1..Q5 rise in order.
+             A real drift lines up from worst to best surprise.
 """
 
 from __future__ import annotations
@@ -157,7 +165,39 @@ async def main() -> int:
     print(f"   PASS 1 gap t>=2: {'ok' if checks[0] else 'X'}   2 both halves: {'ok' if checks[1] else 'X'}"
           f"   3 BEAT abnormal > 0 after costs: {'ok' if checks[2] else 'X'}   ->  "
           f"{'PASS' if all(checks) else 'FAIL'}")
+    quintiles(rows)
     return 0
+
+
+def quintiles(rows: list[dict]) -> None:
+    """Secondary: surprise quintiles with breakpoints from the prior 12 months."""
+    from datetime import timedelta
+    ordered = sorted(rows, key=lambda r: r["date"])
+    dates = [r["date"] for r in ordered]
+    import bisect
+    placed = []
+    for r in ordered:
+        lo = bisect.bisect_left(dates, r["date"] - timedelta(days=365))
+        hi = bisect.bisect_left(dates, r["date"])
+        past = sorted(x["surprise"] for x in ordered[lo:hi])
+        if len(past) < 200:
+            continue
+        cuts = [past[int(len(past) * q / 5)] for q in (1, 2, 3, 4)]
+        placed.append((bisect.bisect_right(cuts, r["surprise"]) + 1, r))
+    print(f"\n   SECONDARY: surprise quintiles, prior-12-month breakpoints ({len(placed)} events)")
+    means = []
+    for q in range(1, 6):
+        g = [r["abn"] for k, r in placed if k == q]
+        means.append(statistics.fmean(g) if g else float("nan"))
+        print(f"     Q{q}  {means[-1]:+6.2f}%  n={len(g)}")
+    by = defaultdict(lambda: defaultdict(list))
+    for k, r in placed:
+        by[(r["entry"].year, r["entry"].month)][k].append(r["abn"])
+    spread = [statistics.fmean(v[5]) - statistics.fmean(v[1]) for _, v in sorted(by.items())
+              if v[5] and v[1]]
+    rising = all(a < b for a, b in zip(means, means[1:]))
+    print(f"     Q5-Q1 per entry month {statistics.fmean(spread):+.2f}pp  NW t {newey_west_t(spread, 2):.2f}"
+          f"   monotonic Q1<..<Q5: {'yes' if rising else 'no'}")
 
 
 if __name__ == "__main__":
