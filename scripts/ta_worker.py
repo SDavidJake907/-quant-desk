@@ -75,6 +75,32 @@ def _thinking_off() -> None:
     openai_client._supports_reasoning_effort = lambda model: True
 
 
+def _structured_json_schema() -> None:
+    """Ask Ollama for structured output by JSON schema, not function calling.
+
+    Every run on 2026-10-05 logged "structured-output invocation failed" for
+    the Research Manager, Trader and Portfolio Manager and fell back to free
+    text, so each rating was regex-parsed from prose. Probed 2026-10-06 in
+    this venv on gemma4:12b: function calling parses a short prompt but the
+    long agent prompts drift into prose; method="json_schema" uses Ollama's
+    constrained decoding, so the reply cannot fail to parse (7.6s vs 15.0s on
+    the probe). Patched here, like _thinking_off, so a TradingAgents upgrade
+    cannot silently carry or lose it.
+    """
+    try:
+        from tradingagents.llm_clients import openai_client
+        local = openai_client.LocalCompatibleChatOpenAI
+        original = local.with_structured_output
+    except (ImportError, AttributeError) as exc:
+        print(f"structured output stays on function calling, TradingAgents changed shape: {exc}")
+        return
+
+    def with_structured_output(self, schema, *, method=None, **kwargs):
+        return original(self, schema, method=method or "json_schema", **kwargs)
+
+    local.with_structured_output = with_structured_output
+
+
 def _exit_at(deadline_iso: str | None) -> None:
     """Hard-exit at the deadline, whatever the parent is doing.
 
@@ -111,6 +137,7 @@ def main() -> int:
     from tradingagents.graph.trading_graph import TradingAgentsGraph
 
     _thinking_off()
+    _structured_json_schema()
     config = DEFAULT_CONFIG.copy()
     # checkpoint_enabled is what makes this run in pieces: every finished
     # agent step is saved, so a run stopped for a scan resumes at the next
