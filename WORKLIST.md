@@ -994,6 +994,41 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 33. GPU factor lab -- ten signals, one correction, nothing passes; survivorship shows itself
+
+`research_gpu/factor_lab.py` (8324a69) on the RTX 5060 Ti (torch 2.11 cu128,
+sm_120): 8 published factors + 2 fixed blends, monthly 21-day quintile
+spreads, Romano-Wolf stepdown + White Reality Check over all ten (100k
+stationary-bootstrap resamples). Whole run 21 seconds. Validated first on
+synthetic data (noise -> no false positive; planted signal -> found).
+
+```
+            LIVE 2015-26 (500+400)   CRASH 1997-2016 (500)
+            spread/mo   RW adj p     spread/mo   t
+mom12_1      -0.18%     0.955        -0.14%    -0.30
+overnight    +0.05%     0.955        +0.32%    +1.16
+mom12_7      -0.24%     0.955        +0.07%    +0.21
+hi52         -0.50%     0.983        -0.96%    -1.98
+season       -0.45%     0.996        -0.00%    -0.02
+rev1m        +0.04%     0.955        +0.41%    +1.30
+vol63        -0.75%     0.993        -1.17%    -2.32   (high vol beat low vol)
+max21        -0.63%     0.996        -0.72%    -1.74   (lottery stocks beat)
+blend_eq     -0.55%     0.989        -0.31%    -0.76
+blend_wf     +0.64%     0.157        -0.14%    -0.37
+White Reality Check p: LIVE 0.157, CRASH 0.489
+```
+
+No factor or blend passes. Two findings matter more than the nulls:
+1. Low volatility and MAX go the WRONG way in BOTH periods, against decades of
+   evidence. The likeliest cause is survivorship: delisted names are missing,
+   and the volatile ones that failed are exactly the ones a low-vol or MAX
+   sort would have avoided. Survivorship flatters volatile stocks most. Until
+   the data includes delisted names (Norgate), factor results here are biased
+   in a known direction and size cannot be trusted.
+2. Cross-sectional quintile spreads of momentum are flat in both periods, as
+   the bucket check found (§31): any momentum edge here lives in the extreme
+   top, not in the ranking.
+
 ## 32. The core: S&P trend rule (Faber 2007) -- insurance, not edge. And the bar everything must clear.
 
 `core_trend_test.py` (0e63ede), SPY with dividends, T-bills when out, 10bps
