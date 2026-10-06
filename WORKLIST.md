@@ -994,6 +994,28 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 35. The operator's signals.py -- entries significantly worse than random
+
+`research_gpu/signals_test.py` (9b8bbd0), the file unchanged
+(`research_gpu/external/signals_v1.py`), default Config, one position per
+stock, members only, 10bps; control = random entry days at the same rate
+under the file's own exits (2 x ATR stop, 3 x ATR chandelier, Supertrend
+flip, 50-EMA, support-trendline break), 5 seeds.
+
+```
+                     signals/trade   random/trade   signals - random     win   avg R
+LIVE 2015-26  23,470    +0.06%          +0.40%      -0.44pp  t -4.21     36%   +0.04
+CRASH 1997-2016 19,788  +0.13%          +0.31%      -0.42pp  t -4.14     37%   +0.07
+at 25bps: -0.09% and -0.02% per trade
+```
+
+The exits earn ~+0.3-0.4% a trade from ANY entry (being long a rising
+market). The entry filters -- RSI 50-75, rising MACD, ADX > 20, breakout on
+volume or EMA pullback -- choose worse moments than a coin flip, at t ~ -4
+in two separate periods: buying after strength is confirmed is buying late.
+Same verdict as screens/momentum.py (38/40 lost to random) and the indicator
+nulls (§27, §33). Its NVDA demo looked good because NVDA rose ~10x.
+
 ## 34. Chart patterns as numbers -- ten patterns, 143,586 events, no measured edge; names carry no direction
 
 Definitions: `src/scanner/patterns/detect.py` (Lo, Mamaysky & Wang 2000:
