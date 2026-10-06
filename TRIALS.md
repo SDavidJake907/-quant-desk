@@ -66,7 +66,10 @@ model take/skip and model exits. They are counted, not re-listed.
 | 22–25 | crash guards ×4 | 4285dab | 2000–15 + 2016–26 | trend misses t by 0.01 | fail (all) |
 | 26 | core S&P trend (Faber) | 0e63ede | 2007–26 post-pub | DD halved, −3.05pp/yr | fail |
 
-**Running total: ~61 trials. Passes that survive everything: 0.**
+| 28–39 | twelve indicators inside momentum | 08303d0 | 500+400, 2016–26 | none passes; 52w-high and low-vol go the WRONG way | fail (all) |
+| — | momentum bucket check (diagnostic of the control) | this commit | same | top 10 +3.43pp t 2.00; quintiles flat; without 5 names t 0.58 | edge concentrated in five stocks |
+
+**Running total: ~73 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
@@ -74,6 +77,5 @@ data.
 
 | candidate | prior evidence | data | status |
 |---|---|---|---|
-| #28–#39 twelve indicators inside momentum | 5 published add-ons (t ≥ 2, stated sign) + 6 classic TA (\|t\| ≥ 3.3) + control | S&P 500 + 400, 2016–26, monthly quintiles | rules fixed in `indicator_screen_test.py` before the run |
 | #27 post-earnings drift (PEAD) | Ball & Brown 1968; Bernard & Thomas 1989; replicated for decades, weaker in large caps lately | Nasdaq earnings calendar, 2010→ | rules fixed in `pead_test.py` before any earnings data was seen; collecting |
 | momentum + trend, forward | #20–#25 | live paper, from window 16 | design |

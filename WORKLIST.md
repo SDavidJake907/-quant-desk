@@ -1074,6 +1074,35 @@ the bar is not moved after the fact. No guard caught the -36.9% book of
 evidence left is forward data -- a window-16 PAPER run with criteria set
 before it starts, funding nothing until it earns it.
 
+### Indicators inside momentum, and where momentum's return really sits (2026-10-06)
+
+`indicator_screen_test.py` (08303d0, trials #28-#39), S&P 500 + 400,
+2016-26, monthly, 63-day forward return net of the universe average:
+NO indicator passed. Inside the top momentum quintile, published add-ons
+went the wrong way or fell short: 52-week-high proximity -1.38pp (t -2.52,
+OPPOSITE to George & Hwang), low ATR WRONG way (high-volatility names did
+better, +1.80pp t 2.36), 12-7 t 0.97, reversal t -1.27, consistency (fip)
+t 1.61. Classic TA all |t| < 1.7 (RSI, MACD, SMA50/200, Bollinger, volume).
+
+The control mattered more: 12-1 momentum shows NO quintile spread
+(Q5-Q1 -0.10pp, t -0.10). `momentum_bucket_check.py`:
+
+```
+top 10 +3.43pp t 2.00 | 11-30 +1.02 t 1.14 | top decile +0.71 t 1.01
+top 20% +0.27 t 0.54 | Q4 -0.45 | Q3 -0.20 | Q2 -0.00 | Q1 +0.37
+without NVDA                       top 10 +2.80pp t 1.67
+without NVDA ARWR AMD ETSY SMCI    top 10 +0.92pp t 0.58 (2016-20 -0.96)
+NVDA in the top 10 in 50 of 121 months
+```
+
+The 2016-26 momentum edge on this universe is concentrated in the extreme
+top 10 and mostly in five names. Removing a strategy's best picks always
+hurts it -- catching such names is momentum's point -- but this is not the
+broad, monotonic effect of the literature. Treat the engine as a
+low-confidence, lumpy bet: forward paper, small size, no promises. Residual
+momentum (stripping market and sector moves) is the published variant that
+targets exactly this concentration; next momentum test.
+
 ## 30. Gate 1 on the unseen 2018-2024 store -- the baseline fails, every candidate fails
 
 `gate1_test.py`, `breadth_test.py`, `time_of_day_test.py`, `mpc_test.py`, all
