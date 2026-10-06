@@ -11,3 +11,6 @@ dashboard.html
 logs/
 tmp/_*
 tmp/*.log
+
+# research scratch output (results are recorded in WORKLIST.md / TRIALS.md)
+tmp/
