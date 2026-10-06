@@ -1,0 +1,152 @@
+"""The momentum engine's monthly rebalance -- DRY RUN ONLY.
+
+    python scripts/momentum_rebalance.py                 # this month's tranche, recorded
+    python scripts/momentum_rebalance.py --preview       # show it, change nothing
+    python scripts/momentum_rebalance.py --capital 50000 # first run only: book size
+
+WHAT IT DOES (the measured design, WORKLIST §31 arm A):
+  1  universe: today's S&P 500 + MidCap 400 members (operator's choice)
+  2  rank by 12-1 momentum from daily closes up to the LAST COMPLETED session
+  3  trend filter: S&P 500 above its 210-day average, else this tranche -> cash
+  4  rebuild the one tranche whose month it is (three tranches, one a month)
+  5  print the trades that would move the book there, and record them
+
+WHAT IT DOES NOT DO: send orders. There is no broker call in this file. Live
+submission (market-on-close, `mom-` order prefix, its own sleeve) is built for
+window 16, after this has run dry for November -- and only after FREEZE.md
+records the change.
+
+Fills are assumed at the last completed close; the backtest entered at the
+next close, so the dry run's prices are a day early. Dry-run state lives in
+data/momentum/dry_run_book.json and evolves month to month, so the dry run is
+itself a paper record of what the engine would have held.
+Logged but NOT enforced, because they were never tested: sector concentration
+of the picks, and how much of the book one theme would be.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import sys
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+
+import httpx
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+from scanner.features.bars import fetch_bars, fetch_many
+from scanner.features.intraday import EXCHANGE_TZ
+from scanner.features.technicals import compute
+from scanner.momentum import book as bk
+from scanner.momentum import signal, state
+from scanner.sources import composite
+from scanner.sources.index_history import SP400, SP500
+
+STATE = Path("data/momentum/dry_run_book.json")
+RECORD = Path("data/momentum/dry_run.jsonl")
+BENCHMARK = "^GSPC"
+
+
+def completed(bars, today):
+    """Drop a bar dated today: during the session it is still forming."""
+    if bars.dates and bars.dates[-1] >= today:
+        return bars.upto(len(bars) - 2)
+    return bars
+
+
+async def gather(today):
+    async with httpx.AsyncClient(timeout=60) as client:
+        members = await composite.load_universe(client, (SP500, SP400))
+        sector = {m.symbol: m.sector for m in members}
+        symbols = tuple(sorted(sector))
+        bench = completed(await fetch_bars(BENCHMARK, client, range_="2y"), today)
+        daily, errors = await fetch_many(symbols, client, range_="2y")
+    daily = {s: completed(b, today) for s, b in daily.items()}
+    return sector, bench, daily, errors
+
+
+async def prices_for(symbols, daily, today) -> dict[str, float]:
+    """Last completed close for every symbol needed, fetching any held name
+    that has left the universe since its tranche bought it."""
+    out = {s: daily[s].closes[-1] for s in symbols if s in daily and daily[s].closes}
+    missing = [s for s in symbols if s not in out]
+    if missing:
+        async with httpx.AsyncClient(timeout=60) as client:
+            extra, _ = await fetch_many(tuple(missing), client, range_="1mo")
+        out |= {s: completed(b, today).closes[-1] for s, b in extra.items() if b.closes}
+    return out
+
+
+async def main(capital: float, preview: bool) -> int:
+    today = datetime.now(tz=EXCHANGE_TZ).date()
+    book = state.load(STATE) or bk.new_book(capital)
+    idx = bk.due(book, today)
+    print(f"momentum engine DRY RUN  {today}  (no orders are sent)")
+    if idx is None:
+        print(f"tranche {bk.tranche_for(today)} was already rebuilt this month; nothing to do.")
+        return 0
+
+    sector, bench, daily, errors = await gather(today)
+    scores = {s: compute(b).momentum_12_1 for s, b in daily.items()}
+    picks = signal.rank(scores)
+    invested = signal.trend_ok(list(bench.closes))
+    sma = sum(bench.closes[-signal.TREND_DAYS:]) / signal.TREND_DAYS
+    needed = set(picks) | {s for t in book.tranches for s in t.holdings}
+    prices = await prices_for(needed, daily, today)
+
+    old = book.tranches[idx]
+    new = bk.rebuild(old, today, picks=picks, prices=prices, invested=invested)
+    after = bk.replace_tranche(book, new)
+    trades = bk.orders(bk.target(book), bk.target(after))
+
+    print(f"universe {len(sector)} (S&P 500 + MidCap 400), {len(daily)} priced, "
+          f"{len(errors)} failed; ranked {sum(v is not None for v in scores.values())}")
+    print(f"S&P 500 {bench.closes[-1]:,.2f} vs 210-day average {sma:,.2f} -> "
+          f"{'INVESTED' if invested else 'CASH (trend filter off)'}")
+    print(f"\nrebuilding tranche {idx} (last formed {old.formed or 'never'}), "
+          f"worth ${bk.value(old, prices):,.2f}")
+    print(f"\n   {'#':>2}  {'symbol':<7}{'12-1 mom':>10}  {'sector':<26}{'shares':>8}{'price':>10}")
+    for n, s in enumerate(picks, 1):
+        print(f"   {n:>2}  {s:<7}{scores[s]:>+9.1f}%  {sector.get(s, '?')[:25]:<26}"
+              f"{new.holdings.get(s, 0):>8}{prices[s]:>10.2f}")
+    themes = Counter(sector.get(s, "?") for s in picks)
+    top_theme, top_count = themes.most_common(1)[0] if themes else ("-", 0)
+    print(f"\n   sector mix (logged, not enforced): "
+          + ", ".join(f"{k} {v}" for k, v in themes.most_common()))
+    if top_count >= 5:
+        print(f"   NOTE: {top_count} of {len(picks)} picks are {top_theme} -- one theme, one bet")
+
+    print(f"\n   trades to get there ({len(trades)}):")
+    for symbol, side, qty in trades:
+        print(f"     {side:<4} {qty:>6} {symbol:<6} ~${qty * prices[symbol]:>11,.2f}")
+    total = sum(bk.value(t, prices) for t in after.tranches)
+    print(f"\n   book after: ${total:,.2f} across 3 tranches; cash ${sum(t.cash for t in after.tranches):,.2f}")
+
+    if preview:
+        print("\n--preview: nothing recorded, state unchanged.")
+        return 0
+    RECORD.parent.mkdir(parents=True, exist_ok=True)
+    with RECORD.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "date": today.isoformat(), "tranche": idx, "invested": invested,
+            "sp500": bench.closes[-1], "sma210": sma, "picks": list(picks),
+            "momentum": {s: scores[s] for s in picks}, "sectors": dict(themes),
+            "trades": [list(t) for t in trades], "prices": {s: prices[s] for s in needed if s in prices},
+            "book_value": total}) + "\n")
+    state.save(after, STATE)
+    print(f"\nrecorded to {RECORD}; dry-run book saved to {STATE}.")
+    return 0
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--capital", type=float, default=100_000.0)
+    p.add_argument("--preview", action="store_true")
+    a = p.parse_args()
+    raise SystemExit(asyncio.run(main(a.capital, a.preview)))
