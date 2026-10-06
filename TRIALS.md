@@ -78,4 +78,7 @@ data.
 | candidate | prior evidence | data | status |
 |---|---|---|---|
 | #27 post-earnings drift (PEAD) | Ball & Brown 1968; Bernard & Thomas 1989; replicated for decades, weaker in large caps lately | Nasdaq earnings calendar, 2010→ | rules fixed in `pead_test.py` before any earnings data was seen; collecting |
-| momentum + trend, forward | #20–#25 | live paper, from window 16 | design |
+| momentum + trend, forward | #20–#25 | live paper, from window 16 | engine built, dry run (c77796b) |
+| volatility-managed momentum | Barroso & Santa-Clara 2015 ("virtually eliminates crashes", ~2× Sharpe); Moreira & Muir 2017. Scale by MOMENTUM'S OWN 6-month realized vol -- only a market-vol simplification was tried (#24) | cached daily, 2000–26 | next; rules to be fixed first |
+| residual momentum | Blitz, Huij & Martens 2011: ~2× profit, ~half the volatility; targets the five-name concentration found 10-06 | cached daily, 2000–26 | next; rules to be fixed first |
+| RSI(2) pullback in an uptrend (separate short-term engine) | practitioner (Connors), not peer-reviewed; cost-sensitive | daily | low priority |
