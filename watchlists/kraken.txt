@@ -48,3 +48,38 @@ CAT
 SOXL   # 3x leveraged
 SOXX
 VTEB
+# Second Kraken batch, 2026-10-05 evening. Left out: CRCL (Circle, stablecoin issuer).
+CEG
+CTVA
+TSLL   # 2x leveraged TSLA
+HPE
+ALAB
+SHOP
+AAOI
+MPWR
+USO   # oil futures fund, not a company
+NET
+EFA
+VRT
+ANET
+NTAP
+BE
+DELL
+NBIS
+CRDO
+AMZN
+CRWV
+MCD
+BKNG
+MPC
+SMTC
+SPGI
+CLS
+NEE
+GE
+LRCX
+FICO
+BA
+HD
+CIEN
+TWLO
