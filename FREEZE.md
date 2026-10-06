@@ -2,7 +2,7 @@
 
     window               15
     policy fingerprint   69da227b506e  (entry_limit_offset_pct=0.3 added 2026-10-05; before it 9ed12e112119, ba95546dbdbb)
-    code build           f85679e  — the last commit that can change behaviour
+    code build           e60210b  — the last commit that can change behaviour
     llm environment      gemma4:12b, think=false, num_ctx 24576 + nomic-embed-text
                          Ollama 0.35.1, 2 parallel slots, auto-update OFF,
                          desktop-app context_length 24576 (it overrides the env)
@@ -1185,4 +1185,4 @@ research.
 | 2026-10-05 | **INTC (window 14) closed at -1.0R by the safety net.** The market sell queued Sunday night was cancelled by the operator at 01:48 AK; at the 06:03 scan protect.py found INTC unprotected, armed its original stop 115.88, and it filled at 115.85 (price 115.99 at arming). An open-price fill would have been about the same. Window 15's first session otherwise ran clean: every task 0x0, SLB entry sent 06:34, never filled, cancelled stale 08:03 | 0 (window 15) |
 | 2026-10-05 | **window 15 re-declared at `9ed12e112119` / `c5f3693`, still 0 completed trades** -- the weekend flatten is calendar-aware (weekdays, acts only on the last session before a 3+ day closure, so holiday Fridays' Thursdays are covered), retries at :52, and leaves FLATTEN_ALERT.txt on the Desktop if still not flat. Frozen files changed for a genuine defect (FREEZE.md's own "Holiday-shortened weeks" section). Rules and fingerprint unchanged. Same hard end 2026-12-04 | 0 |
 | 2026-10-05 | **window 15 re-declared at `69da227b506e` / `f85679e`, still 0 completed trades** -- the entry limit sits 0.30% above the signal. 3 of 18 live limits (META, LULU, SLB) touched and never filled; on 538 setups replayed on 1-minute bars from the real arrival time a limit at the signal filled 91% (+34.5R), +0.30% filled 99% (+46.7R), market 100% (+43.7R). A genuine execution defect: the misses were net winners. Same hard end 2026-12-04 | 0 |
-
+| 2026-10-06 | **window 15 re-declared at `69da227b506e` / `e60210b`, still 0 completed trades** -- protect.py no longer leaves a position whose stop is already breached (or target reached) naked for a human: the naked shares are sold at market (queued for the open if shut), never twice, with PROTECTION_ALERT.txt on the Desktop. On 10-05 INTC sat unprotected 05:33-06:03 that way. Operator approved. Rules and fingerprint unchanged. Same hard end 2026-12-04 | 0 |
