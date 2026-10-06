@@ -79,7 +79,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 66 | operator's signals.py, unchanged, vs random entries under its own exits | 9b8bbd0 | 500+400 2015–26 (23,470 trades); 500 1997–2016 (19,788) | +0.06% / +0.13% per trade after 10bps, negative at 25bps; random entries +0.40% / +0.31%; signals minus random -0.44pp t -4.21 and -0.42pp t -4.14 | fail: entries significantly WORSE than random |
 
-**Running total: ~98 trials. Passes that survive everything: 0.**
+| 67–69 | Minervini VCP; O'Neil follow-through days; O'Neil distribution days -- the skills' own code, unchanged | 7506f2d | stocks 500+400 2015–26 & 500 1997–2016; ^GSPC 1997–2026 | VCP vs plain Stage-2 breakouts +0.21pp t 0.35 / -0.19pp; FTD 60d -0.78pp t -1.01, halves flip; 5+ distribution days -> next month BETTER (+0.87% vs +0.40%), fires 59% of months | fail (all) |
+
+**Running total: ~101 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
@@ -95,7 +97,6 @@ publication.
 | momentum + trend, forward | #20–#25 | live paper, from window 16 | engine built, dry run (c77796b) |
 | #44 TradingAgents rating as a momentum filter | none for this use; Gemma's numbers judgement measured WORSE (p=0.021) | data/momentum/ratings.jsonl, from 2026-10-06, forward only | RULE FIXED 2026-10-06 before the first rating: once 30+ rated picks have completed a 63-trading-day hold, compare return vs ^GSPC from the rating-date close for POS (Buy/Overweight) against NEG (Sell/Underweight); Hold excluded; needs 8+ in each group. PASS: POS minus NEG > 0 with Welch t >= 2. Until then record-only: no rating adds, drops or resizes a pick |
 | #45 Gemma red flags on held positions (monitor v2) | Lopez-Lira & Tang: LLM headline reads predict returns, strongest after bad news; Gemma's own exit judgement measured WORSE (p=0.021) | live reviews from the first monitor-v2 run, forward only | RULE FIXED 2026-10-06 before the first live review: once 30+ red flags (f2 with a verbatim quote and a material event type) exist on held positions, flagged positions must do WORSE than unflagged ones -- swing: remaining-hold R from the review; momentum: next 20 trading days vs ^GSPC -- with t >= 2. PASS unlocks level 3 only: tighten the stop (breakeven or 0.5 x 30m ATR under price) or sell half, never a full exit on Gemma alone, and only through FREEZE.md. Until then: record and report |
-| #67–#69 Minervini VCP breakouts vs plain Stage-2 volume breakouts; O'Neil follow-through days; O'Neil distribution days (5+ in 25) | practitioner (Minervini, O'Neil/IBD), no peer-reviewed out-of-sample evidence | stocks: 500+400 2015–26, 500 1997–2016; index: ^GSPC 1997–2026 | ONE family, t >= 2.4; the operator's skill code vendored UNCHANGED (research_gpu/external/tradermonty, MIT); rules fixed in `research_gpu/vcp_ftd_test.py` before it ran |
 | Gemma news-sentiment factor | Lopez-Lira & Tang: LLM headline scores predict returns, strongest after bad news; profits fall as LLM use spreads | news 2024->, gemma4 local | queued; start daily score logging |
 | same-month seasonality | Heston & Sadka 2008 | 30y daily | queued, low priority |
 | MAX / lottery stocks | Bali, Cakici & Whitelaw 2011; weaker among past winners | daily | queued, low priority |

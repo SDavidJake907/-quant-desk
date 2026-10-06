@@ -994,6 +994,27 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 36. The skills bundle's VCP, follow-through and distribution days -- all fail, two backwards
+
+`research_gpu/vcp_ftd_test.py` (7506f2d) with the bundle's own calculators,
+unchanged (research_gpu/external/tradermonty, MIT). One family, t >= 2.4.
+
+```
+VCP vs ordinary Stage-2 volume breakouts (20d excess, monthly cohorts)
+  2015-26  497 VCP -0.02% (60d -0.98%) vs 10,486 control +0.05% (+0.11%)  gap +0.21pp t 0.35
+  1997-16  351 VCP -0.26% (60d -0.16%) vs  9,351 control +0.02% (+0.34%)  gap -0.19pp t -0.38
+Follow-through days, ^GSPC 1997-2026: 150 FTDs; 60d return minus average
+  -0.78pp t -1.01; 1997-2010 -2.72pp, 2011-26 +2.47pp (flips)
+Distribution days (5+ in 25 sessions), month-ends: 5+ at 202 of 345 months
+  next 21d +0.87% vs +0.40% when 4 or fewer -- BETTER, both halves
+```
+
+The contraction adds nothing to an ordinary Stage-2 breakout. Follow-through
+days do not mark better-than-average starts. The distribution-day "warning"
+is on most of the time and, if anything, precedes better months. On
+2026-10-06 the count was 6: no measured warning. None goes into Gemma's
+cards except as "no measured edge".
+
 ## 35. The operator's signals.py -- entries significantly worse than random
 
 `research_gpu/signals_test.py` (9b8bbd0), the file unchanged
