@@ -166,8 +166,18 @@ cores while using one:
       | sizing from stop distance | sizing from portfolio weight |
       | needs a fresh setup | needs relative rank |
 
-- [ ] Monthly rebalance loop, equal weight, no stops. `sizing.py` cannot size
+- [x] Monthly rebalance loop, equal weight, no stops. `sizing.py` cannot size
       it — with no stop there is no input.
+      Built 2026-10-05 (c77796b): `src/scanner/momentum/` + 
+      `scripts/momentum_rebalance.py`, DRY RUN ONLY. Design = §31 arm A,
+      universe S&P 500 + MidCap 400 (operator's choice). First dry-run
+      tranche recorded 2026-10-06: 8 of 10 picks Information Technology.
+- [ ] Before live: fractional shares or a larger book -- at $100k a tranche
+      puts ~$3,333 per name, so SNDK at $1,720 gets 1 share (48% under).
+- [ ] Before live: market-on-close submission with a `mom-` prefix, its own
+      sleeve, kill switch, FREEZE.md entry; dry run November first.
+- [ ] Decide (and TEST first) whether to cap one sector; today 8/10 is one
+      theme, which the crash test did not model.
 
 ## 6b. Friday flatten safety — mostly done
 
