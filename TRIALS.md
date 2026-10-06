@@ -74,5 +74,6 @@ data.
 
 | candidate | prior evidence | data | status |
 |---|---|---|---|
+| #28–#39 twelve indicators inside momentum | 5 published add-ons (t ≥ 2, stated sign) + 6 classic TA (\|t\| ≥ 3.3) + control | S&P 500 + 400, 2016–26, monthly quintiles | rules fixed in `indicator_screen_test.py` before the run |
 | #27 post-earnings drift (PEAD) | Ball & Brown 1968; Bernard & Thomas 1989; replicated for decades, weaker in large caps lately | Nasdaq earnings calendar, 2010→ | rules fixed in `pead_test.py` before any earnings data was seen; collecting |
 | momentum + trend, forward | #20–#25 | live paper, from window 16 | design |
