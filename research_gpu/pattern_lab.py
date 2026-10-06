@@ -74,8 +74,9 @@ def ext_lists(x: torch.Tensor) -> list[list[tuple[int, float, str]]]:
     s = x @ KERNEL.T
     before = s[:, 1:D.PATTERN_DAYS - 1] - s[:, 0:D.PATTERN_DAYS - 2]
     after = s[:, 2:D.PATTERN_DAYS] - s[:, 1:D.PATTERN_DAYS - 1]
-    is_max = (before > 0) & (after <= 0)
-    is_min = (before < 0) & (after >= 0)
+    eps = D.FLAT * s[:, 1:D.PATTERN_DAYS - 1].abs()                # same flat rule as detect.extrema
+    is_max = (before > eps) & (after <= eps)
+    is_min = (before < -eps) & (after >= -eps)
     near = x[:, 0:D.PATTERN_DAYS].unfold(1, 3, 1)                    # k-1..k+1 for k = 1..33
     hi, lo = near.amax(2), near.amin(2)
     is_max, is_min, hi, lo = is_max.cpu().tolist(), is_min.cpu().tolist(), hi.cpu().tolist(), lo.cpu().tolist()

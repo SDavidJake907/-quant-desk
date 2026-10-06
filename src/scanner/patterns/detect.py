@@ -8,7 +8,8 @@ Finance 55(4). FIXED 2026-10-06 before any data was examined:
   SMOOTHING  Nadaraya-Watson, Gaussian kernel, bandwidth 1.5 days, over the
              window only. (LMW chose bandwidth by cross-validation x 0.3; a
              fixed 1.5 is used so the definition cannot drift.)
-  EXTREMA    where the smoothed slope changes sign; the extremum's price is
+  EXTREMA    where the smoothed slope changes sign (a slope under 1e-9 of
+             price counts as flat -- rounding noise is not a turning point); the extremum's price is
              the highest (peak) / lowest (trough) raw close within one day of
              it. Only extrema in the first 35 days count.
   E1..E5     the LAST five consecutive extrema (so a pattern is recent).
@@ -39,6 +40,10 @@ from collections.abc import Mapping, Sequence
 
 WINDOW, PATTERN_DAYS, BANDWIDTH = 38, 35, 1.5
 TOL, RECT_TOL, DOUBLE_GAP = 0.015, 0.0075, 22
+#: A smoothed slope smaller than this fraction of price is FLAT (added 2026-10-06:
+#: on a price that did not move, rounding noise of ~1e-15 made fake turning
+#: points, and CPU and GPU rounding disagreed -- the parity check caught it).
+FLAT = 1e-9
 CODES = ("HS", "IHS", "BTOP", "BBOT", "TTOP", "TBOT", "RTOP", "RBOT", "DTOP", "DBOT")
 
 _WEIGHTS = [[math.exp(-0.5 * ((i - j) / BANDWIDTH) ** 2) for j in range(WINDOW)] for i in range(WINDOW)]
@@ -55,10 +60,11 @@ def extrema(prices: Sequence[float]) -> list[tuple[int, float, str]]:
     out = []
     for k in range(1, PATTERN_DAYS - 1):
         before, after = s[k] - s[k - 1], s[k + 1] - s[k]
+        eps = FLAT * abs(s[k])
         near = prices[max(0, k - 1):k + 2]
-        if before > 0 and after <= 0:
+        if before > eps and after <= eps:
             out.append((k, max(near), "max"))
-        elif before < 0 and after >= 0:
+        elif before < -eps and after >= -eps:
             out.append((k, min(near), "min"))
     return out
 

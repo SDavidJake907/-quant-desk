@@ -68,3 +68,9 @@ def test_card_codes():
     none = d.card(code="IHS", age=3, neckline_atr=0.6, height_atr=2.1,
                   stats={"ev20": 0.12, "t": 0.6, "n": 1840, "verdict": "no measured edge"})
     assert none.endswith("no measured edge")
+
+
+def test_a_price_that_does_not_move_has_no_turning_points():
+    # rounding noise on a flat stretch must not create extrema (parity fix, 2026-10-06)
+    p = [6.0508] * 20 + [6.0508 + 0.15 * i / 10 for i in range(10)] + [6.2] * 8
+    assert all(i >= 19 for i, _, _ in d.extrema(p))
