@@ -42,6 +42,7 @@ def test_closed_market_means_no_review(monkeypatch, is_open):
     async def no_model(*a, **k):
         raise AssertionError("the model was asked while the market was closed")
 
-    monkeypatch.setattr(module, "chat_json", no_model)
+    # Monitor v2 (2026-10-06) calls the model through scanner.monitor.review.ask.
+    monkeypatch.setattr(module.review, "ask", no_model)
     assert asyncio.run(module.main("gemma4:12b")) == 0
     assert broker.asked == []        # did not even read positions

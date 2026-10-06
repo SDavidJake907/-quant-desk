@@ -54,6 +54,31 @@ def momentum(*, rank: int, universe: int, weight_pct: float, sector_share_pct: f
             "T": trend_gap_pct, "L": dollar_volume / 1e6, "M": mom_12_1}
 
 
+def wilder_atr(highs: Sequence[float], lows: Sequence[float], closes: Sequence[float],
+               n: int = 14) -> float | None:
+    """Wilder's ATR over the series; None with fewer than n+1 bars."""
+    trs = [max(h - lo, abs(h - c0), abs(lo - c0))
+           for h, lo, c0 in zip(highs[1:], lows[1:], closes[:-1])]
+    if len(trs) < n:
+        return None
+    atr = sum(trs[:n]) / n
+    for tr in trs[n:]:
+        atr = (atr * (n - 1) + tr) / n
+    return atr
+
+
+def daily_atr(times, highs: Sequence[float], lows: Sequence[float], closes: Sequence[float],
+              n: int = 14) -> float | None:
+    """Wilder ATR on daily bars built from intraday ones, COMPLETED days only."""
+    days: dict = {}
+    for t, h, lo, c in zip(times, highs, lows, closes):
+        d = t.date()
+        hi0, lo0, _ = days.get(d, (h, lo, c))
+        days[d] = (max(hi0, h), min(lo0, lo), c)
+    ordered = [days[d] for d in sorted(days)][:-1]          # drop today, still forming
+    return wilder_atr([x[0] for x in ordered], [x[1] for x in ordered], [x[2] for x in ordered], n)
+
+
 def heat(positions: Iterable[tuple[float, float, float]], *, equity: float) -> float:
     """Money at risk to the stops, % of equity: sum (price - stop) x shares."""
     return sum(max(price - stop, 0.0) * qty for price, stop, qty in positions) / equity * 100
