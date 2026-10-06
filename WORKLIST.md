@@ -1001,6 +1001,25 @@ random 2017-2020. (3) The pooled t joins two series end to end.
 Next: 2000-2015 large caps (covers 2008-09, the momentum crash), then a
 paper dry run of the monthly job in November, outside window 15.
 
+### 2000-2015 S&P 500 (`momentum_early_test.py`, 0983f79/75d36eb) -- PASS on paper, NULL in substance
+
+```
+187 books 2000-06..2015-12; 223 of 667 members never priced (heavy survivorship)
+momentum excess over S&P  +2.52%/hold  NW t 2.48   (survivorship lifts this)
+momentum minus random     +0.24pp/hold NW t 0.22   <- the honest number: zero
+2000-02 -3.32pp   2003-07 +4.81pp   2008-09 -6.93pp   2010-15 +0.07pp
+worst book 2008-07-09 -49.4% (S&P -20.0%); three-tranche max DD 62.4%
+(21-day sampling, survivors only -- understated) vs S&P 47.2%
+```
+
+The momentum crash, as published. Top-10 unhedged momentum earns in calm bull
+markets (2003-07, 2016-26) and gives it back in reversals. NOT fundable as
+designed: the GO_LIVE 15% drawdown stop would have tripped in 2008 deep in a
+loss. Remaining question: a published crash guard (market trend filter,
+volatility scaling, broader book), committed first and judged on all three
+datasets at once -- 2000-15 has now been seen, so a guard tuned on it alone
+proves nothing.
+
 ## 30. Gate 1 on the unseen 2018-2024 store -- the baseline fails, every candidate fails
 
 `gate1_test.py`, `breadth_test.py`, `time_of_day_test.py`, `mpc_test.py`, all
