@@ -85,8 +85,13 @@ def main(dry: bool, force: bool) -> int:
     folder = REPORTS / record["date"]
     folder.mkdir(parents=True, exist_ok=True)
     policy, ratings = TradingPolicy().fingerprint, {}
+    # The record carries the EXCHANGE date (New York); TradingAgents rejects a
+    # date after this machine's local one ("cannot be in the future") -- which
+    # in Alaska is every evening after 20:00. Both see data only through the
+    # last completed session, so the earlier of the two is the honest date.
+    as_of = min(record["date"], now.date().isoformat())
     for sym in picks:
-        request = {"ticker": sym, "date": record["date"], "model": settings.triage_model,
+        request = {"ticker": sym, "date": as_of, "model": settings.triage_model,
                    "deadline": worker_deadline(datetime.now().astimezone(),
                                                timeout_s=TICKER_TIMEOUT_S).isoformat(),
                    "report_dir": folder.as_posix(), "portfolio": None}
