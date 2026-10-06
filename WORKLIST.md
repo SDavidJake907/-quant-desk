@@ -1124,6 +1124,16 @@ control (DD 23 -> 15%, worst book -37 -> -25%) that halves return; the long-
 only adaptation is far weaker than the long-short papers, as expected.
 Residual momentum does not replicate here on either dataset.
 
+### Opportunistic insiders (`insider_opportunistic_test.py`, 94f2ca9, trial #43) -- FAIL, underpowered
+
+Cohen-Malloy-Pomorski classification on Form 4, S&P 500+400, 2021-26,
+126-day abnormal return from day +2 after filing:
+OPP 160 events +1.42% (t 0.65); ROUT 564 events +0.54% (t -0.30);
+OPP-ROUT +1.25pp (t 0.25). The direction matches the paper; the sample does
+not. Large caps have few open-market insider buyers with 3 years of history.
+A real test needs the paper's universe (all US stocks, mostly small caps) --
+which this account's liquidity floors would not trade anyway.
+
 ## 30. Gate 1 on the unseen 2018-2024 store -- the baseline fails, every candidate fails
 
 `gate1_test.py`, `breadth_test.py`, `time_of_day_test.py`, `mpc_test.py`, all

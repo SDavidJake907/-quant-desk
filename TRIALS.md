@@ -71,7 +71,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 40–42 | momentum family: vol-managed, residual, overnight | 31dcad5 | 500+400 2017–26; 500 2000–15 | best: overnight +3.13pp t 2.02 (bar 2.4), survives top-5 removal, 2000–15 DD 27.7%; engine fails top-5 removal | fail (all) |
 
-**Running total: ~76 trials. Passes that survive everything: 0.**
+| 43 | opportunistic insider buying | 94f2ca9 | S&P 500+400, 2021–26 | OPP +1.42%/6mo (t 0.65, n=160) vs ROUT +0.54%; right direction, underpowered | fail (too few events in large caps) |
+
+**Running total: ~77 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
@@ -85,7 +87,6 @@ publication.
 |---|---|---|---|
 | #27 post-earnings drift (PEAD) | Ball & Brown 1968; Bernard & Thomas 1989; replicated for decades, weaker in large caps lately | Nasdaq earnings calendar, 2010→ | rules fixed in `pead_test.py` before any earnings data was seen; collecting |
 | momentum + trend, forward | #20–#25 | live paper, from window 16 | engine built, dry run (c77796b) |
-| #43 opportunistic insider buying | Cohen, Malloy & Pomorski 2012: 0.82%/mo; routine ~0. Trial #5 did not separate them | Form 4 2018→ (classifiable 2021→), S&P 500+400 | rules fixed in `insider_opportunistic_test.py` before the run; OPP t ≥ 2 and OPP > ROUT |
 | Gemma news-sentiment factor | Lopez-Lira & Tang: LLM headline scores predict returns, strongest after bad news; profits fall as LLM use spreads | news 2024->, gemma4 local | queued; start daily score logging |
 | same-month seasonality | Heston & Sadka 2008 | 30y daily | queued, low priority |
 | MAX / lottery stocks | Bali, Cakici & Whitelaw 2011; weaker among past winners | daily | queued, low priority |
