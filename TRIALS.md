@@ -69,7 +69,9 @@ model take/skip and model exits. They are counted, not re-listed.
 | 28–39 | twelve indicators inside momentum | 08303d0 | 500+400, 2016–26 | none passes; 52w-high and low-vol go the WRONG way | fail (all) |
 | — | momentum bucket check (diagnostic of the control) | this commit | same | top 10 +3.43pp t 2.00; quintiles flat; without 5 names t 0.58 | edge concentrated in five stocks |
 
-**Running total: ~73 trials. Passes that survive everything: 0.**
+| 40–42 | momentum family: vol-managed, residual, overnight | 31dcad5 | 500+400 2017–26; 500 2000–15 | best: overnight +3.13pp t 2.02 (bar 2.4), survives top-5 removal, 2000–15 DD 27.7%; engine fails top-5 removal | fail (all) |
+
+**Running total: ~76 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
@@ -83,7 +85,6 @@ publication.
 |---|---|---|---|
 | #27 post-earnings drift (PEAD) | Ball & Brown 1968; Bernard & Thomas 1989; replicated for decades, weaker in large caps lately | Nasdaq earnings calendar, 2010→ | rules fixed in `pead_test.py` before any earnings data was seen; collecting |
 | momentum + trend, forward | #20–#25 | live paper, from window 16 | engine built, dry run (c77796b) |
-| #40–#42 momentum family: volatility-managed (Barroso & Santa-Clara), residual (Blitz et al.), overnight (Lou, Polk & Skouras) | published; long-only adaptations | S&P 500+400 2017–26 and S&P 500 2000–15 | ONE family, t ≥ 2.4 (Bonferroni for 3), top-5-removed check, Sharpe and drawdown vs the engine; rules fixed in `momentum_family_test.py` before the run |
 | #43 opportunistic insider buying | Cohen, Malloy & Pomorski 2012: 0.82%/mo; routine ~0. Trial #5 did not separate them | Form 4 2018→ (classifiable 2021→), S&P 500+400 | rules fixed in `insider_opportunistic_test.py` before the run; OPP t ≥ 2 and OPP > ROUT |
 | Gemma news-sentiment factor | Lopez-Lira & Tang: LLM headline scores predict returns, strongest after bad news; profits fall as LLM use spreads | news 2024->, gemma4 local | queued; start daily score logging |
 | same-month seasonality | Heston & Sadka 2008 | 30y daily | queued, low priority |

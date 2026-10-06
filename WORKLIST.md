@@ -1103,6 +1103,27 @@ low-confidence, lumpy bet: forward paper, small size, no promises. Residual
 momentum (stripping market and sector moves) is the published variant that
 targets exactly this concentration; next momentum test.
 
+### Momentum family (`momentum_family_test.py`, 31dcad5, trials #40-#42) -- all three FAIL
+
+One family against the engine (12-1, top 10, trend filter); t bar 2.4.
+
+```
+                 LIVE 2017-26 (500+400)                       CRASH 2000-15 (500)
+arm         vs rand   t     Sharpe maxDD  top-5 removed       Sharpe maxDD  worst
+engine      +2.32pp  1.41   0.71  23.1%   -0.35pp t -0.28      1.24  13.1%  -30.8%
+vol         +1.24pp  1.64   0.69  14.6%   -0.33pp              1.35   9.2%  -17.5%
+residual    +0.43pp  0.61   0.47  27.0%   -0.61pp              1.23  12.2%  -14.0%
+overnight   +3.13pp  2.02   0.84  24.0%   +0.66pp t 0.43       1.07  27.7%  -46.3%
+```
+
+The engine's edge is gone with its five biggest names removed -- the
+concentration finding, confirmed by a second method. Overnight momentum is
+the best on 2017-26 and the only arm still positive without its top five,
+but misses t 2.4 and doubles the 2000-15 drawdown. Vol management is a risk
+control (DD 23 -> 15%, worst book -37 -> -25%) that halves return; the long-
+only adaptation is far weaker than the long-short papers, as expected.
+Residual momentum does not replicate here on either dataset.
+
 ## 30. Gate 1 on the unseen 2018-2024 store -- the baseline fails, every candidate fails
 
 `gate1_test.py`, `breadth_test.py`, `time_of_day_test.py`, `mpc_test.py`, all
