@@ -980,6 +980,27 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 32. The core: S&P trend rule (Faber 2007) -- insurance, not edge. And the bar everything must clear.
+
+`core_trend_test.py` (0e63ede), SPY with dividends, T-bills when out, 10bps
+per switch, rules fixed before running, judged on post-publication years.
+
+```
+                     2007-2026 out of sample          1997-2006 (Faber's sample)
+trend rule      +7.95%/yr  DD 26.5%  vol 12.8%      +8.94%/yr  DD 19.0%
+buy and hold   +11.00%/yr  DD 55.2%  vol 19.5%      +6.17%/yr  DD 47.5%
+verdict: drawdown halved, return -3.05pp/yr -> FAIL (needed within 2pp)
+```
+
+2008: +0.4% vs -36.8%. The cost is whipsaw -- out and back in at a higher
+price in 2010, 2011, 2015, 2019, 2023. Post-publication it bought crash
+insurance at ~3%/yr; before publication it also won on return.
+
+THE BAR: buy-and-hold S&P paid +11%/yr since 2007 for no work. Any strategy
+here has to beat that after costs, taxes and its own drawdowns to justify
+real money. Nothing tested in this repo yet does on evidence it was not
+chosen from.
+
 ## 31. Momentum out of sample (S&P 400 + 600) -- STRONG PASS on the pre-set rule
 
 `momentum_oos_test.py`, rules and pass rule committed before running
