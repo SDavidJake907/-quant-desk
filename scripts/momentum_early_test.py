@@ -14,7 +14,7 @@ in GO_LIVE (3% day, 6% week, 15% drawdown) were written for the swing strategy.
 
 DATA
 S&P 500 point-in-time membership, verified within 2% of 500 names back to
-2000 (membership_drift audit, 2026-10-05). Yahoo daily "max" history, cut to
+2000 (membership_drift audit, 2026-10-05). Yahoo daily "30y" history ("max" returns quarterly bars), cut to
 1999-06 .. 2016-03, so books open roughly 2000-06 .. 2015-12. Delisted names
 (Enron, Lehman, WorldCom...) have no bars and are counted, not fixed -- worse
 here than in the 10y run, so the result reads HIGH, and the drawdowns LOW.
@@ -96,8 +96,8 @@ async def main() -> int:
     async with httpx.AsyncClient(timeout=60) as client:
         history = await index_history.load(client)
         symbols = tuple(sorted(history.symbols_ever(START, END, collapse_share_classes=True)))
-        benchmark = window(await fetch_bars("^GSPC", client, range_="max"))
-        raw, errors = await fetch_many(symbols, client, range_="max")
+        benchmark = window(await fetch_bars("^GSPC", client, range_="30y"))
+        raw, errors = await fetch_many(symbols, client, range_="30y")
     bars = {s: w for s, b in raw.items() if (w := window(b)) is not None and len(w) > 300}
     bars, _ = engine.drop_recycled(bars, history.exit_dates(START, END))
     members = membership_fn(history)
