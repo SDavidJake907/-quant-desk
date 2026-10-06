@@ -74,3 +74,19 @@ def test_a_price_that_does_not_move_has_no_turning_points():
     # rounding noise on a flat stretch must not create extrema (parity fix, 2026-10-06)
     p = [6.0508] * 20 + [6.0508 + 0.15 * i / 10 for i in range(10)] + [6.2] * 8
     assert all(i >= 19 for i, _, _ in d.extrema(p))
+
+
+def test_live_card_carries_the_measured_record_and_age():
+    from scanner.patterns import live
+    shape = path([(0, 95), (5, 100), (10, 96), (17, 106), (24, 96.5), (30, 100.5), (35, 94), (37, 93)])
+    closes = [95.0] * 5 + shape
+    highs, lows = [c * 1.01 for c in closes], [c * 0.99 for c in closes]
+    stats = {"HS": {"ev20": -0.44, "t": -2.7, "n": 12597, "verdict": "no measured edge"}}
+    card = live.current(closes, highs, lows, stats)
+    assert card.startswith("PT=HS age") and card.endswith("n12597 no measured edge")
+
+
+def test_live_card_is_none_without_a_pattern():
+    from scanner.patterns import live
+    flat = [100.0] * 45
+    assert live.current(flat, flat, flat, {}) is None

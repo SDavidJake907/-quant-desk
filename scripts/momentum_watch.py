@@ -39,6 +39,7 @@ from scanner.llm.ollama import coerce_keep_alive
 from scanner.models import AuditEvent
 from scanner.momentum import state as mstate
 from scanner.monitor import codes, review
+from scanner.patterns import live as patterns
 from scanner.sources import composite, yahoo_rss
 from scanner.sources.index_history import SP400, SP500
 
@@ -76,6 +77,7 @@ async def main(force: bool) -> int:
             by_sector[sector.get(s, "?")] = by_sector.get(sector.get(s, "?"), 0) + q * price[s]
         gap = (bench.closes[-1] / statistics.fmean(bench.closes[-210:]) - 1) * 100
         rows = []
+        pattern_stats = patterns.load_stats()
         for s, q in sorted(held.items()):
             b = daily[s]
             line = codes.render(codes.momentum(
@@ -88,8 +90,9 @@ async def main(force: bool) -> int:
             except Exception:                                   # noqa: BLE001
                 items = []
             heads = review.recent_headlines(items, now=now)
+            pattern = patterns.current(b.closes, b.highs, b.lows, pattern_stats)
             body = review.payload(review.prompt("momentum holding, no stop, rebuilt monthly", line, heads,
-                                                "the monthly rebuild handles fading momentum"),
+                                                "the monthly rebuild handles fading momentum", pattern),
                                   model=settings.triage_model, num_ctx=settings.triage_num_ctx,
                                   keep_alive=coerce_keep_alive(settings.llm_keep_alive), think=settings.llm_think)
             try:
@@ -98,7 +101,7 @@ async def main(force: bool) -> int:
             except Exception as exc:                            # noqa: BLE001
                 print(f"  {s}: model unavailable: {exc}")
                 continue
-            rows.append((s, line, out, len(heads)))
+            rows.append((s, f"{line} | {pattern or 'PT=none'}", out, len(heads)))
             append_event(settings.audit_log_path, AuditEvent(
                 event="momentum_review", at=datetime.now().astimezone(), symbol=s, stage="shadow",
                 model=settings.triage_model, reason=review.reason(out, line, reused=False)))

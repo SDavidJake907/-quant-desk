@@ -55,6 +55,8 @@ from scanner.features.intraday import EXCHANGE_TZ, SESSION_ALIGNED
 from scanner.llm.ollama import coerce_keep_alive
 from scanner.models import AuditEvent
 from scanner.monitor import codes, review
+from scanner.patterns import live as patterns
+from scanner.features.bars import fetch_bars
 from scanner.sources import yahoo_rss
 
 DIM, BOLD, RESET = "\033[2m", "\033[1m", "\033[0m"
@@ -122,6 +124,7 @@ async def main(model: str) -> int:
             return 0
 
         levels = submitted_levels(settings.audit_log_path)
+        pattern_stats = patterns.load_stats()
         state = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
         now = datetime.now(timezone.utc)
         for position in positions:
@@ -133,13 +136,18 @@ async def main(model: str) -> int:
             except Exception:                                # noqa: BLE001
                 items = []
             heads = review.recent_headlines(items, now=now)
+            try:
+                d = await fetch_bars(symbol, client, range_="3mo")
+                pattern = patterns.current(d.closes, d.highs, d.lows, pattern_stats)
+            except Exception:                                # noqa: BLE001
+                pattern = None
             previous = state.get(symbol)
             if previous and previous.get("heads") == heads:
                 out, reused = previous["out"], True
             else:
                 body = review.payload(
                     review.prompt("swing trade with a stop and a target", line, heads,
-                                  "the stop already prices that"),
+                                  "the stop already prices that", pattern),
                     model=model, num_ctx=settings.triage_num_ctx,
                     keep_alive=coerce_keep_alive(settings.llm_keep_alive), think=settings.llm_think)
                 try:
@@ -156,7 +164,7 @@ async def main(model: str) -> int:
             append_event(settings.audit_log_path, AuditEvent(
                 event="position_review", at=datetime.now().astimezone(), symbol=symbol,
                 build=build_id(), policy=V.fingerprint, stage="shadow", model=model,
-                reason=review.reason(out, line, reused=reused)))
+                reason=review.reason(out, f"{line} | {pattern or 'PT=none'}", reused=reused)))
         held = {p["symbol"] for p in positions}
         STATE.parent.mkdir(parents=True, exist_ok=True)
         STATE.write_text(json.dumps({s: v for s, v in state.items() if s in held}), encoding="utf-8")

@@ -994,6 +994,38 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 34. Chart patterns as numbers -- ten patterns, 143,586 events, no measured edge; names carry no direction
+
+Definitions: `src/scanner/patterns/detect.py` (Lo, Mamaysky & Wang 2000:
+38-day window, kernel smoothing, last five turning points, their 1.5% /
+0.75% / 22-day rules). GPU event study: `research_gpu/pattern_lab.py`, parity
+2,000/2,000 against the pure-Python detector on both panels (the first run's
+parity check caught rounding-noise turning points on flat prices; fixed in
+both, 8066454, numerical only, 2 of 84,048 events changed). ~48s on the GPU.
+
+```
+20-day excess vs members   LIVE 2015-26 (n)        RW adj p   CRASH 1997-2016
+HS   (bearish)   -0.44%  (12,597)   0.057    -0.12%
+IHS  (bullish)   -0.48%  (13,158)   0.057    -0.33%
+BTOP             -0.64%   (7,625)   0.057    -0.08%
+BBOT             -0.54%   (6,661)   0.119    -0.03%
+TTOP             -0.45%   (6,358)   0.119    +0.36%
+TBOT             -0.39%   (7,208)   0.015    +0.01%   <- clears RW, flips sign
+RTOP             -0.25%   (3,162)   0.119    -0.08%
+RBOT             -0.25%   (2,956)   0.119    -0.09%
+DTOP (bearish)   -0.50%  (12,097)   0.119    -0.22%
+DBOT (bullish)   -0.84%  (12,226)   0.119    -0.21%
+hit rate 46-48% everywhere
+```
+
+No MEASURED pattern. The finding is the symmetry: "bullish" and "bearish"
+shapes lead to the same returns, so a pattern's NAME carries no direction
+here; what shows is a generic "choppy stock" lag (any stock jagged enough to
+form a pattern trailed the smooth trenders in 2015-26). Used protectively:
+the live pattern card (`patterns/live.py`) now sits in Gemma's monitor
+prompt with an explicit instruction that "no measured edge" means ignore the
+name and the lore. data/factors/pattern_stats.json carries the record.
+
 ## 33. GPU factor lab -- ten signals, one correction, nothing passes; survivorship shows itself
 
 `research_gpu/factor_lab.py` (8324a69) on the RTX 5060 Ti (torch 2.11 cu128,

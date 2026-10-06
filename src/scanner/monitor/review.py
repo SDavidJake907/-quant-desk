@@ -47,6 +47,12 @@ LEGEND
 POSITION ({kind})
 {line}
 
+CHART PATTERN (daily, with its record measured on 30 years of this universe)
+{pattern}
+A pattern marked "no measured edge" tells you NOTHING about direction: ignore its
+name and any lore about it ("inverse head and shoulders is bullish" is not true
+here). Only a pattern marked MEASURED is evidence, and only in the sign of its EV20.
+
 HEADLINES, last 48h, newest first
 {heads}
 
@@ -76,8 +82,9 @@ def recent_headlines(items: Iterable[tuple[str, datetime]], *, now: datetime) ->
     return out[:MAX_HEADS]
 
 
-def prompt(kind: str, line: str, heads: Sequence[str], priced: str) -> str:
+def prompt(kind: str, line: str, heads: Sequence[str], priced: str, pattern: str | None = None) -> str:
     return PROMPT.format(legend=LEGEND, kind=kind, line=line, priced=priced,
+                         pattern=pattern or "(none on the last 38 days)",
                          heads="\n".join(f"- {h}" for h in heads) or "(none)",
                          material="; ".join(f"{m} = {GLOSS[m]}" for m in MATERIAL))
 

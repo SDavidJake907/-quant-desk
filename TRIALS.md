@@ -75,7 +75,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 46–55 | GPU factor lab: 8 factors + 2 blends, one Romano-Wolf correction | 8324a69 | 500+400 2015–26; 500 1997–2016 | best adj p 0.157 (walk-forward blend); low-vol and MAX WRONG way in both periods (survivorship) | fail (all) |
 
-**Running total: ~87 trials. Passes that survive everything: 0.**
+| 56–65 | ten LMW chart patterns, 143,586 events | 4f1c8fd / 8066454 | 500+400 2015–26; 500 1997–2016 | no MEASURED pattern; bullish and bearish shapes give the same -0.25 to -0.84%/20d; TBOT clears RW (p 0.015) but flips sign 1997–2016 | fail (all) |
+
+**Running total: ~97 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
@@ -91,7 +93,6 @@ publication.
 | momentum + trend, forward | #20–#25 | live paper, from window 16 | engine built, dry run (c77796b) |
 | #44 TradingAgents rating as a momentum filter | none for this use; Gemma's numbers judgement measured WORSE (p=0.021) | data/momentum/ratings.jsonl, from 2026-10-06, forward only | RULE FIXED 2026-10-06 before the first rating: once 30+ rated picks have completed a 63-trading-day hold, compare return vs ^GSPC from the rating-date close for POS (Buy/Overweight) against NEG (Sell/Underweight); Hold excluded; needs 8+ in each group. PASS: POS minus NEG > 0 with Welch t >= 2. Until then record-only: no rating adds, drops or resizes a pick |
 | #45 Gemma red flags on held positions (monitor v2) | Lopez-Lira & Tang: LLM headline reads predict returns, strongest after bad news; Gemma's own exit judgement measured WORSE (p=0.021) | live reviews from the first monitor-v2 run, forward only | RULE FIXED 2026-10-06 before the first live review: once 30+ red flags (f2 with a verbatim quote and a material event type) exist on held positions, flagged positions must do WORSE than unflagged ones -- swing: remaining-hold R from the review; momentum: next 20 trading days vs ^GSPC -- with t >= 2. PASS unlocks level 3 only: tighten the stop (breakeven or 0.5 x 30m ATR under price) or sell half, never a full exit on Gemma alone, and only through FREEZE.md. Until then: record and report |
-| #56–#65 ten chart patterns (Lo, Mamaysky & Wang 2000): HS, IHS, BTOP, BBOT, TTOP, TBOT, RTOP, RBOT, DTOP, DBOT | LMW: conditional return distributions differ; Savin et al.: H&S 7-9%/yr 1990s; Bajgrowicz-Scaillet: rules die after costs | S&P 500+400 2015–26, S&P 500 1997–2016, daily windows | ONE family; definitions in `src/scanner/patterns/detect.py`, test in `research_gpu/pattern_lab.py`, both fixed before the first run: MEASURED = two-sided Romano-Wolf adj p < 0.05 on the 20-day excess AND same sign on 1997–2016; only MEASURED patterns may be called meaningful to Gemma |
 | Gemma news-sentiment factor | Lopez-Lira & Tang: LLM headline scores predict returns, strongest after bad news; profits fall as LLM use spreads | news 2024->, gemma4 local | queued; start daily score logging |
 | same-month seasonality | Heston & Sadka 2008 | 30y daily | queued, low priority |
 | MAX / lottery stocks | Bali, Cakici & Whitelaw 2011; weaker among past winners | daily | queued, low priority |
