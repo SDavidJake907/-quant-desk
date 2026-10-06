@@ -23,11 +23,12 @@ from datetime import datetime, timedelta
 import httpx
 
 from scanner.monitor.codes import LEGEND
+from scanner.monitor.events import GLOSS, MATERIAL_NEGATIVE
 
 SEED = 7
 HOURS, MAX_HEADS = 48, 6
-MATERIAL = ("guidance_cut", "downgrade", "regulatory", "fraud", "lawsuit", "offering",
-            "acquired", "halt", "earnings_miss", "management_exit")
+#: The shared vocabulary (scanner.monitor.events); only these back a red flag.
+MATERIAL = MATERIAL_NEGATIVE
 SCHEMA = {"type": "object", "properties": {
     "c": {"type": "string", "enum": ["H", "X"]},
     "f": {"type": "string", "enum": ["0", "1", "2"]},
@@ -78,7 +79,7 @@ def recent_headlines(items: Iterable[tuple[str, datetime]], *, now: datetime) ->
 def prompt(kind: str, line: str, heads: Sequence[str], priced: str) -> str:
     return PROMPT.format(legend=LEGEND, kind=kind, line=line, priced=priced,
                          heads="\n".join(f"- {h}" for h in heads) or "(none)",
-                         material=", ".join(MATERIAL))
+                         material="; ".join(f"{m} = {GLOSS[m]}" for m in MATERIAL))
 
 
 def payload(text: str, *, model: str, num_ctx: int, keep_alive: str, think: bool | None) -> dict:

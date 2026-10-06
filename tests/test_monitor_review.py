@@ -9,13 +9,13 @@ HEADS = ["SEC opens probe into accounting at Acme", "Acme shares slip in early t
 
 
 def test_red_flag_with_quote_and_material_event_stands():
-    out = review.validate({"c": "H", "f": "2", "k": "3", "t": "regulatory",
+    out = review.validate({"c": "H", "f": "2", "k": "3", "t": "legal_regulatory",
                            "e": "SEC opens probe into accounting", "w": "regulator probe"}, HEADS)
     assert out["f"] == "2" and out["grounded"] is True
 
 
 def test_red_flag_without_verbatim_quote_is_downgraded_to_watch():
-    out = review.validate({"c": "H", "f": "2", "k": "3", "t": "regulatory",
+    out = review.validate({"c": "H", "f": "2", "k": "3", "t": "legal_regulatory",
                            "e": "SEC launches investigation", "w": "x"}, HEADS)
     assert out["f"] == "1" and out["grounded"] is False
 
@@ -27,10 +27,10 @@ def test_red_flag_without_material_event_is_downgraded():
 
 
 def test_reason_keeps_the_scorecard_prefix():
-    out = review.validate({"c": "X", "f": "2", "k": "3", "t": "regulatory",
+    out = review.validate({"c": "X", "f": "2", "k": "3", "t": "legal_regulatory",
                            "e": "SEC opens probe into accounting", "w": "probe"}, HEADS)
     text = review.reason(out, "R+0.40 P0.55", reused=False)
-    assert text.startswith("exit_early (strong, grounded): v2 f2 t=regulatory")
+    assert text.startswith("exit_early (strong, grounded): v2 f2 t=legal_regulatory")
     assert "R+0.40 P0.55" in text
 
 

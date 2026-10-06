@@ -38,7 +38,6 @@ from scanner.features import history
 from scanner.features.bars import fetch_bars, fetch_many
 from scanner.features.intraday import EXCHANGE_TZ, SESSION_ALIGNED
 from scanner.features.technicals import compute
-from scanner.llm.ollama import chat_json
 from scanner.momentum import state as mstate
 from scanner.monitor import codes
 from scanner.sources import composite, yahoo_rss
@@ -50,34 +49,6 @@ from news_event_test import headlines as past_headlines  # noqa: E402
 
 SNAPSHOTS = (1, 4, 8, 16)
 KEY = Path("tmp/monitor_v2_key.json")
-SCHEMA = {"type": "object", "properties": {
-    "c": {"type": "string", "enum": ["H", "X"]},
-    "f": {"type": "string", "enum": ["0", "1", "2"]},
-    "k": {"type": "string", "enum": ["1", "2", "3"]},
-    "e": {"type": "string"}, "w": {"type": "string"}},
-    "required": ["c", "f", "k", "e", "w"]}
-PROMPT = """You monitor one open position. Python computed every number below.
-Do not compute, estimate or repeat any number.
-
-LEGEND
-{legend}
-
-POSITION ({kind})
-{line}
-
-HEADLINES, newest first
-{heads}
-
-Question: do these headlines show that the REASON for holding is broken
-(fraud, guidance cut, downgrade cluster, deal/acquisition, lawsuit, offering,
-regulatory action)? Price drifting against the position is NOT a reason: {priced}.
-Be reluctant: exiting on noise is how this kind of strategy loses money.
-
-c: H hold or X exit early.  f: 0 nothing, 1 watch, 2 red flag (material negative).
-k: confidence 1 low, 2 mid, 3 high.  e: copy a span VERBATIM from one headline that
-supports f, or "".  w: at most 10 words, no tickers, no numbers."""
-
-
 def wilder_atr(highs, lows, closes, n=14):
     trs = [max(h - lo, abs(h - c0), abs(lo - c0)) for h, lo, c0 in zip(highs[1:], lows[1:], closes[:-1])]
     if len(trs) < n:
@@ -89,10 +60,17 @@ def wilder_atr(highs, lows, closes, n=14):
 
 
 async def ask(client, kind, line, heads, priced):
-    text = "\n".join(f"- {h}" for h in heads[:6]) or "(none)"
-    out = await chat_json(PROMPT.format(legend=codes.LEGEND, kind=kind, line=line, heads=text,
-                                        priced=priced), SCHEMA, client)
-    out["ev_ok"] = not out.get("e") or any(out["e"] in h for h in heads)
+    """The live monitor-v2 prompt and settings (scanner.monitor.review)."""
+    from scanner.llm.ollama import coerce_keep_alive
+    from scanner.monitor import review
+    shown = review.recent_headlines([(h, datetime.now(timezone.utc)) for h in heads],
+                                    now=datetime.now(timezone.utc)) if heads else []
+    body = review.payload(review.prompt(kind, line, shown, priced), model=settings.triage_model,
+                          num_ctx=settings.triage_num_ctx,
+                          keep_alive=coerce_keep_alive(settings.llm_keep_alive), think=settings.llm_think)
+    out = review.validate(await review.ask(client, settings.ollama_host, body,
+                                           timeout=settings.llm_timeout_s), shown)
+    out["ev_ok"] = out["grounded"]
     return out
 
 

@@ -178,6 +178,10 @@ cores while using one:
       sleeve, kill switch, FREEZE.md entry; dry run November first.
 - [ ] Decide (and TEST first) whether to cap one sector; today 8/10 is one
       theme, which the crash test did not model.
+- [ ] At the window-16 boundary (frozen files): update `TradingPolicy.as_prose()`
+      (calendar-aware flatten, +0.30% entry limit, late-signal guard,
+      breached-stop sale) and drop the candidate-ranking prompt (a null,
+      p=0.42) with the sweep strategy. See apprentice/PROMPTS.md.
 
 ## 6b. Friday flatten safety — mostly done
 
