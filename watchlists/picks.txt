@@ -1,0 +1,12 @@
+# PICKS -- traded automatically (scripts/picks_sync.py, every 30 min in market hours).
+# Add a name: bought on the next run. Remove a name: sold on the next run.
+# One ticker per line, '#' starts a comment. Commit every edit. Stocks only.
+# 2026-10-06: the operator's 1-month leaders. MSTR left out (bitcoin proxy).
+AMD
+MRVL
+ARM
+META
+INTC
+AMAT
+TSM
+PLTR

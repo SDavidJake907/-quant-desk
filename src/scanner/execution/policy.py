@@ -386,6 +386,24 @@ class TradingPolicy(Frozen):
     #: is one bet with 8% at risk. 0 disables. Chosen, not measured.
     max_per_sector: int = 3
 
+    # --- the operator's list, traded automatically (execution/picks.py) ----
+    #: watchlists/picks.txt is kept in sync every 30 min in market hours:
+    #: added names bought, removed names sold. Same 1% risk and position cap
+    #: as manual picks, on the same half of the account. All CHOSEN, not
+    #: measured (operator, 2026-10-06; WORKLIST §41).
+    #: Safety stop this many daily ATRs under the entry: room for normal
+    #: noise, there to stop a collapse.
+    picks_stop_atr_multiple: float = 2.5
+    #: Bracket target as a multiple of the entry: a ceiling for the order
+    #: shape, not a profit target -- winners ride until delisted from the list.
+    picks_target_ceiling: float = 2.0
+    #: An unfilled list buy older than this is cancelled and re-sent at the
+    #: current price on the next run.
+    picks_stale_entry_minutes: float = 25.0
+    #: Sector cap for the list. 0 = off: the operator's list is a deliberate
+    #: chip/AI bet and they chose to lift the cap for it (2026-10-06).
+    picks_max_per_sector: int = 0
+
     # --- momentum engine sleeve ---------------------------------------------
     #: Share of equity the momentum book is sized against; the rest is for
     #: manual picks and the scanner. Operator default 2026-10-06: half.

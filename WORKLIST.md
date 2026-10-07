@@ -994,6 +994,28 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 41. The operator's list, traded automatically (2026-10-06)
+
+Asked for: "trade the ones I picked automatically". `watchlists/picks.txt` is
+the decision; `scripts/picks_sync.py` (in the 30-minute safety task, after
+protect.py) keeps the account in step: names added are bought at the next run
+in market hours, names removed are sold. `pck-` client ids, strategy "picks".
+
+Chosen, NOT measured (operator, 2026-10-06):
+- safety stop 2.5 daily ATRs below entry (5-16% on the first list); no
+  profit target -- the bracket's target is a ceiling at 2x entry, for the
+  order shape and so protect.py can re-arm
+- sized like manual picks: 1% risk, 12.5% cap, the non-momentum half
+- sector cap OFF for the list (5 of 8 are IT by design); AMD goes to the
+  list, momentum skips it as foreign
+- held over weekends and through earnings; no 60-bar limit
+- an unfilled buy older than 25 min is cancelled and re-sent at market price
+- kill switch blocks buys, never sells
+
+First list: AMD MRVL ARM META INTC AMAT TSM PLTR (MSTR out: bitcoin proxy).
+Sized at tonight's prices: ~$39,750 across 8, $3,805 at risk if every stop
+hit (3.7% of equity). First orders at the 05:33 AK run, 2026-10-07.
+
 ## 40. End-to-end audit: the order was right, three things underneath were not (2026-10-06)
 
 Traced the whole day (03:30 ratings -> 30-min safety pass -> 11:40 momentum ->

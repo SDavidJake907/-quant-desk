@@ -35,6 +35,12 @@ REM bell is QUEUED for the next open rather than rejected, and a stop that
 REM activates at the open beats a position that is naked into it.
 ".venv\Scripts\python.exe" "scripts\protect.py" --submit >> "%LOG%" 2>&1
 
+REM THE OPERATOR'S LIST, KEPT IN SYNC (WORKLIST §41). watchlists/picks.txt:
+REM names added are bought, names removed are sold, each with a safety stop.
+REM After protect.py, so an existing position is protected before anything new
+REM is sent. Acts only while the market is open; reports otherwise.
+".venv\Scripts\python.exe" "scripts\picks_sync.py" --submit >> "%LOG%" 2>&1
+
 REM THE HOLD LIMIT RUNS NEXT, THEN THE SCAN.
 REM
 REM max_hold_bars=60 is how +0.218R was measured — 5.6% of holdout trades

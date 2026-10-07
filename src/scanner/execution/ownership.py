@@ -28,12 +28,15 @@ from typing import Any, Iterable, Mapping
 SMC = "smc"
 MANUAL = "manual"
 MOMENTUM = "momentum"
+#: The operator's list, kept in sync automatically (execution/picks.py).
+PICKS = "picks"
 UNKNOWN = "unknown"
 
 #: client_order_id prefix -> strategy. The prefix is the whole contract.
-PREFIXES: dict[str, str] = {"smc-": SMC, "man-": MANUAL, "mom-": MOMENTUM}
+PREFIXES: dict[str, str] = {"smc-": SMC, "man-": MANUAL, "mom-": MOMENTUM,
+                             "pck-": PICKS}
 
-STRATEGIES = (SMC, MANUAL, MOMENTUM)
+STRATEGIES = (SMC, MANUAL, MOMENTUM, PICKS)
 
 
 def prefix_for(strategy: str) -> str:

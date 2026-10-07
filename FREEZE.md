@@ -1,15 +1,13 @@
 # Evaluation window — FROZEN
 
-    window               18  (window 17 closed 2026-10-06, 0 trades: scanner entries paused)
-    policy fingerprint   3ef287f9adaa  (strategy-scoped closers, manual + momentum fields;
-                         before it 1e9ad75a7f09)
-    code build           b8b36d0  — the last commit that can change behaviour
-    what trades          1. MANUAL picks via scripts/manual_trade.py (`man-` ids), sized on
-                            the non-momentum half, held over weekends, max 3 per sector
-                         2. MOMENTUM paper book via momentum_rebalance.py --paper --submit
-                            (`mom-` ids), 50% of equity, monthly market-on-close, no stops
-                         3. sweep scanner (`smc-`): ENTRIES PAUSED; trade.py is off the
-                            schedule. Its safety rules still run for any smc position
+    window               19  (window 18 closed 2026-10-06, 0 trades: the operator's list automated)
+    policy fingerprint   ba826ffea485  (picks_* fields; before it 3ef287f9adaa)
+    code build           see the window-19 row in the log -- the last commit that can change behaviour
+    what trades          1. PICKS via scripts/picks_sync.py (`pck-` ids): watchlists/picks.txt kept in
+                            sync every 30 min, 2.5-ATR safety stop, no target, sector cap off
+                         2. MOMENTUM paper book (`mom-` ids), 50% of equity, monthly MOC, no stops
+                         3. one-off MANUAL trades via manual_trade.py (`man-` ids), operator-entered
+                         4. sweep scanner (`smc-`): ENTRIES PAUSED
     watchlist            watchlists/core.txt (18 names) -- the operator's list; TradingAgents
                          rates it premarket. Commit every edit
     llm environment      gemma4:12b, think=false, num_ctx 24576 + nomic-embed-text
@@ -1204,3 +1202,4 @@ research.
 | 2026-10-06 | **window 17 CLOSED (0 trades); window 18 declared at `3ef287f9adaa` / `b8b36d0`** -- the operator moved the system to their own picks plus the momentum engine (WORKLIST §37). Sweep entries paused (-0.041R on the unseen 2018-24 store, §30). Closers scoped by order-id prefix so the weekend flatten and 60-bar limit touch smc only. Gemma review and TradingAgents live pass removed; sector task retired; momentum task 11:40 AK added. CRITERIA SET BEFORE THE FIRST ORDER: momentum passes at 2027-04-06 if its book beats the S&P 500 over the same days AND its max drawdown stays under 25% (guard-test arm A: 2016-26 +2.38pp/hold vs random, t 1.49, max DD 22.2%); manual picks are reported at 30 closed trades as mean R with its standard error, and continue only if mean R > 0. Live smc record carried as context, not pooled: 16 closed, 5 won, +0.27R mean, +$2,041 | 0 |
 | 2026-10-06 | **advisory only, window 18 continues** -- second opinions (WORKLIST §38): TradingAgents back at 03:30 on held + momentum + core names, graded against the S&P over 21 sessions; RSI/averages/patterns labelled advisory (tested, no edge). Policy unchanged; manual_trade.py only adds a preview line and a `second_opinion_snapshot` audit row, which changes no order. Fixed before any trade: momentum holdings no longer use manual slots (`ba9b167`) | 0 |
 | 2026-10-06 | **operations fix, window 18 continues** -- end-to-end audit (WORKLIST §40): one log per scheduled task (a shared log silently stopped overlapping tasks; the weekend flatten was skipped 5 times in 3 days); safety checks and the hub read ownership so momentum holds raise no false alarms; protect.py's OCO counts as protection; momentum dry run rescheduled before the paper run. No policy field or order logic changed | 0 |
+| 2026-10-06 | **window 18 CLOSED (0 trades); window 19 declared at `ba826ffea485`** -- the operator's list traded automatically (WORKLIST §41): picks.txt (AMD MRVL ARM META INTC AMAT TSM PLTR) bought at the first run after the 10-07 open, sold when removed; 2.5-ATR safety stop, no target, sector cap lifted for the list. Momentum and the criteria set for it are unchanged. Picks are reported like manual picks: mean R with its standard error at 30 closed trades | 0 |
