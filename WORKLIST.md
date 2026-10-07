@@ -994,6 +994,28 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 46. The competition: you vs Gemma, monthly, with a season and a reward (2026-10-07)
+
+Rules set before any month was scored (scanner/ops/competition.py):
+- Month: each book's change in total P/L (realised + unrealised) over its
+  average money invested; the higher of picks and Gemma wins. Both books were
+  anchored at P/L 0 on the day before their first snapshot (they opened 10-07).
+- Quarter: more months won; a tie goes to the higher quarterly return.
+- Season: calendar year (season 1: 2026-10-07 .. 2026-12-31). The winner gets
+  +10 points of the account for the next season from the other book, applied
+  as a new window in January.
+- Ghosts, the honest check on skill: each month 8 random names from the 150
+  most traded S&P 500 stocks ("ghost-you") and 5 random names from Gemma's own
+  menu ("ghost-Gemma"), entered at that day's close with the same 2.5-ATR
+  stop (applied on daily lows, gaps fill at the open), drawn reproducibly by
+  month. Plus the momentum rule's top 10 and the S&P 500, held all month.
+- `scripts/competition.py snapshot` (13:30 outcomes task) records both books and
+  advances the paper books; `standings` writes logs/competition/standings.md,
+  included in the Friday report. Gemma's charter states the scoring and reward.
+
+October ghosts: you -- AMD CRWD DHR LIN MRK MS SHW UBER; Gemma -- ANET GM MRK
+VRT WELL. Day one: you +0.44%, Gemma +0.57%.
+
 ## 45. The Friday weekly review (2026-10-07)
 
 `scripts/weekly_report.py`, Fridays 07:00 AK (task stock-scanner-weekly), saved to

@@ -1,8 +1,8 @@
 # Evaluation window — FROZEN
 
-    window               28  (window 27 closed 2026-10-07: TradingAgents a shadow Gemma does not see)
+    window               29  (window 28 closed 2026-10-07: the competition and its season)
     policy fingerprint   cda6989dfbac  (gemma_sees_tradingagents off; before it 53c4fff93a83)
-    code build           9b7c743  — the last commit that can change behaviour
+    code build           0a1358d  — the last commit that can change behaviour
     what trades          1. PICKS via scripts/picks_sync.py (`pck-` ids): watchlists/picks.txt kept in
                             sync every 30 min, 2.5-ATR safety stop, no target, sector cap off
                          2. MOMENTUM paper book (`mom-` ids), 40% of equity, monthly MOC, no stops
@@ -1215,3 +1215,4 @@ research.
 | 2026-10-07 | **window 25 CLOSED; window 26 declared at `53c4fff93a83` / `c5e81b9`** -- momentum's first market-on-close orders: 9 accepted, 8 EXPIRED unfilled on the paper account (only MU filled). The operator made momentum a helper instead of fixing the orders: momentum_trades=False, its 40% split Gemma 60% / picks + manual 40%; the monthly dry run keeps the rule's record (Gemma's benchmark, now 'the momentum rule'); its picks join Gemma's options, labelled; the 1-share MU paper position is sold at the next 11:40 run. Day-one result before the change: picks +0.27%, Gemma +0.39%, S&P 500 -0.22% | 13 open + MU |
 | 2026-10-07 | **window 26 CLOSED; window 27 declared at `53c4fff93a83` / `22b0510`** -- Gemma's charter now says it is in a head-to-head competition with the operator's picks book under the same rules, and its morning scoreboard shows both books on the same measure (return on money invested). Policy unchanged | 13 open + MU |
 | 2026-10-07 | **window 27 CLOSED; window 28 declared at `cda6989dfbac` / `9b7c743`** -- TradingAgents removed from Gemma's facts at Gemma's own request (its record should be its own judgement); TradingAgents keeps running as a graded shadow the operator sees. From Friday 10/9 05:45 | 13 open + MU |
+| 2026-10-07 | **window 28 CLOSED; window 29 declared at `cda6989dfbac` / `0a1358d`** -- THE COMPETITION, rules set before any month was scored (WORKLIST §46): operator's picks vs Gemma, monthly win/lose on change in P/L over average money invested; quarters by months won; season = calendar year (season 1: 2026-10-07..12-31), winner +10 points of the account next season from the other book. Ghost books (random 8 / random 5, same stops), the momentum rule and the S&P 500 scored on paper beside them. Gemma's charter states it. Policy unchanged | 13 open + MU |
