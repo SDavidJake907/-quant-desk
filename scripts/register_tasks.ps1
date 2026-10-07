@@ -28,7 +28,8 @@ $tasks = @(
     "stock-scanner-advisor-pre",
     "stock-scanner-momentum",
     "stock-scanner-gemma",
-    "stock-scanner-journal"
+    "stock-scanner-journal",
+    "stock-scanner-weekly"
 )
 
 # Retired 2026-10-06 (WORKLIST §37). Unregistered on every run so a machine
@@ -223,6 +224,15 @@ $jouSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLi
 $jouAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_journal.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-journal" -Trigger $jouTrigger -Action $jouAction -Settings $jouSettings -Description "Desk officer journal: code checks + Gemma write-up, logs/journal (13:45 AK weekdays)" -Force | Out-Null
 Write-Output "registered stock-scanner-journal 13:45 AK weekdays"
+
+# --- the Friday weekly review (WORKLIST §45) -------------------------------
+# Fridays 07:00 AK: after Gemma's 05:45 decision, five hours before the close,
+# so the operator can decide what to hold over the weekend. Read-only.
+$wkTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Friday -At 7:00AM
+$wkSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$wkAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_weekly.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-weekly" -Trigger $wkTrigger -Action $wkAction -Settings $wkSettings -Description "Weekly review of every position and book vs the S&P 500, logs/weekly (Fridays 07:00 AK)" -Force | Out-Null
+Write-Output "registered stock-scanner-weekly  Fridays 07:00 AK"
 
 # --- momentum paper rebalance ------------------------------------------------
 # 11:40 AK = 15:40 ET weekdays, ten minutes before Alpaca's 15:50 ET cutoff

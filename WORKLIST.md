@@ -994,6 +994,22 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 45. The Friday weekly review (2026-10-07)
+
+`scripts/weekly_report.py`, Fridays 07:00 AK (task stock-scanner-weekly), saved to
+logs/weekly/YYYY-MM-DD.md. Read-only. Per book and position: % since entry, the
+stock's last five sessions against the S&P 500, room to its stop (% of price),
+a descriptive trend label (ops/weekly.py: above its 50-day average and up on the
+month = uptrend; below and down = downtrend; else mixed -- NOT a tested signal,
+§31), earnings within 10 days, TradingAgents' and Gemma's latest notes, and next
+week's market calendar. The operator reviews it Friday morning and decides what
+to hold over the weekend.
+
+Weekend record checked the same day: of 15 completed live trades, 4 were held
+over a weekend (CEG +2.32R, Q +1.72R, CCL -0.94R, INTC about -1.0R; mean about
++0.5R) vs 11 closed inside the week (mean +0.31R). Too few to say more than "no
+evidence weekends are worse"; all were sweep-scanner trades.
+
 ## 44. Momentum becomes a helper; Gemma 60%, picks + manual 40% (2026-10-07)
 
 Day one: momentum's 9 market-on-close orders (sent 15:40 ET) were accepted and
