@@ -44,7 +44,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.config import settings
-from scanner.execution import ownership
+from scanner.execution import bookorders, ownership
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.audit import append_event
 from scanner.execution.policy import TradingPolicy
@@ -155,10 +155,35 @@ async def prices_for(symbols, daily, today) -> dict[str, float]:
     return out
 
 
+async def wind_down(view: BrokerView, submit: bool) -> int:
+    """Momentum is a helper now (policy.momentum_trades = False, 2026-10-07):
+    sell whatever the paper book still holds, once, in market hours. After
+    that this does nothing; the dry run above keeps the rule's record."""
+    held = view.momentum_held
+    print(f"momentum trading is OFF (helper only); paper positions left: "
+          f"{held or 'none'}")
+    if not held:
+        return 0
+    if not (submit and view.market_open):
+        print("  not selling now (market closed or preview)")
+        return 0
+    async with httpx.AsyncClient(timeout=60) as client:
+        broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
+        open_orders = await broker._get("/v2/orders", status="open", nested="true")
+        for symbol in sorted(held):
+            ok = await bookorders.sell(broker, symbol, open_orders, strategy=ownership.MOMENTUM,
+                                       reason="momentum stopped trading; book wound down",
+                                       policy=POLICY)
+            print(f"  {'sold' if ok else 'SELL FAILED'} {symbol}")
+    return 0
+
+
 async def main(capital: float, preview: bool, paper_mode: bool = False,
                submit: bool = False) -> int:
     today = datetime.now(tz=EXCHANGE_TZ).date()
     view = await broker_view() if paper_mode else None
+    if paper_mode and not POLICY.momentum_trades:
+        return await wind_down(view, submit)
     state_path, record_path = (PAPER_STATE, PAPER_RECORD) if paper_mode else (STATE, RECORD)
     if paper_mode and not state_path.exists():
         capital = view.equity * POLICY.momentum_allocation_pct / 100

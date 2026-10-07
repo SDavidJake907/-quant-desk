@@ -44,6 +44,7 @@ from scanner.execution.policy import TradingPolicy
 from scanner.execution.safety import kill_switch_active
 from scanner.execution.scorecard import read_rows
 from scanner.features.bars import fetch_bars, fetch_many
+from scanner.momentum import state as mstate
 from scanner.features.intraday_context import atr_pct
 from scanner.features.technicals import compute
 from scanner.llm.ollama import LLMError, chat_json
@@ -133,12 +134,22 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
     spx_ret = (spx.closes[-1] / since[0] - 1) * 100 if since else 0.0
     text = (f"since your first order on {start}: your book {mine:+.2f}% "
             f"(closed trades {realized.trades if realized else 0}), S&P 500 {spx_ret:+.2f}%")
-    paper = Path("data/momentum/paper.jsonl")
-    if paper.exists():
-        mom_unreal = sum(float(p.get("unrealized_pl") or 0) for p in positions
-                         if ownership.owner(p["symbol"], owner_map) == ownership.MOMENTUM)
-        first = json.loads(paper.read_text(encoding="utf-8").splitlines()[0])
-        text += f", momentum book {mom_unreal / float(first['book_value']) * 100:+.2f}%"
+    # The benchmark is the momentum RULE's dry-run record (momentum stopped
+    # trading 2026-10-07): its holdings priced at today's closes, plus cash,
+    # against the capital it started with -- the same tranche book the
+    # backtest measured, with no fills to go wrong.
+    book = mstate.load(Path("data/momentum/dry_run_book.json"))
+    if book is not None:
+        held = {s: n for t in book.tranches for s, n in t.holdings.items()}
+        if held:
+            prices, _ = await fetch_many(tuple(held), client, range_="1mo")
+            value = sum(t.cash for t in book.tranches) + sum(
+                n * prices[s].closes[-1] for s, n in held.items() if s in prices)
+            first = json.loads(Path("data/momentum/dry_run.jsonl").read_text(
+                encoding="utf-8").splitlines()[0])
+            start_value = sum(t.cash for t in book.tranches) + sum(
+                n * float(first["prices"].get(s, 0)) for s, n in held.items())
+            text += f", momentum rule {(value / start_value - 1) * 100:+.2f}%"
     return text
 
 
@@ -173,8 +184,14 @@ async def main(submit: bool) -> int:
         # list trades at 05:33, momentum at 11:40 on rebalance days. Momentum is
         # the one tested rule; letting Gemma take its names first would quietly
         # change what is being tested.
-        taken |= set(picks.read_list()[0]) | set(opinions.momentum_picks()[1])
-        universe = list(dict.fromkeys((*operator_names(CORE), *operator_names(GEMMA_LIST))))
+        taken |= set(picks.read_list()[0])
+        # Momentum no longer trades (2026-10-07): its monthly picks are OPTIONS
+        # for Gemma, labelled in the facts, instead of names reserved for it.
+        if POLICY.momentum_trades:
+            taken |= set(opinions.momentum_picks()[1])
+        mom_day, mom_picks, _ = opinions.momentum_picks()
+        extra = () if POLICY.momentum_trades else mom_picks
+        universe = list(dict.fromkeys((*operator_names(CORE), *operator_names(GEMMA_LIST), *extra)))
         allowed = [s for s in universe if s not in taken]
         allowed += [s for s in mine if s not in allowed]
         print(f"{BOLD}Gemma's book{RESET}  sleeve {POLICY.gemma_allocation_pct:.0f}% "
@@ -186,6 +203,11 @@ async def main(submit: bool) -> int:
             return 0
 
         facts, trend = await facts_for(allowed, client)
+        if not POLICY.momentum_trades:
+            for rank, s in enumerate(mom_picks, 1):
+                if s in facts:
+                    facts[s] += (f"\nmomentum rule: #{rank} of its 10 picks for this month "
+                                 f"(formed {mom_day}) -- the rule you are measured against")
         held_status = {s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
                        for s, p in mine.items()}
         sleeve_dollars = account.equity * POLICY.gemma_allocation_pct / 100

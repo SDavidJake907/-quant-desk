@@ -28,7 +28,7 @@ def test_schema_limits_symbols_to_the_allowed_list_and_count():
 def test_prompt_states_the_charter_the_rules_and_the_facts():
     text = gt.prompt(FACTS, held={"GS": "+2.1% since entry"}, max_positions=5,
                      scoreboard="book +1.2% vs S&P +0.4% vs momentum +0.9%")
-    assert "beaten BOTH the S&P 500" in text and "momentum book" in text
+    assert "beaten BOTH the S&P 500" in text and "momentum rule" in text
     assert "2027-04-06" in text and "25%" in text
     assert "Goldman Sachs trading revenue beats" in text
     assert "GS" in text and "+2.1% since entry" in text

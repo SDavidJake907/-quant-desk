@@ -420,14 +420,22 @@ class TradingPolicy(Frozen):
     #: succeeds. 10% at first; raised to 40% on 2026-10-07 before its first
     #: order (operator chose 40/40/20 over 50/35/15: momentum needs ~35%+ to
     #: buy its $900-1,700 names in whole shares, and picks keep 20%).
-    gemma_allocation_pct: float = 40.0
+    #: 60% from 2026-10-07 evening, when momentum stopped trading and its 40%
+    #: was split Gemma +20 / picks + manual +20 (operator's choice).
+    gemma_allocation_pct: float = 60.0
     gemma_max_positions: int = 5
 
     # --- momentum engine sleeve ---------------------------------------------
     #: Share of equity the momentum book is sized against. 50% on 2026-10-06,
     #: 40% from 2026-10-07 (Gemma 40, picks + manual 20). Fixed into the paper
     #: book at its first rebalance; changing it later does not resize the book.
-    momentum_allocation_pct: float = 40.0
+    momentum_allocation_pct: float = 0.0
+    #: MOMENTUM IS A HELPER, NOT A BOOK (2026-10-07). Its first market-on-close
+    #: orders were accepted and 8 of 9 expired unfilled on the paper account.
+    #: The operator chose to stop it trading: the monthly dry run keeps its
+    #: picks on record (Gemma's benchmark), TradingAgents rates them at 03:30,
+    #: and Gemma may choose them as options. Its 40% went Gemma +20, picks +20.
+    momentum_trades: bool = False
 
     @property
     def own_sleeves_pct(self) -> float:
