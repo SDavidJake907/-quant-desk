@@ -1000,31 +1000,48 @@ Audit of all 10 scheduled tasks and every live policy field, 2026-10-06.
 The operator wants to trade their own picks THROUGH this system, beside the
 momentum engine, on one schedule. In order:
 
-- [ ] **Scope the closers by strategy (blocker).** `flatten.py` closes EVERY
+- [x] **Scope the closers by strategy (blocker).** `flatten.py` closes EVERY
       position before a weekend and `manage_positions.py` closes ANY position
       held >= 60 bars (~4.6 sessions). Both read the broker, not the intent's
       `strategy`, so a manual pick or a 3-month momentum hold would be sold
       within a week. Apply each only to the strategies it was built for.
-- [ ] **`manual_trade.py SYMBOL --stop X [--target Y] [--limit Z]`**: same
+- [x] **`manual_trade.py SYMBOL --stop X [--target Y] [--limit Z]`**: same
       sizing, guards and bracket as the scanner; TradeIntent `strategy="manual"`;
       protect.py / outcomes / scorecard handle it like any other. Optional
       3-per-sector cap (operator to decide).
-- [ ] **Pause sweep-scanner ENTRIES** (trade.py out of scheduled_scan.bat;
+- [x] **Pause sweep-scanner ENTRIES** (trade.py out of scheduled_scan.bat;
       code kept). Measured: -0.041R/trade on unseen 2018-24 (§30), -11.1% in
       the 2y account simulation (§29). Ends window 17.
-- [ ] **Remove the Gemma position review** from scheduled_scan.bat: 119/119
+- [x] **Remove the Gemma position review** from scheduled_scan.bat: 119/119
       "hold", including five trades that then stopped out (§27).
-- [ ] **Remove the TradingAgents live pass** (every 30 min, 117 ratings, 0
+- [x] **Remove the TradingAgents live pass** (every 30 min, 117 ratings, 0
       scoreable; shares the GPU with the news gate, which failed open on 18
       scans). Re-aim the premarket pass at watchlists/core.txt as advice for
       manual picks.
-- [ ] **Remove the 05:00 sector-RS task**: feeds a gate removed as null (§26/§27).
-- [ ] **Momentum to paper**: momentum_rebalance.py gets broker submission
+- [x] **Remove the 05:00 sector-RS task**: feeds a gate removed as null (§26/§27).
+- [x] **Momentum to paper**: momentum_rebalance.py gets broker submission
       (`mom-` prefix, own sleeve), monthly, exempt from flatten and max-hold.
       Pass/fail criteria written before the first order.
-- [ ] **Scorecard split by strategy** (manual vs momentum vs smc).
-- [ ] Decide (operator): manual picks flat before weekends or held; sleeve
-      split between momentum and manual.
+- [x] **Scorecard split by strategy** (manual vs momentum vs smc).
+- [x] Defaults taken 2026-10-06, operator may change: manual picks HELD over
+      weekends, momentum 50% of equity, max 3 positions per sector.
+
+Done 2026-10-06: bf6a22c (ownership), 29c201f (manual_trade.py), 25ff497
+(momentum paper), b8b36d0 (schedule + scorecard). 1144 tests. Every step
+run against the paper account (flat): closers report, protect clean,
+momentum refuses MOC with the market shut, scorecard reads 16 smc trades.
+Guard test re-run reproduces arm A exactly (2016-26 +4.50%/hold, +2.38pp vs
+random, t 1.49, DD 22.2%; 2000-15 DD 12.7%).
+
+Known limits:
+- Whole shares only (Alpaca refuses fractional MOC): at ~$1,700 per name a
+  tranche buys 0 SNDK, 1 MU, 1 LITE. The book holds cash it cannot place.
+- Manual positions come out ~0.2% risk / ~$6,300: 12.5% cap of the 51k
+  half-sleeve binds before the 1% risk budget. A choice for the operator.
+- Ownership reads the last 500 orders; a position whose buy is older falls
+  to "unknown" and no strategy rule closes it.
+- logs/scheduled.log is held open by the 19:00 extras task while it runs, so
+  any batch started then cannot write its log (seen 2026-10-06).
 
 Target rhythm (AK): 03:30 premarket ratings + brief -> 05:33-12:03 every 30m
 protect.py only -> manual entries any time -> month's first session near the

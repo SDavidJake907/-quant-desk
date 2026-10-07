@@ -1,20 +1,25 @@
+| 2026-10-06 | **window 17 CLOSED (0 trades); window 18 declared at `3ef287f9adaa` / `b8b36d0`** -- the operator moved the system to their own picks plus the momentum engine (WORKLIST §37). Sweep entries paused (-0.041R on the unseen 2018-24 store, §30). Closers scoped by order-id prefix so the weekend flatten and 60-bar limit touch smc only. Gemma review and TradingAgents live pass removed; sector task retired; momentum task 11:40 AK added. CRITERIA SET BEFORE THE FIRST ORDER: momentum passes at 2027-04-06 if its book beats the S&P 500 over the same days AND its max drawdown stays under 25% (guard-test arm A: 2016-26 +2.38pp/hold vs random, t 1.49, max DD 22.2%); manual picks are reported at 30 closed trades as mean R with its standard error, and continue only if mean R > 0. Live smc record carried as context, not pooled: 16 closed, 5 won, +0.27R mean, +$2,041 | 0 |
 # Evaluation window — FROZEN
 
-    window               17  (window 16 closed 2026-10-06 with 0 completed trades)
-    policy fingerprint   1e9ad75a7f09  (max_positions 5 -> 8; before it dcc6291a4ec2)
-    code build           0352504  — the last commit that can change behaviour
-    universe             watchlists/core.txt ONLY -- the operator's hand-picked list (18 names
-                         at window 17 open: AMD MRVL ARM META INTC AMAT TSM PLTR NKE LULU HUM
-                         EXPE CCL WDC SNDK LITE ANET GS), edited weekly or daily. Each edit is
-                         part of the experiment: commit the file when it changes, so every
-                         trade can be matched to the list that produced it
+    window               18  (window 17 closed 2026-10-06, 0 trades: scanner entries paused)
+    policy fingerprint   3ef287f9adaa  (strategy-scoped closers, manual + momentum fields;
+                         before it 1e9ad75a7f09)
+    code build           b8b36d0  — the last commit that can change behaviour
+    what trades          1. MANUAL picks via scripts/manual_trade.py (`man-` ids), sized on
+                            the non-momentum half, held over weekends, max 3 per sector
+                         2. MOMENTUM paper book via momentum_rebalance.py --paper --submit
+                            (`mom-` ids), 50% of equity, monthly market-on-close, no stops
+                         3. sweep scanner (`smc-`): ENTRIES PAUSED; trade.py is off the
+                            schedule. Its safety rules still run for any smc position
+    watchlist            watchlists/core.txt (18 names) -- the operator's list; TradingAgents
+                         rates it premarket. Commit every edit
     llm environment      gemma4:12b, think=false, num_ctx 24576 + nomic-embed-text
                          Ollama 0.35.1, 2 parallel slots, auto-update OFF,
                          desktop-app context_length 24576 (it overrides the env)
     branch               momentum-swing-research
-    started              2026-10-06 (declared after the close); first core-list scan
-                         2026-10-07 05:33 AK -- every 10-06 scan ran the full S&P 500
-    ends                 2026-12-04, fixed in advance — see the stop rules
+    started              2026-10-06, declared after the close; first possible orders 10-07
+    ends                 momentum: judged 2027-04-06 (six monthly rebalances), see below.
+                         manual: judged at 30 closed trades or 2027-04-06, whichever first
     account              Alpaca paper, opened 2026-08-06 at $100,000
                          equity $102,040.97 at window 16 open, flat
 
