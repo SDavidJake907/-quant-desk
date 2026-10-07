@@ -120,6 +120,10 @@ def render(account, positions, history, bars, spx, earnings, events) -> str:
                 f"{f'{room:.1f}%' if room is not None else 'no stop'} | {w.trend_label(closes) if closes else '?'} | "
                 f"{e.label if e else '-'} | {'; '.join(notes) or '-'} |")
         lines += [""]
+    standings = Path("logs/competition/standings.md")
+    if standings.exists():
+        body = standings.read_text(encoding="utf-8").split("\n", 2)[-1]
+        lines += ["## The competition (from last evening's standings)", "", body.strip(), ""]
     lines += ["## Next week's market calendar", ""]
     lines += [f"- {d:%a %m/%d}: {', '.join(sorted(set(ev))) if ev else 'nothing market-moving'}"
               for d, ev in events.items()]

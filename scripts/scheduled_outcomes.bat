@@ -31,6 +31,11 @@ REM Second opinions graded: TradingAgents and the Gemma read against the S&P
 REM over 21 sessions (WORKLIST §38). Advisory; read-only.
 ".venv\Scripts\python.exe" "scripts\second_opinion.py" --grades >> "%LOG%" 2>&1
 
+REM The competition (WORKLIST §46): snapshot both books, draw/advance the
+REM month's ghost and benchmark paper books, then the standings table.
+".venv\Scripts\python.exe" "scripts\competition.py" snapshot >> "%LOG%" 2>&1
+".venv\Scripts\python.exe" "scripts\competition.py" standings >> "%LOG%" 2>&1
+
 REM Mark the model's recorded calls against outcomes, the day they land.
 REM Read-only, advisory; its exit code is ignored like the archive's.
 ".venv\Scripts\python.exe" "scripts\score_gemma.py" >> "%LOG%" 2>&1

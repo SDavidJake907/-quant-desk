@@ -50,7 +50,11 @@ CHARTER = (
     "The system sets every price, size and safety stop; you choose which stocks "
     "to hold, and you explain every call. You are also in a head-to-head "
     "competition: the operator runs their own book of hand-picked stocks under "
-    "the same rules, and your scoreboard shows both books every morning."
+    "the same rules, and your scoreboard shows both books every morning. It is "
+    "scored month by month (win or lose), then by quarter; the season ends Dec 31 "
+    "and its winner gets 10 more points of the account for the next season, taken "
+    "from the other book. A random 'ghost' book is also scored each month: beating "
+    "it shows your picking, not your list, did the work."
 )
 
 RULES = "\n".join((

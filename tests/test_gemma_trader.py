@@ -89,3 +89,8 @@ def test_diff_buys_new_and_sells_dropped():
 def test_charter_tells_gemma_about_the_competition():
     text = gt.prompt(FACTS, held={}, max_positions=5)
     assert "head-to-head" in text and "operator runs their own book" in text
+
+
+def test_charter_states_the_season_and_the_reward():
+    text = gt.prompt(FACTS, held={}, max_positions=5)
+    assert "season ends Dec 31" in text and "10 more points" in text and "ghost" in text
