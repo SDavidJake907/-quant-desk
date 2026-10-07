@@ -994,6 +994,27 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 39. Run it better -- operator's list, 2026-10-06 (TODO)
+
+In order of value:
+- [ ] **RUNBOOK.md**: one or two pages -- what runs when in plain words, how to
+      place a pick and read the momentum book, what to do when a stop is
+      missing / a task did not run / an order was rejected, where each file and
+      log lives. WORKLIST says why; the runbook says what to do today.
+- [ ] **Survivorship-free data** (operator decision, paid: Norgate or Sharadar,
+      ~$30-50/month). The momentum tests miss 146-305 delisted names, which
+      flatters every long-only result. Re-test arm A on it before trusting it.
+- [ ] **Fractional momentum orders**: whole-share MOC buys 0 SNDK and 1 MU at
+      ~$1,700 a name. Option: notional market orders a few minutes before the
+      close (fills differ slightly from the backtest's close).
+- [ ] **Phone alerts**: order filled / rejected, task did not run, stop missing.
+      Today failures only leave a Desktop file.
+- [ ] **Host reliability**: a UPS, a heartbeat alert when nothing has run, or
+      the scheduler on a small cloud machine. 21 sessions were lost to the PC
+      being off (2026-08-24 to 09-24).
+- [ ] **Separate operating code from research**: ~15 of 129 scripts run the
+      system; move finished experiments to research/ so the live set is obvious.
+
 ## 38. Second opinions: one tier for evidence, one for opinions, graded (2026-10-06)
 
 The operator's ask: stop indicators that contradict each other from muddying
