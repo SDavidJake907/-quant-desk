@@ -18,8 +18,11 @@ import httpx
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.guards import RiskLimits
+from scanner.execution.policy import TradingPolicy
 from scanner.execution.safety import format_report, inspect, kill_switch_active
 from positions import load_intents
+
+POLICY = TradingPolicy()
 
 
 async def check_once(as_json: bool) -> bool:
@@ -32,7 +35,9 @@ async def check_once(as_json: bool) -> bool:
 
     report = inspect(
         account, positions, orders, load_intents(settings.audit_log_path),
-        RiskLimits(), market_open=market_open,
+        RiskLimits(max_positions=POLICY.max_positions,
+                   max_daily_loss_pct=POLICY.max_daily_loss_pct),
+        market_open=market_open,
         kill_switch=kill_switch_active(settings.kill_switch_path),
     )
     if as_json:

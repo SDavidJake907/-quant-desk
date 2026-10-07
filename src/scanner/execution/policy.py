@@ -240,7 +240,7 @@ class TradingPolicy(Frozen):
 
     risk_pct: float = 1.0
     max_position_pct: float = 20.0
-    max_positions: int = 5
+    max_positions: int = 8
     max_daily_loss_pct: float = 3.0
     min_equity: float = 1_000.0
 

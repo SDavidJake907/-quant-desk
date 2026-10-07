@@ -977,10 +977,10 @@ if __name__ == "__main__":
     p.add_argument("--fresh", type=int, default=VALIDATED.fresh_bars)
     p.add_argument("--min-rr", type=float, default=VALIDATED.min_reward_risk)
     p.add_argument("--min-risk-pct", type=float, default=VALIDATED.min_risk_pct)
-    p.add_argument("--risk-pct", type=float, default=1.0)
-    p.add_argument("--max-positions", type=int, default=5)
-    p.add_argument("--max-daily-loss-pct", type=float, default=3.0)
-    p.add_argument("--max-position-pct", type=float, default=20.0)
+    p.add_argument("--risk-pct", type=float, default=VALIDATED.risk_pct)
+    p.add_argument("--max-positions", type=int, default=VALIDATED.max_positions)
+    p.add_argument("--max-daily-loss-pct", type=float, default=VALIDATED.max_daily_loss_pct)
+    p.add_argument("--max-position-pct", type=float, default=VALIDATED.max_position_pct)
     p.add_argument("--swing-allocation", type=float,
                    default=VALIDATED.swing_allocation_pct, metavar="PCT",
                    help="percent of the account this strategy may use; the "
