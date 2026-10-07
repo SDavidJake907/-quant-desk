@@ -1,8 +1,8 @@
 # Evaluation window — FROZEN
 
-    window               21  (window 20 closed 2026-10-07, 0 trades: capital split changed)
+    window               22  (window 21 closed 2026-10-07, 0 trades: Gemma's list widened)
     policy fingerprint   61f5509d002d  (Gemma 40%, momentum 40%; before it cc750c27caef)
-    code build           0870192  — the last commit that can change behaviour
+    code build           fb304fd  — the last commit that can change behaviour
     what trades          1. PICKS via scripts/picks_sync.py (`pck-` ids): watchlists/picks.txt kept in
                             sync every 30 min, 2.5-ATR safety stop, no target, sector cap off
                          2. MOMENTUM paper book (`mom-` ids), 40% of equity, monthly MOC, no stops
@@ -1208,3 +1208,4 @@ research.
 | 2026-10-06 | **window 18 CLOSED (0 trades); window 19 declared at `ba826ffea485` / `7dfc6cd`** -- the operator's list traded automatically (WORKLIST §41): picks.txt (AMD MRVL ARM META INTC AMAT TSM PLTR) bought at the first run after the 10-07 open, sold when removed; 2.5-ATR safety stop, no target, sector cap lifted for the list. Momentum and the criteria set for it are unchanged. Picks are reported like manual picks: mean R with its standard error at 30 closed trades | 0 |
 | 2026-10-07 | **window 19 CLOSED (0 trades); window 20 declared at `cc750c27caef` / `e6ed7bd`** -- Gemma given a goal and its own live paper book (WORKLIST §42): 10% of equity, up to 5 core.txt names not claimed by picks or momentum, chosen each morning at 05:45 AK with quoted evidence; the system prices, sizes and stops. CHARTER SET BEFORE ITS FIRST ORDER: judged 2027-04-06, passes if its book beats the S&P 500 and the momentum paper book over the same days with max drawdown under 25%. Desk officer journal at 13:45 (checks are code). Picks/manual now share 40% | 0 |
 | 2026-10-07 | **window 20 CLOSED (0 trades); window 21 declared at `61f5509d002d` / `0870192`** -- capital split before any order: Gemma 10% -> 40%, momentum 50% -> 40%, picks + manual 40% -> 20%. The operator asked for Gemma at 50% and chose 40/40/20 over 50/35/15 (momentum needs ~35%+ to buy its $900-1,700 names in whole shares). Gemma's charter and judging date unchanged | 0 |
+| 2026-10-07 | **window 21 CLOSED (0 trades); window 22 declared at `61f5509d002d` / `fb304fd`** -- Gemma's list widened before its first order: watchlists/gemma.txt adds 21 liquid S&P 500 names, two per sector by 12-1 momentum, so it chooses from 28 free names instead of 7. Policy unchanged | 0 |
