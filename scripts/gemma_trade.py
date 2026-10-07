@@ -3,7 +3,7 @@
     python scripts/gemma_trade.py            # ask Gemma, show the decision, send nothing
     python scripts/gemma_trade.py --submit   # ask, then trade it (05:45 AK task)
 
-1  The list: watchlists/core.txt, minus names another book holds or has ordered,
+1  The list: watchlists/core.txt + watchlists/gemma.txt, minus names another book holds or has ordered,
    minus watchlists/picks.txt and momentum's current picks (reserved even
    before they are bought), plus whatever Gemma's book holds now.
 2  Facts per name, computed here (Gemma writes no numbers): 1/3/12-month and
@@ -55,6 +55,7 @@ BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN, RED, YELLOW = "\033[32m", "\033[31m", "\033[33m"
 POLICY = TradingPolicy()
 CORE = Path("watchlists/core.txt")
+GEMMA_LIST = Path("watchlists/gemma.txt")
 
 
 def _ret(closes, back: int) -> str:
@@ -119,7 +120,8 @@ async def main(submit: bool) -> int:
         # the one tested rule; letting Gemma take its names first would quietly
         # change what is being tested.
         taken |= set(picks.read_list()[0]) | set(opinions.momentum_picks()[1])
-        allowed = [s for s in operator_names(CORE) if s not in taken]
+        universe = list(dict.fromkeys((*operator_names(CORE), *operator_names(GEMMA_LIST))))
+        allowed = [s for s in universe if s not in taken]
         allowed += [s for s in mine if s not in allowed]
         print(f"{BOLD}Gemma's book{RESET}  sleeve {POLICY.gemma_allocation_pct:.0f}% "
               f"(${account.equity * POLICY.gemma_allocation_pct / 100:,.0f}), "
