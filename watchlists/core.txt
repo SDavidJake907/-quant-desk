@@ -1,6 +1,12 @@
 # CORE LIST -- the live scanner trades ONLY these names (window 16, 2026-10-06).
 # Hand-picked by the operator, updated weekly or daily. One ticker per line,
 # '#' starts a comment. Empty this file (or delete it) to go back to the S&P 500.
+# 2026-10-06: added the operator's 1-month leaders. MSTR left out (bitcoin proxy, stocks only).
 AMD
 MRVL
+ARM
+META
 INTC
+AMAT
+TSM
+PLTR
