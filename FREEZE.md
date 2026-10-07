@@ -1,17 +1,18 @@
 # Evaluation window — FROZEN
 
-    window               16  (window 15 closed 2026-10-06 with 0 completed trades)
-    policy fingerprint   dcc6291a4ec2  (block_earnings_within_days 7 -> 0; before it 69da227b506e)
-    code build           e67b955  — the last commit that can change behaviour
-    universe             watchlists/core.txt ONLY -- the operator's hand-picked list (AMD, MRVL,
-                         INTC at open), edited weekly or daily. Each edit is part of the
-                         experiment: commit the file when it changes, so every trade can be
-                         matched to the list that produced it
+    window               17  (window 16 closed 2026-10-06 with 0 completed trades)
+    policy fingerprint   1e9ad75a7f09  (max_positions 5 -> 8; before it dcc6291a4ec2)
+    code build           0352504  — the last commit that can change behaviour
+    universe             watchlists/core.txt ONLY -- the operator's hand-picked list (18 names
+                         at window 17 open: AMD MRVL ARM META INTC AMAT TSM PLTR NKE LULU HUM
+                         EXPE CCL WDC SNDK LITE ANET GS), edited weekly or daily. Each edit is
+                         part of the experiment: commit the file when it changes, so every
+                         trade can be matched to the list that produced it
     llm environment      gemma4:12b, think=false, num_ctx 24576 + nomic-embed-text
                          Ollama 0.35.1, 2 parallel slots, auto-update OFF,
                          desktop-app context_length 24576 (it overrides the env)
     branch               momentum-swing-research
-    started              2026-10-06, first scan on the core list 11:03 AK
+    started              2026-10-06 (window 17 declared same day, after the 11:03 AK scan)
     ends                 2026-12-04, fixed in advance — see the stop rules
     account              Alpaca paper, opened 2026-08-06 at $100,000
                          equity $102,040.97 at window 16 open, flat
@@ -1194,3 +1195,4 @@ research.
 | 2026-10-06 | **advisory only, window 15 continues** -- the monitor-v2 prompt gains a CHART PATTERN section: the daily pattern card (LMW definitions, measured record from 143,586 events: none MEASURED) with an instruction that 'no measured edge' means ignore the pattern's name and lore. review_positions.py and momentum_watch.py fetch daily bars for it. Still record-only; TRIALS #45 unchanged | 0 |
 | 2026-10-06 | **advisory only, window 15 continues** -- TradingAgents is connected to the scan: premarket first runs the live screen read-only (advisor/scan_watch.py: setups from the last 5 sessions, still live, live gates, ranked by smc.priority), then the operator's watchlist; passes rate held -> slate -> scan names -> watchlist; premarket budget 30 names (live 8). No trade.py or .bat change; ratings stay record-only (TRIALS #44) | 0 |
 | 2026-10-06 | **window 15 CLOSED (0 completed trades); window 16 declared at `dcc6291a4ec2` / `e67b955`** -- the operator clamped the live scanner to a hand-picked core list (watchlists/core.txt: AMD, MRVL, INTC at open, edited weekly/daily) because the full-S&P sweep found no setups in a rally (Oct 2-6: 4.6-18% of stocks swept a 10-day low vs 27-45% in late September), and chose to hold through earnings (earnings block 7 -> 0). A different experiment from windows 1-15: a discretionary list plus the mechanical sweep entry. Expect few trades -- the pattern needs a dip below a recent low. Same hard end 2026-12-04 | 0 |
+| 2026-10-06 | **window 16 CLOSED (0 completed trades); window 17 declared at `1e9ad75a7f09` / `0352504`** -- the operator raised `max_positions` 5 -> 8 (a PREFERENCE dial: per-position cap at 100% deployment falls 20% -> 12.5%, up to 8% of the sleeve at risk at once, 3% daily loss stop unchanged). The same commit fixed a drift that would have made the change cosmetic: trade.py's `--max-positions` default was a hardcoded 5 feeding both RiskLimits and the policy it fingerprints, and monitor.py's RiskLimits() defaulted to 5; both now read TradingPolicy. Core list grew 3 -> 18 the same day (`3d77441`, `5a1d607`). Same hard end 2026-12-04 | 0 |
