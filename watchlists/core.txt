@@ -10,3 +10,15 @@ INTC
 AMAT
 TSM
 PLTR
+# 2026-10-06: +10 names where the live pattern fired most often over the last 60 sessions
+# (2-3 triggers each, liquid S&P 500; scratch count, not a backtest). NKE had a live trigger at the time.
+NKE
+LULU
+HUM
+EXPE
+CCL
+WDC
+SNDK
+LITE
+ANET
+GS
