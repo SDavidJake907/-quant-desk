@@ -3,15 +3,23 @@
 THE CHARTER
 Gemma runs a real paper book of `gemma_allocation_pct` of the account. Each
 morning it chooses up to `gemma_max_positions` names from watchlists/core.txt
-(minus anything another book holds) and gives a reason quoting its evidence.
-Its goal: beat the S&P 500 and the momentum rule over six months, drawdown
-under 25%. If it does, it earns a wider list and a bigger sleeve.
++ watchlists/gemma.txt (minus anything another book claims) and gives a
+reason quoting its evidence. Judged 2027-04-06: its book must beat BOTH the
+S&P 500 and the momentum book over the same days, worst drawdown under 25%.
+If it does, it earns a wider list and a bigger sleeve; if not, it goes back
+to advising. It is shown its running scoreboard every morning.
 
 WHAT IT CONTROLS, AND WHAT IT CANNOT
 It names stocks. That is all. The answer schema has no numeric field and the
 symbol field is an enum of the allowed names, so it cannot emit a price, a
 size, a stop, or a ticker outside its list. The system prices, sizes, stops
 and sends (execution/bookorders.py), exactly as for the operator's picks.
+
+ITS OWN JUDGEMENT, NOT A COPY OF MOMENTUM (2026-10-07)
+The first prompt told it "what has held up here: buying 12-1 momentum", and it
+picked its five highest-momentum names -- the momentum rule on another list.
+Copying a rule cannot beat that rule, so the prompt now says so, keeps the
+tested record as context, and tells it that churn costs money.
 
 EVIDENCE OR NO NEW BUY
 A NEW name is bought only if its `evidence` occurs verbatim (whitespace and
@@ -33,23 +41,32 @@ from scanner.models import Frozen
 MIN_EVIDENCE_CHARS = 15
 
 CHARTER = (
-    "You are the desk's junior trader, running your own real paper book. "
-    "Your goal is to earn a real seat: beat the S&P 500 and the desk's momentum "
-    "rule over six months, with a drawdown under 25%, and explain every call. "
-    "If you succeed you get a wider list and more capital. The system handles "
-    "prices, sizes and stops; you only choose which stocks to hold."
+    "You are the desk's junior trader, running your own real paper book (about "
+    "{sleeve} of capital, at most {n} stocks). Your goal is to earn a real seat: "
+    "on 2027-04-06 your book must have beaten BOTH the S&P 500 and the desk's "
+    "momentum book over the same days, with its worst drawdown under 25%. If it "
+    "has, you get a wider list and more capital; if not, you go back to advising. "
+    "The system sets every price, size and safety stop; you choose which stocks "
+    "to hold, and you explain every call."
 )
 
-RULES = (
-    "Rules:\n"
-    "- Choose at most {n} stocks to HOLD from the list below. Fewer is fine; none is fine.\n"
-    "- A stock you hold now and leave out will be SOLD. A new stock you include will be BOUGHT.\n"
+RULES = "\n".join((
+    "Rules:",
+    "- Choose at most {n} stocks to HOLD from the list below. Fewer is fine; none is fine.",
+    "- A stock you hold now and leave out will be SOLD today. A new stock you include "
+    "will be BOUGHT today.",
+    "- Every change costs money and resets the clock. Keep a holding unless its reason "
+    "has changed; do not swap stocks just because another looks slightly better today.",
     "- For each, give a short reason and an 'evidence' field that copies an exact phrase "
-    "from THAT stock's own block below. A new buy without an exact phrase is ignored.\n"
-    "- Do not write prices, sizes or percentages of your own. Use only what is below.\n"
-    "- What has held up on this desk: buying strength (12-1 momentum) in an S&P uptrend. "
-    "RSI, moving averages and chart patterns were tested here and showed no edge.\n"
-)
+    "from THAT stock's own block below. A new buy without an exact phrase is ignored.",
+    "- Do not write prices, sizes or percentages of your own. Use only what is below.",
+    "- Use your own judgement. The momentum book already buys the strongest 12-1 "
+    "momentum names monthly; simply copying that rule cannot beat it. Momentum, "
+    "news, earnings timing and the market trend are all yours to weigh. On this "
+    "desk RSI, moving averages and chart patterns were tested and showed no edge.",
+    "- An earnings report within days can gap a stock either way, past its stop.",
+    "",
+))
 
 
 class Decision(Frozen):
@@ -83,12 +100,19 @@ def schema(allowed: Iterable[str], max_positions: int) -> dict[str, Any]:
     }
 
 
-def prompt(facts: Mapping[str, str], *, held: Mapping[str, str], max_positions: int) -> str:
+def prompt(facts: Mapping[str, str], *, held: Mapping[str, str], max_positions: int,
+           scoreboard: str = "", sleeve: str = "its share") -> str:
     book = "\n".join(f"- {s}: {status}" for s, status in held.items()) or "- (no positions)"
+    score = scoreboard or "No scoreboard yet: this is the start of your record."
     blocks = "\n\n".join(f"[{s}]\n{text}" for s, text in facts.items())
-    return (f"{CHARTER}\n\n{RULES.format(n=max_positions)}\n"
-            f"Your book now:\n{book}\n\nThe list:\n\n{blocks}\n\n"
-            "Answer with your holdings and a two-sentence 'journal' entry on today's thinking.")
+    return "\n".join((
+        CHARTER.format(sleeve=sleeve, n=max_positions), "",
+        RULES.format(n=max_positions),
+        f"Your scoreboard: {score}", "",
+        "Your book now:", book, "",
+        "The list:", "", blocks, "",
+        "Answer with your holdings and a two-sentence 'journal' entry on today's thinking.",
+    ))
 
 
 def _norm(text: str) -> str:

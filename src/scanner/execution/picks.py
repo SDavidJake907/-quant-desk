@@ -102,12 +102,12 @@ def client_order_id(symbol: str, at: datetime) -> str:
 
 
 def stale_entries(open_orders: Iterable[Mapping[str, Any]], now: datetime, *,
-                  minutes: float) -> list[Mapping[str, Any]]:
-    """Unfilled picks buys older than `minutes`: the price ran past the limit.
-    Cancelled so the next run re-sends at the current price."""
+                  minutes: float, strategy: str = PICKS) -> list[Mapping[str, Any]]:
+    """Unfilled buys of `strategy` older than `minutes`: the price ran past the
+    limit. Cancelled so the next run re-sends at the current price."""
     out = []
     for o in open_orders:
-        if strategy_of(o.get("client_order_id")) != PICKS or o.get("side") != "buy":
+        if strategy_of(o.get("client_order_id")) != strategy or o.get("side") != "buy":
             continue
         if float(o.get("filled_qty") or 0) > 0:
             continue

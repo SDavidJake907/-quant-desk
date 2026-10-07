@@ -167,7 +167,9 @@ def _run_one(request: dict, log: Path) -> tuple[str, str]:
 
 
 def main(mode: str, tickers: list[str], limit: int | None, min_minutes: float, dry: bool) -> int:
-    limit = limit or (30 if mode == "premarket" else 8)
+    # 50 premarket: held + momentum + core + Gemma's list, ~2 min each, inside
+    # the 03:30-05:32 window (the pass stops itself before the first scan).
+    limit = limit or (50 if mode == "premarket" else 8)
     if not Path(settings.tradingagents_python).exists():
         print(f"TradingAgents venv not found: {settings.tradingagents_python}")
         return 1
@@ -186,7 +188,8 @@ def main(mode: str, tickers: list[str], limit: int | None, min_minutes: float, d
     watch: tuple[str, ...] = ()
     if not tickers:
         _, picks, _ = opinions.momentum_picks()
-        watch = (*picks, *scan_watch.operator_names(Path("watchlists/core.txt")))
+        watch = (*picks, *scan_watch.operator_names(Path("watchlists/core.txt")),
+                 *scan_watch.operator_names(Path("watchlists/gemma.txt")))
     names = tuple(t.upper() for t in tickers) or pick_tickers(
         held=held, rows=[], skip=rated_on(rows, now.date()), limit=limit, watch=watch)
     print(f"TRADINGAGENTS {mode}  {now:%Y-%m-%d %H:%M}  model {settings.triage_model}")

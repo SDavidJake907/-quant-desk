@@ -26,10 +26,20 @@ def test_schema_limits_symbols_to_the_allowed_list_and_count():
 
 
 def test_prompt_states_the_charter_the_rules_and_the_facts():
-    text = gt.prompt(FACTS, held={"GS": "+2.1% since entry"}, max_positions=5)
-    assert "beat the S&P 500" in text and "momentum" in text
+    text = gt.prompt(FACTS, held={"GS": "+2.1% since entry"}, max_positions=5,
+                     scoreboard="book +1.2% vs S&P +0.4% vs momentum +0.9%")
+    assert "beaten BOTH the S&P 500" in text and "momentum book" in text
+    assert "2027-04-06" in text and "25%" in text
     assert "Goldman Sachs trading revenue beats" in text
     assert "GS" in text and "+2.1% since entry" in text
+    assert "book +1.2% vs S&P +0.4% vs momentum +0.9%" in text
+
+
+def test_prompt_asks_for_its_own_judgement_and_discourages_churn():
+    text = gt.prompt(FACTS, held={}, max_positions=5, scoreboard="")
+    assert "cannot beat" in text                      # copying momentum is not the job
+    assert "costs" in text and "unless" in text       # keep a holding unless its reason changed
+    assert "no scoreboard yet" in text.lower()
 
 
 def test_grounded_new_buys_kept_ungrounded_dropped():

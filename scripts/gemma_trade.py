@@ -25,7 +25,7 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 
 import httpx
 
@@ -36,7 +36,7 @@ from scanner.advisor import gemma_trader as gt
 from scanner.advisor import opinions
 from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
-from scanner.execution import bookorders, ownership, picks
+from scanner.execution import bookorders, ownership, picks, scorecard
 from scanner.execution.alpaca import Alpaca
 from scanner.execution.guards import RiskLimits, check_account
 from scanner.execution.ownership import GEMMA
@@ -81,9 +81,9 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
         f = compute(b)
         mom = f"{f.momentum_12_1:+.1f}%" if f.momentum_12_1 is not None else "n/a"
         atr = atr_pct(b)
+        atr_text = f"{atr:.1f}%" if atr else "n/a"
         lines = [f"{s} | 1m {_ret(b.closes, 21)} | 3m {_ret(b.closes, 63)} | "
-                 f"12m {_ret(b.closes, 252)} | 12-1 momentum {mom} | "
-                 f"daily ATR {atr:.1f}%" if atr else "daily ATR n/a"]
+                 f"12m {_ret(b.closes, 252)} | 12-1 momentum {mom} | daily ATR {atr_text}"]
         report = earnings.get(s)
         lines.append(f"earnings: {report.label}" if report else "earnings: none in the next 7 days")
         ta = opinions.latest_calls(rows, s).get("tradingagents")
@@ -99,6 +99,39 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
     return out, trend
 
 
+def _first_order_day(rows) -> str | None:
+    """The day Gemma's book placed its first order: the start of its record."""
+    days = [str(r.get("at", ""))[:10] for r in rows
+            if r.get("event") == "order_submitted"
+            and (r.get("intent") or {}).get("strategy") == GEMMA]
+    return min(days) if days else None
+
+
+async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
+    """Gemma's book since its first order, against the S&P 500 and the momentum
+    paper book over the same days. Empty before its first order."""
+    rows = read_rows(settings.audit_log_path)
+    start = _first_order_day(rows)
+    if start is None:
+        return ""
+    realized = scorecard.by_strategy(rows).get(GEMMA)
+    unreal = sum(float(p.get("unrealized_pl") or 0) for p in positions
+                 if ownership.owner(p["symbol"], owner_map) == GEMMA)
+    mine = ((realized.total_dollars if realized else 0.0) + unreal) / sleeve * 100
+    spx = await fetch_bars("^GSPC", client, range_="1y")
+    since = [c for d, c in zip(spx.dates, spx.closes) if d.isoformat() >= start]
+    spx_ret = (spx.closes[-1] / since[0] - 1) * 100 if since else 0.0
+    text = (f"since your first order on {start}: your book {mine:+.2f}% "
+            f"(closed trades {realized.trades if realized else 0}), S&P 500 {spx_ret:+.2f}%")
+    paper = Path("data/momentum/paper.jsonl")
+    if paper.exists():
+        mom_unreal = sum(float(p.get("unrealized_pl") or 0) for p in positions
+                         if ownership.owner(p["symbol"], owner_map) == ownership.MOMENTUM)
+        first = json.loads(paper.read_text(encoding="utf-8").splitlines()[0])
+        text += f", momentum book {mom_unreal / float(first['book_value']) * 100:+.2f}%"
+    return text
+
+
 async def main(submit: bool) -> int:
     async with httpx.AsyncClient(timeout=120) as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
@@ -110,6 +143,17 @@ async def main(submit: bool) -> int:
             "/v2/orders", status="all", limit=500, nested="true"))
         market_open = await broker.market_open()
 
+        if submit and market_open:
+            for order in picks.stale_entries(open_orders, datetime.now(timezone.utc),
+                                             minutes=POLICY.picks_stale_entry_minutes,
+                                             strategy=GEMMA):
+                try:
+                    await broker.cancel_order(str(order["id"]))
+                    bookorders.log("gemma_entry_cancelled", order["symbol"],
+                                   "unfilled since the last decision", POLICY)
+                except Exception as exc:                  # noqa: BLE001
+                    print(f"  {RED}cancel {order['symbol']}: {exc}{RESET}")
+            open_orders = await broker._get("/v2/orders", status="open", nested="true")
         mine = {p["symbol"]: p for p in positions
                 if ownership.owner(p["symbol"], owner_map) == GEMMA}
         taken = {p["symbol"] for p in positions if p["symbol"] not in mine}
@@ -134,14 +178,22 @@ async def main(submit: bool) -> int:
         facts, trend = await facts_for(allowed, client)
         held_status = {s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
                        for s, p in mine.items()}
-        text = gt.prompt(facts, held=held_status, max_positions=POLICY.gemma_max_positions)
+        sleeve_dollars = account.equity * POLICY.gemma_allocation_pct / 100
+        try:
+            score = await scoreboard(client, positions, owner_map, sleeve_dollars)
+        except Exception as exc:                          # noqa: BLE001
+            score = ""
+            print(f"  {YELLOW}scoreboard unavailable: {exc}{RESET}")
+        text = gt.prompt(facts, held=held_status, max_positions=POLICY.gemma_max_positions,
+                         scoreboard=score, sleeve=f"${sleeve_dollars:,.0f}")
         text = text.replace("The list:", f"Market: {trend}.\n\nThe list:", 1)
         try:
             answer = await chat_json(text, gt.schema(list(facts), POLICY.gemma_max_positions),
                                      client)
         except LLMError as exc:
             answer = None
-            print(f"  {RED}Gemma unavailable: {exc} -- book left unchanged{RESET}")
+            # Upper case on purpose: the desk journal's error check looks for it.
+            print(f"  {RED}FAILED: Gemma unavailable ({exc}) -- book left unchanged{RESET}")
         decision = gt.validate(answer, facts, held=set(mine),
                                max_positions=POLICY.gemma_max_positions)
         buys, sells = gt.diff(decision.keep, mine)

@@ -63,3 +63,14 @@ def test_stale_entries_are_found_by_age_and_prefix():
          "submitted_at": (NOW - timedelta(hours=3)).isoformat(), "filled_qty": "3"},
     ]
     assert [o["id"] for o in picks.stale_entries(orders, NOW, minutes=25)] == ["1"]
+
+
+def test_stale_entries_filter_by_the_strategy_asked_for():
+    orders = [
+        {"id": "g", "symbol": "VLO", "side": "buy", "client_order_id": "gem-VLO-1",
+         "submitted_at": (NOW - timedelta(hours=20)).isoformat(), "filled_qty": "0"},
+        {"id": "p", "symbol": "AMD", "side": "buy", "client_order_id": "pck-AMD-1",
+         "submitted_at": (NOW - timedelta(hours=20)).isoformat(), "filled_qty": "0"},
+    ]
+    assert [o["id"] for o in picks.stale_entries(orders, NOW, minutes=25, strategy="gemma")] == ["g"]
+    assert [o["id"] for o in picks.stale_entries(orders, NOW, minutes=25)] == ["p"]
