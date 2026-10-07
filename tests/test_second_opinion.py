@@ -88,3 +88,22 @@ def test_momentum_picks_prefer_the_paper_record(tmp_path):
     paper.write_text(json.dumps({"date": "2026-10-07", "picks": ["B"], "invested": True}))
     assert op.momentum_picks((paper, dry))[1] == ("B",)
     assert op.momentum_picks((tmp_path / "none.jsonl",)) == ("", (), None)
+
+
+def test_latest_calls_carry_the_report_path():
+    rows = [{"event": "tradingagents_rating", "symbol": "MPC", "at": "2026-10-07T04:32",
+             "reason": "Underweight; trader=Sell; mode=premarket; secs=104; "
+                       "report=C:/x/logs/tradingagents/2026-10-07/MPC.json"}]
+    assert op.latest_calls(rows, "MPC")["tradingagents"]["report"] == \
+        "C:/x/logs/tradingagents/2026-10-07/MPC.json"
+
+
+def test_report_summary_takes_the_executive_summary_opening():
+    text = ("**Rating**: Underweight **Executive Summary**: The final decision is to move to "
+            "an Underweight position on MPC. We will reduce exposure before a predicted mean "
+            "reversion. We will avoid new entries. **Investment Thesis**: long text")
+    s = op.report_summary(text, max_chars=200)
+    assert s.startswith("The final decision is to move to an Underweight position on MPC.")
+    assert "Investment Thesis" not in s and "**" not in s and len(s) <= 200
+    assert op.report_summary("", max_chars=200) == ""
+    assert op.report_summary("no headings here at all. second.", max_chars=200) == "no headings here at all. second."

@@ -106,9 +106,33 @@ def latest_calls(rows: Iterable[Mapping[str, Any]], symbol: str) -> dict[str, di
         if not source or str(row.get("symbol", "")).upper() != symbol:
             continue
         key, parse = source
+        reason = str(row.get("reason", ""))
+        report = next((part.strip()[len("report="):] for part in reason.split(";")
+                       if part.strip().startswith("report=")), "")
         out[key] = {"at": str(row.get("at", ""))[:10],
-                    "direction": parse(str(row.get("reason", ""))),
-                    "call": str(row.get("reason", "")).split(";", 1)[0].split(":", 1)[0]}
+                    "direction": parse(reason),
+                    "call": reason.split(";", 1)[0].split(":", 1)[0],
+                    "report": report}
+    return out
+
+
+def report_summary(text: str, *, max_chars: int = 300) -> str:
+    """The opening of a TradingAgents report's Executive Summary, plain text.
+
+    Given to Gemma so it can weigh WHY the analyst called a stock, not just the
+    verdict (2026-10-07). Two sentences at most, markdown stripped, cut at
+    `max_chars`. Falls back to the text's own opening when there is no heading.
+    """
+    flat = " ".join(str(text).split())
+    if "Executive Summary" in flat:
+        flat = flat.split("Executive Summary", 1)[1].lstrip("*: ")
+    flat = flat.split("**", 1)[0].replace("*", "").strip()
+    sentences = [s.strip() for s in flat.replace("! ", ". ").split(". ") if s.strip()]
+    out = ". ".join(sentences[:2])
+    if out and not out.endswith("."):
+        out += "."
+    if len(out) > max_chars:
+        out = out[:max_chars - 3].rsplit(" ", 1)[0] + "..."
     return out
 
 

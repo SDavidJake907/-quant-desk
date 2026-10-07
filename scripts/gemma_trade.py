@@ -88,7 +88,17 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
         lines.append(f"earnings: {report.label}" if report else "earnings: none in the next 7 days")
         ta = opinions.latest_calls(rows, s).get("tradingagents")
         if ta:
-            lines.append(f"TradingAgents (unproven) said {ta['call']} on {ta['at']}")
+            # The verdict AND a short reason from its report (2026-10-07), so
+            # Gemma weighs why, not just what. Labelled: its reasons lean on
+            # chart indicators, which tested as no edge here.
+            why = ""
+            try:
+                raw = json.loads(Path(ta["report"]).read_text(encoding="utf-8"))
+                why = opinions.report_summary(raw.get("final_trade_decision", ""))
+            except (OSError, ValueError, KeyError):
+                pass
+            lines.append(f"TradingAgents (unproven; leans on chart indicators) said "
+                         f"{ta['call']} on {ta['at']}" + (f": {why}" if why else ""))
         try:
             items = await yahoo_rss.fetch(s, client)
             for item in items[:5]:
