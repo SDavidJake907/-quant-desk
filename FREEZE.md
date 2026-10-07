@@ -1,17 +1,20 @@
 # Evaluation window — FROZEN
 
-    window               15
-    policy fingerprint   69da227b506e  (entry_limit_offset_pct=0.3 added 2026-10-05; before it 9ed12e112119, ba95546dbdbb)
-    code build           e60210b  — the last commit that can change behaviour
+    window               16  (window 15 closed 2026-10-06 with 0 completed trades)
+    policy fingerprint   dcc6291a4ec2  (block_earnings_within_days 7 -> 0; before it 69da227b506e)
+    code build           e67b955  — the last commit that can change behaviour
+    universe             watchlists/core.txt ONLY -- the operator's hand-picked list (AMD, MRVL,
+                         INTC at open), edited weekly or daily. Each edit is part of the
+                         experiment: commit the file when it changes, so every trade can be
+                         matched to the list that produced it
     llm environment      gemma4:12b, think=false, num_ctx 24576 + nomic-embed-text
                          Ollama 0.35.1, 2 parallel slots, auto-update OFF,
                          desktop-app context_length 24576 (it overrides the env)
     branch               momentum-swing-research
-    started              2026-10-05, first scan 05:33 AK
+    started              2026-10-06, first scan on the core list 11:03 AK
     ends                 2026-12-04, fixed in advance — see the stop rules
     account              Alpaca paper, opened 2026-08-06 at $100,000
-                         equity $102,396.18 at window open; INTC x169 open
-                         from window 14, market close queued for the 10-05 open
+                         equity $102,040.97 at window 16 open, flat
 
 The header above was still describing window 8 until 2026-10-04; windows 9-14
 were recorded only in the log at the bottom. See "Window 14 closed" below.
@@ -1190,3 +1193,4 @@ research.
 | 2026-10-06 | **advisory only, window 15 continues** -- review_positions.py is monitor v2: Gemma gets the trade math as codes (R, fair P(target), MFE/MAE, cushion in 30m and daily ATRs, bars used, sessions to flatten) and 48h headlines instead of RSI/MACD/EMAs/% P&L; temperature 0 + fixed seed (identical calls verified), JSON schema, red flag only with a verbatim quote and a material event; reuses its last call when no new headline appeared. Same audit event and scorecard prefix; still record-only (TRIALS.md #45 gates any action) | 0 |
 | 2026-10-06 | **advisory only, window 15 continues** -- the monitor-v2 prompt gains a CHART PATTERN section: the daily pattern card (LMW definitions, measured record from 143,586 events: none MEASURED) with an instruction that 'no measured edge' means ignore the pattern's name and lore. review_positions.py and momentum_watch.py fetch daily bars for it. Still record-only; TRIALS #45 unchanged | 0 |
 | 2026-10-06 | **advisory only, window 15 continues** -- TradingAgents is connected to the scan: premarket first runs the live screen read-only (advisor/scan_watch.py: setups from the last 5 sessions, still live, live gates, ranked by smc.priority), then the operator's watchlist; passes rate held -> slate -> scan names -> watchlist; premarket budget 30 names (live 8). No trade.py or .bat change; ratings stay record-only (TRIALS #44) | 0 |
+| 2026-10-06 | **window 15 CLOSED (0 completed trades); window 16 declared at `dcc6291a4ec2` / `e67b955`** -- the operator clamped the live scanner to a hand-picked core list (watchlists/core.txt: AMD, MRVL, INTC at open, edited weekly/daily) because the full-S&P sweep found no setups in a rally (Oct 2-6: 4.6-18% of stocks swept a 10-day low vs 27-45% in late September), and chose to hold through earnings (earnings block 7 -> 0). A different experiment from windows 1-15: a discretionary list plus the mechanical sweep entry. Expect few trades -- the pattern needs a dip below a recent low. Same hard end 2026-12-04 | 0 |
