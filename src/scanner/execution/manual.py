@@ -70,6 +70,19 @@ def sleeve_equity(equity: float, momentum_allocation_pct: float) -> float:
     return equity * share / 100.0
 
 
+def counted(held: Iterable[str], open_orders: Iterable[Mapping[str, Any]],
+            owner_map: Mapping[str, str]) -> frozenset[str]:
+    """Symbols that use a manual slot: held or ordered by anyone EXCEPT the
+    momentum book, which has its own sleeve and its own ten names. Counting
+    them would refuse every manual pick the day momentum fills."""
+    from scanner.execution.ownership import MOMENTUM, owner, strategy_of
+    names = {s for s in held if owner(s, owner_map) != MOMENTUM}
+    names |= {str(o.get("symbol")) for o in open_orders
+              if str(o.get("side")) == "buy"
+              and strategy_of(o.get("client_order_id")) != MOMENTUM}
+    return frozenset(names)
+
+
 def sector_counts(symbols: Iterable[str],
                   sector_of: Mapping[str, str]) -> Counter[str]:
     return Counter(sector_of.get(s, "") for s in symbols if sector_of.get(s))

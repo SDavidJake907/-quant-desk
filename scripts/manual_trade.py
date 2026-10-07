@@ -41,6 +41,7 @@ from scanner.execution import manual
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.audit import append_event
 from scanner.execution.guards import RiskLimits, check_account, check_symbol
+from scanner.execution import ownership
 from scanner.execution.ownership import MANUAL
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.provenance import build_id
@@ -81,6 +82,8 @@ async def main(a: argparse.Namespace) -> int:
         account = await broker.account()
         positions = await broker._get("/v2/positions")
         open_orders = await broker._get("/v2/orders", status="open", nested="true")
+        owner_map = ownership.owners(await broker._get(
+            "/v2/orders", status="all", limit=500, nested="true"))
         market_open = await broker.market_open()
         universe = await composite.load_universe(client, COMPOSITE_1500)
         sector_of = {m.symbol: m.sector for m in universe}
@@ -90,8 +93,9 @@ async def main(a: argparse.Namespace) -> int:
             return refuse(f"cannot price {symbol}: {exc}")
 
     held = frozenset(p["symbol"] for p in positions)
-    pending_entries = frozenset(o["symbol"] for o in open_orders
-                                if str(o.get("side")) == "buy")
+    # Momentum's book has its own sleeve: it never uses a manual slot or
+    # sector place (manual.counted).
+    in_use = manual.counted(held, open_orders, owner_map)
     pending = frozenset(o["symbol"] for o in open_orders)
 
     # --- levels -------------------------------------------------------------
@@ -110,7 +114,7 @@ async def main(a: argparse.Namespace) -> int:
                         min_equity=POLICY.min_equity,
                         max_position_pct=POLICY.max_position_pct,
                         risk_pct=POLICY.risk_pct)
-    slots_used = len(held | pending_entries)
+    slots_used = len(in_use)
     gate = check_account(
         account.equity, float(raw.get("last_equity") or account.equity),
         slots_used, limits, market_open=True,      # a GTC limit may rest overnight
@@ -122,7 +126,7 @@ async def main(a: argparse.Namespace) -> int:
         return refuse(symbol_gate.reason)
 
     sector = a.sector or sector_of.get(symbol, "")
-    counts = manual.sector_counts(held | pending_entries, sector_of)
+    counts = manual.sector_counts(in_use, sector_of)
     sector_gate = manual.check_sector(sector, counts, POLICY.max_per_sector)
     if not sector_gate:
         return refuse(sector_gate.reason)

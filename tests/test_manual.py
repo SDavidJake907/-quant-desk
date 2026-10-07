@@ -80,3 +80,12 @@ def test_bracket_is_gtc_with_a_manual_id():
 def test_bracket_refuses_impossible_orders(shares, limit, stop, target):
     with pytest.raises(manual.ManualError):
         manual.bracket("NVDA", shares, limit=limit, stop=stop, target=target, at=AT)
+
+
+def test_momentum_holdings_do_not_use_manual_slots():
+    owners = {"MU": "momentum", "WDC": "momentum", "NKE": "manual", "CCL": "smc"}
+    orders = [{"symbol": "DELL", "side": "buy", "client_order_id": "mom-DELL-202610-buy"},
+              {"symbol": "GS", "side": "buy", "client_order_id": "man-GS-1"},
+              {"symbol": "NKE", "side": "sell", "client_order_id": "x"}]
+    used = manual.counted({"MU", "WDC", "NKE", "CCL"}, orders, owners)
+    assert used == {"NKE", "CCL", "GS"}
