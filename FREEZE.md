@@ -1,8 +1,8 @@
 # Evaluation window — FROZEN
 
-    window               24  (window 23 closed 2026-10-07, 0 trades: 12 shared slots)
+    window               25  (window 24 closed 2026-10-07 after day one: Gemma reads TradingAgents' reasons)
     policy fingerprint   29e50eceae31  (12 shared slots, fixed 12.5% cap; before it 61f5509d002d)
-    code build           ce68da8  — the last commit that can change behaviour
+    code build           5ba5525  — the last commit that can change behaviour
     what trades          1. PICKS via scripts/picks_sync.py (`pck-` ids): watchlists/picks.txt kept in
                             sync every 30 min, 2.5-ATR safety stop, no target, sector cap off
                          2. MOMENTUM paper book (`mom-` ids), 40% of equity, monthly MOC, no stops
@@ -1211,3 +1211,4 @@ research.
 | 2026-10-07 | **window 21 CLOSED (0 trades); window 22 declared at `61f5509d002d` / `fb304fd`** -- Gemma's list widened before its first order: watchlists/gemma.txt adds 21 liquid S&P 500 names, two per sector by 12-1 momentum, so it chooses from 28 free names instead of 7. Policy unchanged | 0 |
 | 2026-10-07 | **window 22 CLOSED (0 trades); window 23 declared at `61f5509d002d` / `d2b94fb`** -- before Gemma's first order: its prompt now states the judging date and test, shows a running scoreboard, discourages churn, and no longer tells it to copy momentum (it had picked its five highest-momentum names); unfilled gem- buys cancelled before each decision; TradingAgents also rates gemma.txt. Policy unchanged | 0 |
 | 2026-10-07 | **window 23 CLOSED (0 trades); window 24 declared at `29e50eceae31` / `ce68da8`** -- shared slots (picks + manual one-offs) 8 -> 12 so one-offs fit beside the 8 picks; per-stock cap fixed at 12.5% of the sleeve (shared_position_cap_pct) instead of 100/slots, so no position shrank. Gemma and momentum keep their own slots | 0 |
+| 2026-10-07 | **window 24 CLOSED after day one; window 25 declared at `29e50eceae31` / `5ba5525`** -- Gemma's facts page now carries a two-sentence summary of each TradingAgents report (from its Executive Summary), labelled unproven and indicator-based; before, only the one-word rating. Policy unchanged. Day-one positions opened under window 24 (picks 8, Gemma 5) are attributed to it by build | 13 open |

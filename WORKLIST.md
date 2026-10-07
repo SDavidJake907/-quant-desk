@@ -1030,6 +1030,9 @@ the same theme in three books). Gemma writes the 4-6 sentence write-up from
 those findings only; it is printed beside them, never instead.
 logs/journal/YYYY-MM-DD.md + `desk_journal` audit event.
 
+Gemma reads TradingAgents' reasons (2026-10-07, window 25): two sentences from each
+report's Executive Summary, labelled unproven and indicator-based, beside the
+rating. It had seen only the word -- and bought MPC over an 'Underweight'.
 Capital split changed before any order (2026-10-07, window 21): Gemma 40%, momentum 40%,
 picks + manual 20% (operator asked for Gemma at 50%; 40/40/20 keeps momentum able to
 buy its names in whole shares). Earlier: picks/manual shared 40% (100 - 50 - 10); safety.py's
