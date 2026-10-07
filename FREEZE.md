@@ -1,8 +1,8 @@
 # Evaluation window — FROZEN
 
-    window               27  (window 26 closed 2026-10-07: Gemma told of the competition)
-    policy fingerprint   53c4fff93a83  (Gemma 60, picks + manual 40, momentum_trades off; before it 29e50eceae31)
-    code build           22b0510  — the last commit that can change behaviour
+    window               28  (window 27 closed 2026-10-07: TradingAgents a shadow Gemma does not see)
+    policy fingerprint   cda6989dfbac  (gemma_sees_tradingagents off; before it 53c4fff93a83)
+    code build           9b7c743  — the last commit that can change behaviour
     what trades          1. PICKS via scripts/picks_sync.py (`pck-` ids): watchlists/picks.txt kept in
                             sync every 30 min, 2.5-ATR safety stop, no target, sector cap off
                          2. MOMENTUM paper book (`mom-` ids), 40% of equity, monthly MOC, no stops
@@ -1214,3 +1214,4 @@ research.
 | 2026-10-07 | **window 24 CLOSED after day one; window 25 declared at `29e50eceae31` / `5ba5525`** -- Gemma's facts page now carries a two-sentence summary of each TradingAgents report (from its Executive Summary), labelled unproven and indicator-based; before, only the one-word rating. Policy unchanged. Day-one positions opened under window 24 (picks 8, Gemma 5) are attributed to it by build | 13 open |
 | 2026-10-07 | **window 25 CLOSED; window 26 declared at `53c4fff93a83` / `c5e81b9`** -- momentum's first market-on-close orders: 9 accepted, 8 EXPIRED unfilled on the paper account (only MU filled). The operator made momentum a helper instead of fixing the orders: momentum_trades=False, its 40% split Gemma 60% / picks + manual 40%; the monthly dry run keeps the rule's record (Gemma's benchmark, now 'the momentum rule'); its picks join Gemma's options, labelled; the 1-share MU paper position is sold at the next 11:40 run. Day-one result before the change: picks +0.27%, Gemma +0.39%, S&P 500 -0.22% | 13 open + MU |
 | 2026-10-07 | **window 26 CLOSED; window 27 declared at `53c4fff93a83` / `22b0510`** -- Gemma's charter now says it is in a head-to-head competition with the operator's picks book under the same rules, and its morning scoreboard shows both books on the same measure (return on money invested). Policy unchanged | 13 open + MU |
+| 2026-10-07 | **window 27 CLOSED; window 28 declared at `cda6989dfbac` / `9b7c743`** -- TradingAgents removed from Gemma's facts at Gemma's own request (its record should be its own judgement); TradingAgents keeps running as a graded shadow the operator sees. From Friday 10/9 05:45 | 13 open + MU |
