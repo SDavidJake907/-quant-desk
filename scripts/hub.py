@@ -48,6 +48,7 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.ops import runlog
 from scanner.config import settings
 from scanner.execution import continuity
 from scanner.execution.alpaca import Alpaca, BrokerError
@@ -96,22 +97,16 @@ def _audit(path: str) -> list[dict]:
 
 
 def _scheduled_tail(days: int) -> list[str]:
-    try:
-        text = SCHEDULED_LOG.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
+    """Every scheduled run in the last `days`, merged from the per-task logs
+    (scanner.ops.runlog) in start-time order."""
     cutoff = date.today() - timedelta(days=days)
     keep, taking = [], False
-    for line in text.splitlines():
-        header = RUN_HEADER.match(ANSI.sub("", line))
-        if header:
-            try:
-                when = datetime.strptime(header.group(2), "%m/%d/%Y").date()
-            except ValueError:
-                continue
-            taking = when >= cutoff
+    for line in runlog.read_logs(SCHEDULED_LOG.parent):
+        when = runlog.header_time(line)
+        if when is not None:
+            taking = when.date() >= cutoff
         if taking:
-            keep.append(ANSI.sub("", line))
+            keep.append(line)
     return keep
 
 

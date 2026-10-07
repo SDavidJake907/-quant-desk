@@ -15,7 +15,9 @@ REM day is picked up by the next run and a double run writes nothing twice.
 cd /d "%~dp0.."
 if errorlevel 1 exit /b 1
 
-set LOG=logs\scheduled.log
+REM One log per task (WORKLIST §40): a shared log locked out any task that
+REM started while another was writing, and that task silently did not run.
+set LOG=logs\scheduled_outcomes.log
 echo. >> "%LOG%"
 echo ===== OUTCOMES %DATE% %TIME% ===== >> "%LOG%"
 

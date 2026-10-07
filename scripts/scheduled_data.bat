@@ -31,7 +31,9 @@ REM 30 minutes later, which re-reads the account before doing anything.
 cd /d "%~dp0.."
 if errorlevel 1 exit /b 1
 
-set LOG=logs\scheduled.log
+REM One log per task (WORKLIST §40): a shared log locked out any task that
+REM started while another was writing, and that task silently did not run.
+set LOG=logs\scheduled_data.log
 echo. >> "%LOG%"
 echo ===== DATA %DATE% %TIME% ===== >> "%LOG%"
 
