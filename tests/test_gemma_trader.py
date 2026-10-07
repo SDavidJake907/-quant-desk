@@ -84,3 +84,8 @@ def test_a_malformed_answer_keeps_the_book_unchanged(answer):
 
 def test_diff_buys_new_and_sells_dropped():
     assert gt.diff(("GS", "ANET"), {"GS", "NKE"}) == (("ANET",), ("NKE",))
+
+
+def test_charter_tells_gemma_about_the_competition():
+    text = gt.prompt(FACTS, held={}, max_positions=5)
+    assert "head-to-head" in text and "operator runs their own book" in text

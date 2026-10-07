@@ -125,15 +125,27 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
     start = _first_order_day(rows)
     if start is None:
         return ""
-    realized = scorecard.by_strategy(rows).get(GEMMA)
-    unreal = sum(float(p.get("unrealized_pl") or 0) for p in positions
-                 if ownership.owner(p["symbol"], owner_map) == GEMMA)
-    mine = ((realized.total_dollars if realized else 0.0) + unreal) / sleeve * 100
+    by_book = scorecard.by_strategy(rows)
+
+    def on_invested(book: str) -> tuple[float, int]:
+        """(% on money invested, closed trades) for one book: realized plus
+        unrealized dollars over the cost of what it holds. The SAME measure for
+        Gemma and the operator, so the competition is scored like for like."""
+        done = by_book.get(book)
+        held = [p for p in positions if ownership.owner(p["symbol"], owner_map) == book]
+        cost = sum(float(p.get("cost_basis") or 0) for p in held)
+        pl = (done.total_dollars if done else 0.0) + sum(
+            float(p.get("unrealized_pl") or 0) for p in held)
+        return (pl / cost * 100 if cost else 0.0), (done.trades if done else 0)
+
+    mine, closed = on_invested(GEMMA)
+    theirs, _ = on_invested(ownership.PICKS)
     spx = await fetch_bars("^GSPC", client, range_="1y")
     since = [c for d, c in zip(spx.dates, spx.closes) if d.isoformat() >= start]
     spx_ret = (spx.closes[-1] / since[0] - 1) * 100 if since else 0.0
-    text = (f"since your first order on {start}: your book {mine:+.2f}% "
-            f"(closed trades {realized.trades if realized else 0}), S&P 500 {spx_ret:+.2f}%")
+    text = (f"since your first order on {start}: your book {mine:+.2f}% on money invested "
+            f"(closed trades {closed}); the operator's competing picks book {theirs:+.2f}%; "
+            f"S&P 500 {spx_ret:+.2f}%")
     # The benchmark is the momentum RULE's dry-run record (momentum stopped
     # trading 2026-10-07): its holdings priced at today's closes, plus cash,
     # against the capital it started with -- the same tranche book the

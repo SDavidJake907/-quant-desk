@@ -48,7 +48,9 @@ CHARTER = (
     "drawdown under 25%. If it "
     "has, you get a wider list and more capital; if not, you go back to advising. "
     "The system sets every price, size and safety stop; you choose which stocks "
-    "to hold, and you explain every call."
+    "to hold, and you explain every call. You are also in a head-to-head "
+    "competition: the operator runs their own book of hand-picked stocks under "
+    "the same rules, and your scoreboard shows both books every morning."
 )
 
 RULES = "\n".join((
