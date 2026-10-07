@@ -404,10 +404,24 @@ class TradingPolicy(Frozen):
     #: chip/AI bet and they chose to lift the cap for it (2026-10-06).
     picks_max_per_sector: int = 0
 
+    # --- Gemma's own book (advisor/gemma_trader.py, WORKLIST §42) ----------
+    #: Gemma chooses up to `gemma_max_positions` names from watchlists/core.txt
+    #: each morning, with a quoted reason for each; the system prices, sizes,
+    #: stops and sends, as for the picks list. Its own sleeve and slots.
+    #: Operator, 2026-10-06: 10% of equity, real paper orders, core list only,
+    #: widen if it succeeds.
+    gemma_allocation_pct: float = 10.0
+    gemma_max_positions: int = 5
+
     # --- momentum engine sleeve ---------------------------------------------
     #: Share of equity the momentum book is sized against; the rest is for
     #: manual picks and the scanner. Operator default 2026-10-06: half.
     momentum_allocation_pct: float = 50.0
+
+    @property
+    def own_sleeves_pct(self) -> float:
+        """Equity claimed by the books with their own sleeve."""
+        return self.momentum_allocation_pct + self.gemma_allocation_pct
 
     # --- recorded, never enforced ------------------------------------------
     #: Each of these improved the holdout and none has forward evidence. They

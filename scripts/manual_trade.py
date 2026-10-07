@@ -135,7 +135,7 @@ async def main(a: argparse.Namespace) -> int:
         return refuse(sector_gate.reason)
 
     # --- size ---------------------------------------------------------------
-    sleeve = manual.sleeve_equity(account.equity, POLICY.momentum_allocation_pct)
+    sleeve = manual.sleeve_equity(account.equity, POLICY.own_sleeves_pct)
     cap = min(POLICY.max_position_pct, position_cap_for(date.today(), POLICY))
     sizing = size_position(sleeve, limit, stop, risk_pct=POLICY.risk_pct,
                            max_position_pct=cap,

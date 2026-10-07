@@ -30,13 +30,15 @@ MANUAL = "manual"
 MOMENTUM = "momentum"
 #: The operator's list, kept in sync automatically (execution/picks.py).
 PICKS = "picks"
+#: Gemma's own book: it chooses names from core.txt, the system does the rest.
+GEMMA = "gemma"
 UNKNOWN = "unknown"
 
 #: client_order_id prefix -> strategy. The prefix is the whole contract.
 PREFIXES: dict[str, str] = {"smc-": SMC, "man-": MANUAL, "mom-": MOMENTUM,
-                             "pck-": PICKS}
+                             "pck-": PICKS, "gem-": GEMMA}
 
-STRATEGIES = (SMC, MANUAL, MOMENTUM, PICKS)
+STRATEGIES = (SMC, MANUAL, MOMENTUM, PICKS, GEMMA)
 
 
 def prefix_for(strategy: str) -> str:
@@ -81,6 +83,11 @@ def owners(orders: Iterable[Mapping[str, Any]]) -> dict[str, str]:
         if symbol and (symbol not in newest or when > newest[symbol][0]):
             newest[symbol] = (when, strategy_of(order.get("client_order_id")))
     return {symbol: strategy for symbol, (_, strategy) in newest.items()}
+
+
+#: Books with their own sleeve and slot count: they never use the shared
+#: max_positions slots (manual + picks + smc) and are sized on their own share.
+OWN_SLEEVE = (MOMENTUM, GEMMA)
 
 
 def owner(symbol: str, owner_map: Mapping[str, str]) -> str:

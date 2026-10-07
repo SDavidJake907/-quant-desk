@@ -994,6 +994,45 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 42. Gemma's goal: junior trader with its own book, and desk officer (2026-10-06)
+
+The operator gave Gemma a goal: be a successful trader, live (paper orders),
+on the operator's own names first, widen if it works.
+
+**Junior trader** -- `scripts/gemma_trade.py`, 05:45 AK weekdays, `gem-` ids.
+- 10% of equity, up to 5 names, own sleeve and slots (`gemma_*` policy).
+- Allowed list: watchlists/core.txt minus picks.txt, minus momentum's current
+  picks (reserved even before bought: momentum is the tested rule), minus
+  anything another book holds or has ordered; plus its own holdings.
+- Gemma NAMES stocks only. Enum-constrained schema, no numeric field; prices,
+  sizes and stops come from execution/bookorders.py (shared with picks):
+  limit +0.30%, 2.5-ATR safety stop, 2x ceiling target.
+- A NEW buy needs `evidence` found verbatim in that name's facts block (>= 15
+  chars); an ungrounded call may keep a held name but never changes the book;
+  an unreachable/malformed answer leaves the book unchanged.
+- Every decision logged as `gemma_decision` (keep, buys, sells, reasons,
+  rejected, journal).
+- First preview (2026-10-06): from NKE LULU HUM EXPE CCL ANET GS it chose HUM,
+  EXPE, ANET -- "avoided NKE and LULU due to their significant negative
+  momentum".
+
+CHARTER, SET BEFORE ITS FIRST ORDER: judged 2027-04-06. Passes if its book
+beats the S&P 500 AND the momentum paper book over the same days, with max
+drawdown under 25%. Pass -> wider list and a bigger sleeve, by a new window.
+Fail -> back to advisory. Its trades are also scored per trade in the
+scorecard under "gemma".
+
+**Desk officer** -- `scripts/desk_journal.py`, 13:45 AK weekdays. Checks are
+CODE (ops/deskcheck.py): runs per task vs plan, error lines (case-sensitive:
+the codebase shouts its failures), positions without a stop, unfilled buys,
+sector share across ALL books (> 50% flagged -- the per-book caps cannot see
+the same theme in three books). Gemma writes the 4-6 sentence write-up from
+those findings only; it is printed beside them, never instead.
+logs/journal/YYYY-MM-DD.md + `desk_journal` audit event.
+
+Also: picks/manual now share 40% (100 - momentum 50 - Gemma 10); safety.py's
+slot count excludes Gemma's own slots; picks_sync refactored onto bookorders.
+
 ## 41. The operator's list, traded automatically (2026-10-06)
 
 Asked for: "trade the ones I picked automatically". `watchlists/picks.txt` is

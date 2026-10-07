@@ -26,7 +26,9 @@ $tasks = @(
     "stock-scanner-extended",
     "stock-scanner-extras",
     "stock-scanner-advisor-pre",
-    "stock-scanner-momentum"
+    "stock-scanner-momentum",
+    "stock-scanner-gemma",
+    "stock-scanner-journal"
 )
 
 # Retired 2026-10-06 (WORKLIST §37). Unregistered on every run so a machine
@@ -200,6 +202,27 @@ $advPreTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At 3:30
 $advPreAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_tradingagents.bat" -Argument "premarket" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-advisor-pre" -Trigger $advPreTrigger -Action $advPreAction -Settings $advSettings -Description "Second opinions: TradingAgents rates held, momentum and core names before the open; advisory, graded (03:30 AK weekdays)" -Force | Out-Null
 Write-Output "registered stock-scanner-advisor-pre  03:30 AK weekdays (advisory, graded)"
+
+# --- Gemma's book: the junior trader (WORKLIST §42) -------------------------
+# 05:45 AK weekdays: after the 05:33 safety pass has placed the picks list's
+# orders (so those names are visibly taken) and after the 03:30 ratings have
+# freed the GPU. Gemma names up to 5 stocks from core.txt; bookorders prices,
+# sizes, stops and sends on its 10% sleeve. Market closed -> nothing sent.
+$gemTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At 5:45AM
+$gemSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$gemAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_gemma.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-gemma" -Trigger $gemTrigger -Action $gemAction -Settings $gemSettings -Description "Gemma's book: morning decision on core.txt names, real paper orders on a 10% sleeve (05:45 AK weekdays)" -Force | Out-Null
+Write-Output "registered stock-scanner-gemma   05:45 AK weekdays"
+
+# --- the desk officer's evening journal (WORKLIST §42) -----------------------
+# 13:45 AK weekdays, after outcomes (13:30). Code checks every task ran and
+# logged no error, every position has its stop, and money is not piled into one
+# sector across books; Gemma writes it up. Read-only.
+$jouTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At 1:45PM
+$jouSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$jouAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_journal.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-journal" -Trigger $jouTrigger -Action $jouAction -Settings $jouSettings -Description "Desk officer journal: code checks + Gemma write-up, logs/journal (13:45 AK weekdays)" -Force | Out-Null
+Write-Output "registered stock-scanner-journal 13:45 AK weekdays"
 
 # --- momentum paper rebalance ------------------------------------------------
 # 11:40 AK = 15:40 ET weekdays, ten minutes before Alpaca's 15:50 ET cutoff

@@ -38,6 +38,9 @@ PICKS     (pck-)     you: watchlists/     system, every 30 min       safety stop
 MOMENTUM  (mom-)     system: top 10 by    system, once a month       next monthly rebuild, or
           50% of     12-1 momentum,       at the close (MOC)         cash when the S&P is under
           equity     S&P 500 + 400                                   its 210-day average
+GEMMA     (gem-)     Gemma: up to 5       system, 05:45 AK daily     safety stop, or Gemma drops
+          10% of     core.txt names not   from Gemma's choice        the name the next morning
+          equity     claimed by others
 MANUAL    (man-)     you                  you: manual_trade.py       stop or target (bracket)
 SWEEP     (smc-)     paused               paused                     its own rules, if ever resumed
 ```
@@ -55,11 +58,13 @@ never share a stock: a name one book holds is skipped by the others.
          1 protect.py      any position without a live stop gets one back
          2 picks_sync.py   buy names added to picks.txt, sell names removed
          3 manage_positions.py  60-bar limit, sweep positions only
+05:45  GEMMA       Gemma names up to 5 stocks; the system prices, sizes, stops, sends
 11:40  MOMENTUM    dry run, then paper orders -- acts on the month's first session only
 11:45  FLATTEN     sweep positions only, only before a 3+ day closure
 12:00  ── market closes; momentum's orders fill at the close ──────────────────────────
 13:00  DATA        30-minute bars for 1,500 stocks
 13:30  OUTCOMES    closed trades recorded -> scorecard by book -> second opinions graded
+13:45  JOURNAL     desk officer: code checks every task ran and every stop is live; Gemma writes it up
 14:00+ RESEARCH    news archive, extended hours, auctions
 ```
 
@@ -87,6 +92,19 @@ once silently stopped overlapping tasks from running at all (WORKLIST §40).
 
 An unfilled buy older than 25 minutes is cancelled and re-sent at the new price.
 
+### What happens in Gemma's book
+
+Gemma has a goal: beat the S&P 500 and the momentum book over six months with
+a drawdown under 25%, judged 2027-04-06 (rules written before its first order).
+Each weekday at 05:45 it gets a facts block per allowed name -- returns,
+12-1 momentum, ATR, the S&P trend, earnings, headlines, TradingAgents' call --
+and answers which names to hold (at most 5), each with a reason and an exact
+quote from its facts. The answer format can only name stocks from its list
+and has no numbers; a new buy without a findable quote is ignored; a bad or
+missing answer changes nothing. The system then prices, sizes (10% of the
+account, its own 5 slots) and stops each buy exactly like your picks.
+`python scripts/gemma_trade.py` shows its decision without trading.
+
 ### What happens to momentum
 
 On the month's first session at 11:40 AK: rank the S&P 500 + MidCap 400 by
@@ -101,7 +119,7 @@ through. No stops, by design: the backtest had none.
 
 | Layer | What it does |
 |---|---|
-| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock, half the account per side |
+| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock, momentum 50%, Gemma 10%, picks + manual 40% |
 | Daily loss stop | No new entries after a 3% day |
 | Kill switch | A file that blocks every new entry (`settings.kill_switch_path`) |
 | protect.py | Every 30 min: a position without a live stop gets one; a stop already breached is sold |
@@ -133,6 +151,8 @@ python scripts/manual_trade.py NVDA --stop 172.50 --target 195 --submit  # send 
 python scripts/momentum_rebalance.py --paper   # this month's momentum trades (preview)
 python scripts/second_opinion.py MU AMD        # tiers, calls and graded records
 python scripts/brief.py AMD                    # measured facts, then fenced advisory block
+python scripts/gemma_trade.py                  # Gemma's decision today, nothing sent
+python scripts/desk_journal.py                 # tonight's desk journal (also logs/journal/)
 python scripts/levels.py AMD                   # price zones for placing a stop
 python scripts/protect.py                      # which positions lack a stop (report)
 ```
@@ -935,14 +955,16 @@ discovered in December.
     powershell -ExecutionPolicy Bypass -File scripts/register_tasks.ps1
     powershell -ExecutionPolicy Bypass -File scripts/register_tasks.ps1 -Remove
 
-Nine Windows tasks (2026-10-06; the full day is in "How it works, end to end"):
+Eleven Windows tasks (2026-10-07; the full day is in "How it works, end to end"):
 
     stock-scanner-advisor-pre  03:30 AK weekdays          TradingAgents second opinions
     stock-scanner-scan         05:33-12:03 AK, every 30m  protect -> picks sync -> 60-bar limit
     stock-scanner-momentum     11:40 AK weekdays          momentum dry run + paper (monthly)
+    stock-scanner-gemma        05:45 AK weekdays          Gemma's book: morning decision
     stock-scanner-flatten      08:45/08:52/11:45/11:52    sweep positions, before 3+ day closures
     stock-scanner-data         13:00 AK                   30-minute bars
     stock-scanner-outcomes     13:30 AK                   outcomes -> scorecard -> grades
+    stock-scanner-journal      13:45 AK weekdays          desk officer journal
     stock-scanner-news         14:00 AK                   news archive
     stock-scanner-extended / -extras  18:00 / 19:00 AK    research data
 

@@ -30,21 +30,13 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.config import settings
-from scanner.execution import manual, ownership, picks
+from scanner.execution import bookorders, manual, ownership, picks
 from scanner.execution.alpaca import Alpaca, BrokerError
-from scanner.execution.audit import append_event
-from scanner.execution.flatten_run import close_when_released
 from scanner.execution.guards import RiskLimits, check_account
 from scanner.execution.ownership import PICKS
 from scanner.execution.policy import TradingPolicy
-from scanner.execution.provenance import build_id
 from scanner.execution.safety import kill_switch_active
-from scanner.execution.sizing import size_position
 from scanner.execution.taper import position_cap_for
-from scanner.features.bars import fetch_bars
-from scanner.features.intraday import fetch_intraday, max_range
-from scanner.features.intraday_context import atr_pct
-from scanner.models import AuditEvent, TradeIntent
 
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN, RED, YELLOW = "\033[32m", "\033[31m", "\033[33m"
@@ -52,16 +44,7 @@ POLICY = TradingPolicy()
 
 
 def log(event: str, symbol: str, reason: str, **kw) -> None:
-    append_event(settings.audit_log_path, AuditEvent(
-        event=event, at=datetime.now().astimezone(), symbol=symbol, reason=reason,
-        stage="trade", policy=POLICY.fingerprint, build=build_id(), **kw))
-
-
-async def _price_and_atr(symbol: str, client) -> tuple[float, float]:
-    intraday = await fetch_intraday(symbol, client, minutes=30, range_=max_range(30))
-    daily = await fetch_bars(symbol, client, range_="6mo")
-    last = float(intraday.closes[-1]) if intraday.closes else float(daily.closes[-1])
-    return last, atr_pct(daily) or 0.0
+    bookorders.log(event, symbol, reason, POLICY, **kw)
 
 
 async def main(submit: bool) -> int:
@@ -108,16 +91,8 @@ async def main(submit: bool) -> int:
 
         # 2. sells: cancel that symbol's legs, then close once the shares are free
         for symbol in plan.sells:
-            for order in open_orders:
-                if order.get("symbol") == symbol:
-                    try:
-                        await broker.cancel_order(str(order["id"]))
-                    except BrokerError:
-                        pass
-            failed = await close_when_released(broker, (symbol,))
-            ok = symbol not in failed
-            log("picks_exit", symbol, "removed from the list; " +
-                ("closed at market" if ok else f"CLOSE FAILED: {failed.get(symbol)}"))
+            ok = await bookorders.sell(broker, symbol, open_orders, strategy=PICKS,
+                                       reason="removed from the list", policy=POLICY)
             print(f"  {GREEN if ok else RED}{'sold' if ok else 'SELL FAILED'}{RESET} {symbol}")
 
         # 3. buys
@@ -129,9 +104,9 @@ async def main(submit: bool) -> int:
                             min_equity=POLICY.min_equity,
                             max_position_pct=POLICY.max_position_pct, risk_pct=POLICY.risk_pct)
         in_use = set(manual.counted(held - set(plan.sells), open_orders, owner_map))
-        sleeve = manual.sleeve_equity(account.equity, POLICY.momentum_allocation_pct)
+        sleeve = manual.sleeve_equity(account.equity, POLICY.own_sleeves_pct)
         deployed = sum(float(p.get("market_value") or 0) for p in positions
-                       if ownership.owner(p["symbol"], owner_map) != ownership.MOMENTUM
+                       if ownership.owner(p["symbol"], owner_map) not in ownership.OWN_SLEEVE
                        and p["symbol"] not in plan.sells)
         room = max(0.0, min(account.buying_power, sleeve - deployed))
         cap = min(POLICY.max_position_pct, position_cap_for(date.today(), POLICY))
@@ -143,47 +118,15 @@ async def main(submit: bool) -> int:
                 print(f"  {YELLOW}{symbol:<6} not bought -- {gate.reason}{RESET}")
                 log("picks_refused", symbol, gate.reason)
                 continue
-            try:
-                last, atr = await _price_and_atr(symbol, client)
-                limit, stop, target = picks.levels(
-                    last=last, atr_pct=atr, atr_multiple=POLICY.picks_stop_atr_multiple,
-                    offset_pct=POLICY.entry_limit_offset_pct, ceiling=POLICY.picks_target_ceiling)
-            except Exception as exc:                       # noqa: BLE001
-                print(f"  {RED}{symbol:<6} cannot price: {exc}{RESET}")
-                log("picks_refused", symbol, f"cannot price: {exc}")
+            result = await bookorders.buy_with_stop(
+                broker, client, symbol, strategy=PICKS, sleeve=sleeve, room=room,
+                cap_pct=cap, policy=POLICY, reason="on the picks list")
+            if not result.ok:
+                print(f"  {YELLOW}{symbol:<6} not bought -- {result.message}{RESET}")
                 continue
-            sizing = size_position(sleeve, limit, stop, risk_pct=POLICY.risk_pct,
-                                   max_position_pct=cap, buying_power=room)
-            if not sizing.is_tradeable:
-                print(f"  {YELLOW}{symbol:<6} not bought -- {sizing.limited_by}{RESET}")
-                log("picks_refused", symbol, sizing.limited_by)
-                continue
-            now = datetime.now().astimezone()
-            payload = manual.bracket(symbol, sizing.shares, limit=limit, stop=stop,
-                                     target=target, at=now)
-            payload["client_order_id"] = picks.client_order_id(symbol, now)
-            intent = TradeIntent(
-                symbol=symbol, action="buy", strategy=PICKS, trigger_at=now,
-                entry_price=limit, stop_price=stop, target_price=target,
-                shares=sizing.shares, risk_dollars=sizing.risk_dollars,
-                position_dollars=sizing.position_dollars,
-                reward_risk=round((target - limit) / (limit - stop), 3),
-                paper=True, client_order_id=payload["client_order_id"])
-            log("trade_intent", symbol, "on the picks list", intent=intent)
-            try:
-                order = await broker.submit(payload)
-            except BrokerError as exc:
-                log("order_rejected", symbol, str(exc), intent=intent)
-                print(f"  {RED}{symbol:<6} rejected: {exc}{RESET}")
-                continue
-            log("order_submitted", symbol, "on the picks list", intent=intent,
-                order_id=str(order.get("id", "")))
             in_use.add(symbol)
-            room -= sizing.position_dollars
-            print(f"  {GREEN}bought{RESET} {symbol:<6} {sizing.shares} sh limit {limit:,.2f} "
-                  f"stop {stop:,.2f} ({(limit - stop) / limit * 100:.1f}% below, "
-                  f"{POLICY.picks_stop_atr_multiple} ATR)  {DIM}risk {sizing.risk_dollars:,.0f}, "
-                  f"limited by {sizing.limited_by}{RESET}")
+            room -= result.sizing.position_dollars
+            print(f"  {GREEN}bought{RESET} {symbol:<6} {result.message}")
     return 0
 
 

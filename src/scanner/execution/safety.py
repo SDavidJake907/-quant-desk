@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 from scanner.execution.guards import RiskLimits
-from scanner.execution.ownership import MOMENTUM
+from scanner.execution.ownership import GEMMA, MOMENTUM
 from scanner.execution.reconcile import reconcile
 
 
@@ -75,9 +75,13 @@ def inspect(
         or account.get("account_blocked")
         or account.get("trade_suspended_by_user")
     )
-    exempt = {s for s, owner in (owner_map or {}).items() if owner == MOMENTUM}
+    owners = owner_map or {}
+    exempt = {s for s, owner in owners.items() if owner == MOMENTUM}
     positions = tuple(p for p in positions if str(p.get("symbol") or "") not in exempt)
     orders = tuple(o for o in orders if str(o.get("symbol") or "") not in exempt)
+    # Gemma's book has its own slot count (gemma_max_positions); it still needs
+    # stops and intents, so it is checked for those, just not counted here.
+    shared = [p for p in positions if owners.get(str(p.get("symbol") or "")) != GEMMA]
 
     if kill_switch:
         findings.append(Finding("critical", "kill_switch", "kill switch is active"))
@@ -94,8 +98,8 @@ def inspect(
         if loss_pct >= limits.max_daily_loss_pct:
             findings.append(Finding("critical", "daily_loss", f"daily loss is {loss_pct:.2f}%"))
 
-    if len(positions) > limits.max_positions:
-        findings.append(Finding("critical", "position_limit", f"{len(positions)} positions exceed limit {limits.max_positions}"))
+    if len(shared) > limits.max_positions:
+        findings.append(Finding("critical", "position_limit", f"{len(shared)} positions exceed limit {limits.max_positions}"))
 
     position_symbols = {str(p.get("symbol") or "") for p in positions}
     order_symbols = {str(o.get("symbol") or "") for o in orders}
