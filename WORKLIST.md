@@ -994,6 +994,67 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 37. Simplify: one job per piece, one rhythm (operator, 2026-10-06) -- TODO
+
+Audit of all 10 scheduled tasks and every live policy field, 2026-10-06.
+The operator wants to trade their own picks THROUGH this system, beside the
+momentum engine, on one schedule. In order:
+
+- [ ] **Scope the closers by strategy (blocker).** `flatten.py` closes EVERY
+      position before a weekend and `manage_positions.py` closes ANY position
+      held >= 60 bars (~4.6 sessions). Both read the broker, not the intent's
+      `strategy`, so a manual pick or a 3-month momentum hold would be sold
+      within a week. Apply each only to the strategies it was built for.
+- [ ] **`manual_trade.py SYMBOL --stop X [--target Y] [--limit Z]`**: same
+      sizing, guards and bracket as the scanner; TradeIntent `strategy="manual"`;
+      protect.py / outcomes / scorecard handle it like any other. Optional
+      3-per-sector cap (operator to decide).
+- [ ] **Pause sweep-scanner ENTRIES** (trade.py out of scheduled_scan.bat;
+      code kept). Measured: -0.041R/trade on unseen 2018-24 (§30), -11.1% in
+      the 2y account simulation (§29). Ends window 17.
+- [ ] **Remove the Gemma position review** from scheduled_scan.bat: 119/119
+      "hold", including five trades that then stopped out (§27).
+- [ ] **Remove the TradingAgents live pass** (every 30 min, 117 ratings, 0
+      scoreable; shares the GPU with the news gate, which failed open on 18
+      scans). Re-aim the premarket pass at watchlists/core.txt as advice for
+      manual picks.
+- [ ] **Remove the 05:00 sector-RS task**: feeds a gate removed as null (§26/§27).
+- [ ] **Momentum to paper**: momentum_rebalance.py gets broker submission
+      (`mom-` prefix, own sleeve), monthly, exempt from flatten and max-hold.
+      Pass/fail criteria written before the first order.
+- [ ] **Scorecard split by strategy** (manual vs momentum vs smc).
+- [ ] Decide (operator): manual picks flat before weekends or held; sleeve
+      split between momentum and manual.
+
+Target rhythm (AK): 03:30 premarket ratings + brief -> 05:33-12:03 every 30m
+protect.py only -> manual entries any time -> month's first session near the
+close: momentum rebalance -> 13:30 outcomes + one scorecard. 10 tasks -> 5,
+keeping data/news collectors as research.
+
+### Policy review, same night: the gates are not what stops trades
+
+Every refusal in the audit log since 2026-08-06, past the scan: 102 "already
+holding", 5 "order already working", 5 "cannot afford one share", 3 earnings
+(old gate, now 0), 3 + 2 merger/structural news, 1 relative strength (gate
+since removed). The checks downstream of the pattern refused ~13 real
+candidates in two months, and those refusals look correct.
+
+Upstream, every full-S&P scan on 2026-10-06 found 106-128 setups in history
+and 0-1 FRESH ones (`fresh_bars=2`). That is the pattern's rarity, not a
+gate: an old setup's price is gone. `block_overnight_entry` drops the
+session's last bar (NKE 15:30, 2026-10-06), on a measured reason (entries
+across the close adverse 88% of the time, mean +0.785%). Keep both.
+
+What does bite is SIZE, not count. NKE would have risked 0.31% of equity,
+"limited by position cap", against a declared 1%. The cap is
+min(20%, 100% / max_positions): 20% at 5 slots, 12.5% at 8, so raising
+max_positions to 8 SHRANK every position. §29: raising the cap made the
+account worse, because there is no edge to amplify. Not changed.
+
+Also: the core-list clamp (e67b955) landed after the 12:03 AK scan, so every
+2026-10-06 scan ran the full S&P 500. The first core-list scan is 2026-10-07
+05:33 AK, not "11:03 AK" as FREEZE.md said.
+
 ## 36. The skills bundle's VCP, follow-through and distribution days -- all fail, two backwards
 
 `research_gpu/vcp_ftd_test.py` (7506f2d) with the bundle's own calculators,

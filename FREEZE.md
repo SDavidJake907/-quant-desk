@@ -12,7 +12,8 @@
                          Ollama 0.35.1, 2 parallel slots, auto-update OFF,
                          desktop-app context_length 24576 (it overrides the env)
     branch               momentum-swing-research
-    started              2026-10-06 (window 17 declared same day, after the 11:03 AK scan)
+    started              2026-10-06 (declared after the close); first core-list scan
+                         2026-10-07 05:33 AK -- every 10-06 scan ran the full S&P 500
     ends                 2026-12-04, fixed in advance — see the stop rules
     account              Alpaca paper, opened 2026-08-06 at $100,000
                          equity $102,040.97 at window 16 open, flat
