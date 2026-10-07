@@ -81,10 +81,10 @@ once silently stopped overlapping tasks from running at all (WORKLIST §40).
 3. It prices it: limit at the last price + 0.30%, safety stop 2.5 daily ATRs
    below, target a ceiling at 2x entry (so the order is a valid bracket but
    winners ride).
-4. It sizes it: 1% of your half of the account at risk, no more than 12.5% of
-   that half in one stock.
+4. It sizes it: 1% of the picks + manual share (20%) at risk, no more than
+   12.5% of that share in one stock.
 5. It checks: market open, account active, daily loss under 3%, kill switch
-   off, a slot free (8, shared with manual trades), nobody else holds NVDA.
+   off, a slot free (12, shared with manual trades), nobody else holds NVDA.
 6. It sends a GTC bracket order with a `pck-NVDA-…` id and logs the intent.
 7. From then on: protect.py re-arms the stop if it is ever lost; the stop or
    your removing NVDA from the list closes it; the evening scorecard records
