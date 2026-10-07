@@ -34,13 +34,13 @@ in `WORKLIST.md` so nobody tests them twice.
 ```
                      who picks            who trades                 exits
 PICKS     (pck-)     you: watchlists/     system, every 30 min       safety stop, or you remove
-                     picks.txt            in market hours            the name from the list
-MOMENTUM  (mom-)     system: top 10 by    system, once a month       next monthly rebuild, or
-          40% of     12-1 momentum,       at the close (MOC)         cash when the S&P is under
-          equity     S&P 500 + 400                                   its 210-day average
+          40% of     picks.txt            in market hours            the name from the list
+          equity (shared with manual trades)
 GEMMA     (gem-)     Gemma: up to 5       system, 05:45 AK daily     safety stop, or Gemma drops
-          40% of     core.txt names not   from Gemma's choice        the name the next morning
-          equity     claimed by others
+          60% of     names from core,     from Gemma's choice        the name the next morning
+          equity     gemma.txt and the momentum rule's picks
+MOMENTUM  helper     system: top 10 by    nobody -- a paper record   (Gemma's benchmark; its picks
+          no money   12-1 momentum        kept by the monthly dry run are Gemma's options)
 MANUAL    (man-)     you                  you: manual_trade.py       stop or target (bracket)
 SWEEP     (smc-)     paused               paused                     its own rules, if ever resumed
 ```
@@ -59,7 +59,7 @@ never share a stock: a name one book holds is skipped by the others.
          2 picks_sync.py   buy names added to picks.txt, sell names removed
          3 manage_positions.py  60-bar limit, sweep positions only
 05:45  GEMMA       Gemma names up to 5 stocks; the system prices, sizes, stops, sends
-11:40  MOMENTUM    dry run, then paper orders -- acts on the month's first session only
+11:40  MOMENTUM    dry run only (a helper since 2026-10-07): the month's top 10 on record
 11:45  FLATTEN     sweep positions only, only before a 3+ day closure
 12:00  ── market closes; momentum's orders fill at the close ──────────────────────────
 13:00  DATA        30-minute bars for 1,500 stocks
@@ -101,7 +101,7 @@ Each weekday at 05:45 it gets a facts block per allowed name -- returns,
 and answers which names to hold (at most 5), each with a reason and an exact
 quote from its facts. The answer format can only name stocks from its list
 and has no numbers; a new buy without a findable quote is ignored; a bad or
-missing answer changes nothing. The system then prices, sizes (40% of the
+missing answer changes nothing. The system then prices, sizes (60% of the
 account, its own 5 slots) and stops each buy exactly like your picks.
 `python scripts/gemma_trade.py` shows its decision without trading.
 
@@ -119,7 +119,7 @@ through. No stops, by design: the backtest had none.
 
 | Layer | What it does |
 |---|---|
-| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock, momentum 40%, Gemma 40%, picks + manual 20% |
+| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock, Gemma 60%, picks + manual 40%; momentum trades nothing |
 | Daily loss stop | No new entries after a 3% day |
 | Kill switch | A file that blocks every new entry (`settings.kill_switch_path`) |
 | protect.py | Every 30 min: a position without a live stop gets one; a stop already breached is sold |

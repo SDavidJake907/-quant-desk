@@ -994,6 +994,28 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 44. Momentum becomes a helper; Gemma 60%, picks + manual 40% (2026-10-07)
+
+Day one: momentum's 9 market-on-close orders (sent 15:40 ET) were accepted and
+8 EXPIRED unfilled on the paper account; only MU filled. The book's state had
+saved the tranche as bought. Nothing flagged it (no order was left open).
+
+Operator's choice: stop momentum trading rather than fix the orders.
+- `momentum_trades = False`, `momentum_allocation_pct = 0`; its 40% went
+  Gemma +20 (60%) and picks + manual +20 (40%).
+- The monthly dry run continues: the rule's top 10 on record, Gemma's
+  benchmark ("beat the momentum rule"), its scoreboard line now priced from
+  dry_run_book.json.
+- TradingAgents still rates the rule's picks at 03:30; they join Gemma's list
+  as options, marked "momentum rule: #k of its 10 picks".
+- momentum_rebalance.py --paper --submit now only winds the paper book down:
+  sells MU at the next 11:40 run, then does nothing.
+First preview: Gemma kept all five ("outperforming the momentum rule ...
+avoiding unnecessary turnover").
+
+If momentum is ever made a trader again: MOC orders did not fill on paper;
+use market-day (fractional/notional) orders and reconcile the book to fills.
+
 ## 43. Kronos (candlestick foundation model, AAAI 2026) -- FAIL on US stocks, not adopted (2026-10-07)
 
 github.com/shiyu-coder/Kronos (MIT, last commit 2026-04-13). Reviewed and tested

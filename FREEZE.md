@@ -1,8 +1,8 @@
 # Evaluation window — FROZEN
 
-    window               25  (window 24 closed 2026-10-07 after day one: Gemma reads TradingAgents' reasons)
-    policy fingerprint   29e50eceae31  (12 shared slots, fixed 12.5% cap; before it 61f5509d002d)
-    code build           5ba5525  — the last commit that can change behaviour
+    window               26  (window 25 closed 2026-10-07: momentum became a helper)
+    policy fingerprint   53c4fff93a83  (Gemma 60, picks + manual 40, momentum_trades off; before it 29e50eceae31)
+    code build           c5e81b9  — the last commit that can change behaviour
     what trades          1. PICKS via scripts/picks_sync.py (`pck-` ids): watchlists/picks.txt kept in
                             sync every 30 min, 2.5-ATR safety stop, no target, sector cap off
                          2. MOMENTUM paper book (`mom-` ids), 40% of equity, monthly MOC, no stops
@@ -1212,3 +1212,4 @@ research.
 | 2026-10-07 | **window 22 CLOSED (0 trades); window 23 declared at `61f5509d002d` / `d2b94fb`** -- before Gemma's first order: its prompt now states the judging date and test, shows a running scoreboard, discourages churn, and no longer tells it to copy momentum (it had picked its five highest-momentum names); unfilled gem- buys cancelled before each decision; TradingAgents also rates gemma.txt. Policy unchanged | 0 |
 | 2026-10-07 | **window 23 CLOSED (0 trades); window 24 declared at `29e50eceae31` / `ce68da8`** -- shared slots (picks + manual one-offs) 8 -> 12 so one-offs fit beside the 8 picks; per-stock cap fixed at 12.5% of the sleeve (shared_position_cap_pct) instead of 100/slots, so no position shrank. Gemma and momentum keep their own slots | 0 |
 | 2026-10-07 | **window 24 CLOSED after day one; window 25 declared at `29e50eceae31` / `5ba5525`** -- Gemma's facts page now carries a two-sentence summary of each TradingAgents report (from its Executive Summary), labelled unproven and indicator-based; before, only the one-word rating. Policy unchanged. Day-one positions opened under window 24 (picks 8, Gemma 5) are attributed to it by build | 13 open |
+| 2026-10-07 | **window 25 CLOSED; window 26 declared at `53c4fff93a83` / `c5e81b9`** -- momentum's first market-on-close orders: 9 accepted, 8 EXPIRED unfilled on the paper account (only MU filled). The operator made momentum a helper instead of fixing the orders: momentum_trades=False, its 40% split Gemma 60% / picks + manual 40%; the monthly dry run keeps the rule's record (Gemma's benchmark, now 'the momentum rule'); its picks join Gemma's options, labelled; the 1-share MU paper position is sold at the next 11:40 run. Day-one result before the change: picks +0.27%, Gemma +0.39%, S&P 500 -0.22% | 13 open + MU |
