@@ -408,15 +408,18 @@ class TradingPolicy(Frozen):
     #: Gemma chooses up to `gemma_max_positions` names from watchlists/core.txt
     #: each morning, with a quoted reason for each; the system prices, sizes,
     #: stops and sends, as for the picks list. Its own sleeve and slots.
-    #: Operator, 2026-10-06: 10% of equity, real paper orders, core list only,
-    #: widen if it succeeds.
-    gemma_allocation_pct: float = 10.0
+    #: Operator, 2026-10-06: real paper orders, core list only, widen if it
+    #: succeeds. 10% at first; raised to 40% on 2026-10-07 before its first
+    #: order (operator chose 40/40/20 over 50/35/15: momentum needs ~35%+ to
+    #: buy its $900-1,700 names in whole shares, and picks keep 20%).
+    gemma_allocation_pct: float = 40.0
     gemma_max_positions: int = 5
 
     # --- momentum engine sleeve ---------------------------------------------
-    #: Share of equity the momentum book is sized against; the rest is for
-    #: manual picks and the scanner. Operator default 2026-10-06: half.
-    momentum_allocation_pct: float = 50.0
+    #: Share of equity the momentum book is sized against. 50% on 2026-10-06,
+    #: 40% from 2026-10-07 (Gemma 40, picks + manual 20). Fixed into the paper
+    #: book at its first rebalance; changing it later does not resize the book.
+    momentum_allocation_pct: float = 40.0
 
     @property
     def own_sleeves_pct(self) -> float:

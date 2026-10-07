@@ -1030,7 +1030,9 @@ the same theme in three books). Gemma writes the 4-6 sentence write-up from
 those findings only; it is printed beside them, never instead.
 logs/journal/YYYY-MM-DD.md + `desk_journal` audit event.
 
-Also: picks/manual now share 40% (100 - momentum 50 - Gemma 10); safety.py's
+Capital split changed before any order (2026-10-07, window 21): Gemma 40%, momentum 40%,
+picks + manual 20% (operator asked for Gemma at 50%; 40/40/20 keeps momentum able to
+buy its names in whole shares). Earlier: picks/manual shared 40% (100 - 50 - 10); safety.py's
 slot count excludes Gemma's own slots; picks_sync refactored onto bookorders.
 
 ## 41. The operator's list, traded automatically (2026-10-06)

@@ -36,10 +36,10 @@ in `WORKLIST.md` so nobody tests them twice.
 PICKS     (pck-)     you: watchlists/     system, every 30 min       safety stop, or you remove
                      picks.txt            in market hours            the name from the list
 MOMENTUM  (mom-)     system: top 10 by    system, once a month       next monthly rebuild, or
-          50% of     12-1 momentum,       at the close (MOC)         cash when the S&P is under
+          40% of     12-1 momentum,       at the close (MOC)         cash when the S&P is under
           equity     S&P 500 + 400                                   its 210-day average
 GEMMA     (gem-)     Gemma: up to 5       system, 05:45 AK daily     safety stop, or Gemma drops
-          10% of     core.txt names not   from Gemma's choice        the name the next morning
+          40% of     core.txt names not   from Gemma's choice        the name the next morning
           equity     claimed by others
 MANUAL    (man-)     you                  you: manual_trade.py       stop or target (bracket)
 SWEEP     (smc-)     paused               paused                     its own rules, if ever resumed
@@ -101,7 +101,7 @@ Each weekday at 05:45 it gets a facts block per allowed name -- returns,
 and answers which names to hold (at most 5), each with a reason and an exact
 quote from its facts. The answer format can only name stocks from its list
 and has no numbers; a new buy without a findable quote is ignored; a bad or
-missing answer changes nothing. The system then prices, sizes (10% of the
+missing answer changes nothing. The system then prices, sizes (40% of the
 account, its own 5 slots) and stops each buy exactly like your picks.
 `python scripts/gemma_trade.py` shows its decision without trading.
 
@@ -119,7 +119,7 @@ through. No stops, by design: the backtest had none.
 
 | Layer | What it does |
 |---|---|
-| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock, momentum 50%, Gemma 10%, picks + manual 40% |
+| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock, momentum 40%, Gemma 40%, picks + manual 20% |
 | Daily loss stop | No new entries after a 3% day |
 | Kill switch | A file that blocks every new entry (`settings.kill_switch_path`) |
 | protect.py | Every 30 min: a position without a live stop gets one; a stop already breached is sold |
