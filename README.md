@@ -1,28 +1,169 @@
 # stock-scanner
 
-Deterministic-first equity scanner and paper-trading system, with a local
-Gemma 3 layer that advises on every candidate, may refuse one, and reads every
-open position — while remaining unable to emit a price.
+A paper-trading system for US stocks that runs itself on one Windows PC. It
+trades three books in one Alpaca **paper** account: the operator's own list of
+picks, a monthly momentum book, and one-off manual trades. Rules decide every
+order; a local language model only ever gives second opinions, which are graded
+and never acted on.
 
-*(Until 2026-09-28 this line read "kept strictly out of the trading path". That
-stopped being true when `llm_veto_enabled` was turned on, and a stale sentence
-at the top of a README is the same fault this project keeps finding in its own
-prompts.)*
+*(Until 2026-10-06 this README described an intraday "sweep" scanner as the
+system. That scanner tested at −0.041R a trade on data it had never seen and its
+entries are paused. Its sections are kept below as history and marked so.)*
 
 ## Read this first
 
-**This strategy is unproven, and the repository is built to keep saying so.**
+**Paper money, and nothing here is proven.** Window 19 opened 2026-10-06 with
+0 trades. What each part rests on:
 
-Over two years of independent data, 861 setups, the configuration that actually
-runs earns **+0.000R per trade** (se 0.058). Twenty-three ideas have been tested
-against a train/holdout split and twenty-three were rejected. The one result
-long described here as validated — the 20M liquidity floor at p=0.022 — does not
-clear a Bonferroni threshold at the current trial count.
+| Book | Evidence |
+|---|---|
+| Momentum | The one rule that held up on data it was not built on: +2.38pp a 3-month hold over random picks 2016-26 (t 1.49, misses the pre-set 1.5 bar by 0.01), max drawdown 12.7% through 2000-15. Survivorship still flatters it. |
+| Picks list | The operator's judgement. Stop width and "no target" are chosen, not tested. |
+| Manual trades | The operator's judgement. Sizing and stops are the system's. |
+| Sweep scanner | Paused. −0.041R a trade on unseen 2018-24 data (WORKLIST §30). |
 
-What the project is genuinely good at is knowing that. Every number below is
-computed from cached bars at run time, every refusal is written to an audit log,
-every evaluation window is fingerprinted, and the model layer is graded rather
-than admired. Paper only. See **What is actually known** and `FREEZE.md`.
+The project's strength is saying which is which. Every order and refusal is in
+an append-only audit log, every window is fingerprinted, pass/fail rules are
+written down before results exist, and dozens of ideas that failed are recorded
+in `WORKLIST.md` so nobody tests them twice.
+
+## How it works, end to end
+
+### The three books
+
+```
+                     who picks            who trades                 exits
+PICKS     (pck-)     you: watchlists/     system, every 30 min       safety stop, or you remove
+                     picks.txt            in market hours            the name from the list
+MOMENTUM  (mom-)     system: top 10 by    system, once a month       next monthly rebuild, or
+          50% of     12-1 momentum,       at the close (MOC)         cash when the S&P is under
+          equity     S&P 500 + 400                                   its 210-day average
+MANUAL    (man-)     you                  you: manual_trade.py       stop or target (bracket)
+SWEEP     (smc-)     paused               paused                     its own rules, if ever resumed
+```
+
+The prefix is on every order's `client_order_id`, and it is how every rule
+knows whose position it is looking at (`execution/ownership.py`). Two books
+never share a stock: a name one book holds is skipped by the others.
+
+### One trading day (Alaska time; New York is +4 hours)
+
+```
+03:30  RATINGS     TradingAgents rates held + momentum + core names        advisory only
+05:30  ── market opens ──────────────────────────────────────────────────────────────
+05:33  SAFETY PASS every 30 min until 12:03:
+         1 protect.py      any position without a live stop gets one back
+         2 picks_sync.py   buy names added to picks.txt, sell names removed
+         3 manage_positions.py  60-bar limit, sweep positions only
+11:40  MOMENTUM    dry run, then paper orders -- acts on the month's first session only
+11:45  FLATTEN     sweep positions only, only before a 3+ day closure
+12:00  ── market closes; momentum's orders fill at the close ──────────────────────────
+13:00  DATA        30-minute bars for 1,500 stocks
+13:30  OUTCOMES    closed trades recorded -> scorecard by book -> second opinions graded
+14:00+ RESEARCH    news archive, extended hours, auctions
+```
+
+Windows Task Scheduler starts each step from a `.bat` file in `scripts/`
+(`register_tasks.ps1` installs them). Every step is a short program: it starts,
+reads the broker and its data, does one job, writes what it did, and exits.
+**Each task writes its own log** (`logs/scheduled_<task>.log`): a shared log
+once silently stopped overlapping tasks from running at all (WORKLIST §40).
+
+### What happens to one of your picks
+
+1. You add `NVDA` to `watchlists/picks.txt` (and commit the file).
+2. The next safety pass in market hours sees a listed name nobody holds.
+3. It prices it: limit at the last price + 0.30%, safety stop 2.5 daily ATRs
+   below, target a ceiling at 2x entry (so the order is a valid bracket but
+   winners ride).
+4. It sizes it: 1% of your half of the account at risk, no more than 12.5% of
+   that half in one stock.
+5. It checks: market open, account active, daily loss under 3%, kill switch
+   off, a slot free (8, shared with manual trades), nobody else holds NVDA.
+6. It sends a GTC bracket order with a `pck-NVDA-…` id and logs the intent.
+7. From then on: protect.py re-arms the stop if it is ever lost; the stop or
+   your removing NVDA from the list closes it; the evening scorecard records
+   the result under "picks".
+
+An unfilled buy older than 25 minutes is cancelled and re-sent at the new price.
+
+### What happens to momentum
+
+On the month's first session at 11:40 AK: rank the S&P 500 + MidCap 400 by
+12-1 momentum from the last close; if the S&P 500 is under its 210-day average
+the tranche goes to cash. Rebuild one of three tranches (each held about three
+months), drop any pick another book holds, and send market-on-close orders
+before Alpaca's 15:50 ET cutoff. Order ids are fixed per stock and month, so a
+retry can never buy twice; the book is saved only when every order went
+through. No stops, by design: the backtest had none.
+
+### What keeps it safe
+
+| Layer | What it does |
+|---|---|
+| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock, half the account per side |
+| Daily loss stop | No new entries after a 3% day |
+| Kill switch | A file that blocks every new entry (`settings.kill_switch_path`) |
+| protect.py | Every 30 min: a position without a live stop gets one; a stop already breached is sold |
+| Ownership | Closers act only on the book they were built for; momentum is never given a stop or a time limit |
+| Health checks | `monitor.py`, `hub.py`: account state, missing protection, untracked positions |
+| Records | `logs/trading_audit.jsonl`: every intent, order, refusal and outcome, never edited |
+
+### Second opinions, kept apart
+
+`scripts/second_opinion.py SYMBOL` shows every opinion in a tier:
+
+- **Primary**: the momentum rule. The only one acted on.
+- **Advisory, unproven**: TradingAgents and Gemma's news read. Graded
+  automatically: direction x (stock − S&P) over 21 sessions. Graduates only
+  at 100 calls and t ≥ 2, rules fixed before the first grade.
+- **Advisory, tested, no edge**: RSI, 50/200-day averages, chart patterns, the
+  sweep. Shown, labelled, never re-graded.
+
+Nothing advisory can block, size or close a trade.
+
+### Everyday commands
+
+```powershell
+python scripts/hub.py                          # one page: what ran, the account, what needs you
+python scripts/strategy_scorecard.py           # results by book; momentum vs the S&P
+python scripts/picks_sync.py                   # what the list sync would do now (preview)
+python scripts/manual_trade.py NVDA --stop 172.50 --target 195           # preview a one-off
+python scripts/manual_trade.py NVDA --stop 172.50 --target 195 --submit  # send it
+python scripts/momentum_rebalance.py --paper   # this month's momentum trades (preview)
+python scripts/second_opinion.py MU AMD        # tiers, calls and graded records
+python scripts/brief.py AMD                    # measured facts, then fenced advisory block
+python scripts/levels.py AMD                   # price zones for placing a stop
+python scripts/protect.py                      # which positions lack a stop (report)
+```
+
+### Where things live
+
+| Path | What |
+|---|---|
+| `watchlists/picks.txt` | your list, traded automatically |
+| `watchlists/core.txt` | your wider watch list, rated each morning |
+| `data/momentum/paper_book.json`, `paper.jsonl` | momentum paper book and its rebalance record |
+| `logs/trading_audit.jsonl` | every decision and order |
+| `logs/scheduled_<task>.log` | each scheduled task's output |
+| `src/scanner/execution/policy.py` | every rule, hashed into the policy fingerprint |
+| `FREEZE.md` | the current window, what must not change, the window log |
+| `WORKLIST.md` | what is open, and every measurement with its verdict |
+
+### Changing a rule
+
+Any change to `policy.py` or the trading scripts starts a new window
+(`FREEZE.md`): record why, the new fingerprint and build, and the pass/fail
+rules, before the first order under it. Editing `picks.txt` or `core.txt` is
+part of the experiment, not a rule change: commit each edit so every trade can
+be traced to the list that produced it.
+
+---
+
+# History and design notes
+
+Everything below records how the system got here. Sections about the sweep
+scanner describe a strategy whose entries are now paused.
 
 ## The core idea
 
@@ -95,10 +236,10 @@ Copy-Item .env.example .env      # then set SCANNER_SEC_USER_AGENT to your email
 
 SEC requires a contact string in the User-Agent or it returns 403.
 
-Gemma 3 runs through Ollama (news triage only — not needed to trade):
+Gemma 4 (gemma4:12b) runs through Ollama -- second opinions only, not needed to trade:
 
 ```powershell
-ollama pull gemma3:12b
+ollama pull gemma4:12b
 ollama pull nomic-embed-text
 ```
 
@@ -357,7 +498,10 @@ data-mined. **The coiled screen still loses to random.**
   use the clustered figure.
 - **One regime.** Five years says nothing about a different market.
 
-## The intraday setup screen (sweep -> CHoCH -> BOS)
+## The intraday setup screen (sweep -> CHoCH -> BOS) — PAUSED, history
+
+*Entries paused 2026-10-06: −0.041R a trade on the unseen 2018-24 store
+(WORKLIST §30). Kept as the record of what was built and measured.*
 
 A Smart Money Concepts long: liquidity sweep below a prior low, change of
 character, higher low, break of structure. Entry is the CLOSE of the trigger
@@ -756,16 +900,11 @@ This project is inside a **frozen evaluation window**. The rules that decide
 what trades, and the code that carries them out, do not change while one is
 open — and if one of them must, the window ends and is reported as truncated.
 
-    window               5
-    policy fingerprint   5b091652a8ab
-    opened               2026-09-25
-    ends                 2026-12-04, fixed in advance
-
-The end date is the last session before 23x5 trading begins on 2026-12-06. It
-was fixed from a published exchange schedule before a single trade existed,
-which is what makes it a boundary rather than a decision: it cannot move, and
-no result can bring it closer. Stopping when the numbers look good is how a
-random walk becomes a strategy.
+The current window, its fingerprint, build and pass/fail rules are always at
+the top of `FREEZE.md` (window 19 at the time of writing: picks list +
+momentum paper, opened 2026-10-06). Momentum is judged on 2027-04-06 against
+rules written before its first order. Stopping when the numbers look good is
+how a random walk becomes a strategy.
 
 **Every record carries three identifiers**, because each has caught something
 the others could not:
@@ -796,19 +935,33 @@ discovered in December.
     powershell -ExecutionPolicy Bypass -File scripts/register_tasks.ps1
     powershell -ExecutionPolicy Bypass -File scripts/register_tasks.ps1 -Remove
 
-Four Windows tasks:
+Nine Windows tasks (2026-10-06; the full day is in "How it works, end to end"):
 
-    stock-scanner-scan       05:33-12:03 AK, every 30 min   scan + paper orders
-    stock-scanner-data       13:00 AK daily                 grow 30m bar history
-    stock-scanner-outcomes   13:30 AK daily                 write realized R back
-    stock-scanner-flatten    Fri 08:45 + 11:45 AK           close before the weekend
+    stock-scanner-advisor-pre  03:30 AK weekdays          TradingAgents second opinions
+    stock-scanner-scan         05:33-12:03 AK, every 30m  protect -> picks sync -> 60-bar limit
+    stock-scanner-momentum     11:40 AK weekdays          momentum dry run + paper (monthly)
+    stock-scanner-flatten      08:45/08:52/11:45/11:52    sweep positions, before 3+ day closures
+    stock-scanner-data         13:00 AK                   30-minute bars
+    stock-scanner-outcomes     13:30 AK                   outcomes -> scorecard -> grades
+    stock-scanner-news         14:00 AK                   news archive
+    stock-scanner-extended / -extras  18:00 / 19:00 AK    research data
+
+Retired 2026-10-06: the 05:00 sector task (fed a removed gate) and the
+30-minute TradingAgents live pass (no gradeable output, GPU contention).
+`trade.py` (sweep entries) and the Gemma position review are off the schedule.
+
+**One log per task.** Each `.bat` writes `logs/scheduled_<task>.log`.
+`cmd.exe` opens a `>>` log without write sharing, so when every task shared
+one file, a task starting while another was writing did not run at all and
+left no trace; the weekend flatten was skipped five times in three days that
+way (WORKLIST §40). `hub.py` merges the per-task logs into one timeline.
 
 The flatten has two triggers because a 13:00 ET early close needs one at 12:45
 and a normal bell needs one at 15:45. Each asks the broker calendar whether
 the close is within 25 minutes, so on a normal Friday the early one exits
 having done nothing.
 
-### The scan is three stages, in this order
+### The sweep scan was three stages, in this order (history)
 
     protect.py --submit         re-arm any position with no live stop
     manage_positions.py --exec  close anything past max_hold_bars
@@ -1082,6 +1235,11 @@ evidence.
 Worth stating plainly now that the project can place orders: **the language
 model has nothing to do with any trading decision.**
 
+*Since 2026-10-06 its only live roles are advisory and graded (WORKLIST §38):
+TradingAgents ratings at 03:30 and the news read on momentum holdings, both in
+`second_opinion.py`, plus the news check inside the paused sweep. The ranking
+and review described below belonged to the sweep and are history.*
+
 Gemma 3 has two jobs, both textual, neither numeric:
 
 1. **News triage** — is this article really *about* this company, and is it
@@ -1139,45 +1297,19 @@ threshold chosen by looking at those same trades.
 
 ## What to do next, in order
 
-Updated 2026-09-28. Everything here is chosen because it either ADDS evidence or
-SETTLES a question — not because it adds a rule. Twenty-three attempts at the
-latter have failed.
+Updated 2026-10-06. The live list is WORKLIST §39 and the conductor plan:
 
-**1. Collect 2021 to now.** Not for significance. For the question the model
-sharpened and this project cannot currently answer: *does the strategy behave
-consistently across regimes, or does it only look like it works in aggregate?*
-Every test shows train negative and holdout positive, and the halves saw
-different markets — 48% of train setups in elevated/stressed volatility against
-24% of holdout. With 2022's nine-month bear market in the sample, that either
-keeps flipping (a clean, final answer) or it holds (something real for the first
-time). `MAX_STORED_BARS[30] = 5_000` caps the store at ~1.5 years and must be
-raised first, or deeper history is silently trimmed.
+1. **Conductor + watchdog + command center.** One conductor with a daily plan
+   (dependencies, deadlines, safe catch-up after downtime), a heartbeat with an
+   outside dead-man switch so a dead PC still alerts the phone, and the
+   command-center page reading its run ledger.
+2. **Phone alerts.** `notify_watch.py` is built; it needs an ntfy topic.
+3. **RUNBOOK.md**: what to do when a stop is missing, a task did not run, or an
+   order was rejected.
+4. **Survivorship-free data** (paid) to re-test the momentum rule honestly.
+5. **Fractional momentum orders**, so a ~$1,700 slot can hold a $1,000+ stock.
 
-**2. Fix the veto, or switch it off.** It fires on 20% of identical inputs at
-temperature 0 and under-fires on the clearest case in its own prompt. Deriving
-it from `conviction == weak` plus a named category would make it deterministic.
-Until then `llm_veto_enabled = False` costs nothing that is actually working.
-
-**3. Measure the fill rate.** Every backtest here assumes a GTC limit always
-fills. Live it only fills if price returns to the trigger close, so setups that
-gap away are counted and never entered. This is the largest unquantified gap
-between the published number and a real one, and it can only make the number
-worse.
-
-**4. Score the slate.** `candidate_slate` and `position_review` records exist so
-the model's calls can be checked against realised R. Three slates so far. This
-is the only path to giving it more authority as a measurement rather than a bet.
-
-**5. The short side.** Bearish sweeps are invisible to the screen rather than
-rejected by it. It roughly doubles the sample, covers the regime where long-only
-loses (−0.086R below both averages), and is the only thing that makes a
-higher-timeframe bias a SELECTOR rather than one more filter. Real work: a
-mirrored `detect()`, a `side` on `Setup`, an inverted `resolve()`, borrow costs,
-and asymmetric gap risk.
-
-**What not to do:** add filters. The search space has been sampled twenty-three
-times with one near-survivor, and every further test now costs more in
-multiple-comparisons correction than it can plausibly return.
+**What not to do:** add filters. WORKLIST records the tests; most failed.
 
 ## Roadmap
 
