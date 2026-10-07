@@ -48,6 +48,7 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.execution import ownership
 from scanner.ops import runlog
 from scanner.config import settings
 from scanner.execution import continuity
@@ -224,6 +225,12 @@ async def account_section() -> tuple[list[str], list[str], bool | None]:
             positions = await broker._get("/v2/positions")
             orders = await broker._get("/v2/orders", status="open", limit=200)
             naked = await broker.unprotected_positions()
+            # Momentum holds carry no stop by design (WORKLIST §40): listing
+            # them here daily would bury a real naked position.
+            owner_map = ownership.owners(await broker._get(
+                "/v2/orders", status="all", limit=500, nested="true"))
+            naked = tuple(p for p in naked if ownership.owner(p.symbol, owner_map)
+                          not in POLICY.stopless_strategies)
             market_open = await broker.market_open()
     except BrokerError as exc:
         out.append(f"  {YELLOW}broker unreachable: {exc}{RESET}")

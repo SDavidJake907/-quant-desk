@@ -13,5 +13,9 @@ set LOG=logs\scheduled_momentum.log
 echo. >> "%LOG%"
 echo ===== MOMENTUM %DATE% %TIME% ===== >> "%LOG%"
 
+REM 1. The DRY RUN first: the engine's clean record, untouched by the account
+REM    (no foreign-pick drops, no whole-share or cash limits). Records only.
+REM 2. Then the PAPER book: real market-on-close orders. Both act once a month.
+".venv\Scripts\python.exe" "scripts\momentum_rebalance.py" >> "%LOG%" 2>&1
 ".venv\Scripts\python.exe" "scripts\momentum_rebalance.py" --paper --submit >> "%LOG%" 2>&1
 exit /b %errorlevel%

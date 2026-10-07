@@ -994,6 +994,37 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 40. End-to-end audit: the order was right, three things underneath were not (2026-10-06)
+
+Traced the whole day (03:30 ratings -> 30-min safety pass -> 11:40 momentum ->
+11:45 flatten -> 12:00 close -> 13:30 outcomes/scorecard/grades). Each step's
+inputs exist before it runs. Underneath:
+
+1. **Overlapping tasks silently skipped each other.** Every .bat appended to
+   logs/scheduled.log; cmd.exe opens a `>>` target without write sharing, so a
+   task starting while another held it could not open the file and NONE of
+   its commands ran -- no error anywhere. Reproduced with a test pair. The log
+   shows the weekend flatten missing 5 times in 3 days: Fri 10/02 11:52
+   (behind the 11:45 flatten), Mon 10/05 08:45 + 08:52 and Tue 10/06 08:45
+   (behind the TradingAgents live pass). Fixed `4f41449`: one log per task,
+   ops/runlog.py merges them for hub.py; scan + momentum started together
+   both ran.
+2. **False alarms once momentum fills.** safety.inspect (monitor.py) would
+   raise position_limit, untracked_position and missing_protection on every
+   momentum holding, and hub.py's NEEDS A HUMAN would list all of them as
+   naked daily. Both now read ownership; momentum is exempt from the three
+   checks it fails by design. Also fixed: protect.py's OCO re-arm was never
+   recognised as protection (only brackets were).
+3. **The momentum dry run had stopped.** Only --paper was scheduled; the
+   dry run now runs first in the 11:40 task, so the clean record continues.
+
+Rehearsed: scan, flatten, momentum and outcomes tasks run via cmd exactly as
+the scheduler does -- each rc=0 and logged; TradingAgents premarket dry-run
+lists held + momentum + core. 1172 tests.
+
+Still open: phone alerts (notify_watch.py exists, unscheduled, ntfy topic
+not set -- operator step), §39.
+
 ## 39. Run it better -- operator's list, 2026-10-06 (TODO)
 
 In order of value:

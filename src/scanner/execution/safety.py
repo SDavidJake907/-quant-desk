@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from scanner.execution.guards import RiskLimits
+from scanner.execution.ownership import MOMENTUM
 from scanner.execution.reconcile import reconcile
 
 
@@ -56,8 +57,16 @@ def inspect(
     *,
     market_open: bool | None = None,
     kill_switch: bool = False,
+    owner_map: Mapping[str, str] | None = None,
 ) -> SafetyReport:
-    """Inspect broker snapshots and return deterministic safety findings."""
+    """Inspect broker snapshots and return deterministic safety findings.
+
+    `owner_map` (execution/ownership.owners) exempts the momentum book from
+    the three checks it fails BY DESIGN -- it holds ~10 names on its own
+    sleeve, logs no TradeIntent and carries no stop (WORKLIST §37/§40). A
+    false critical every day trains the operator to ignore a real one.
+    Without a map every position is checked, as before.
+    """
     findings: list[Finding] = []
     equity = float(account.get("equity") or 0.0)
     status = str(account.get("status") or "UNKNOWN")
@@ -66,8 +75,9 @@ def inspect(
         or account.get("account_blocked")
         or account.get("trade_suspended_by_user")
     )
-    positions = tuple(positions)
-    orders = tuple(orders)
+    exempt = {s for s, owner in (owner_map or {}).items() if owner == MOMENTUM}
+    positions = tuple(p for p in positions if str(p.get("symbol") or "") not in exempt)
+    orders = tuple(o for o in orders if str(o.get("symbol") or "") not in exempt)
 
     if kill_switch:
         findings.append(Finding("critical", "kill_switch", "kill switch is active"))
@@ -98,10 +108,16 @@ def inspect(
     for position in positions:
         symbol = str(position.get("symbol") or "")
         matching = [o for o in orders if str(o.get("symbol") or "") == symbol]
-        brackets = [o for o in matching if str(o.get("order_class") or "").lower() == "bracket"]
+        brackets = [o for o in matching
+                    if str(o.get("order_class") or "").lower() in ("bracket", "oco")]
         protected = False
         for order in brackets:
-            legs = _protective_legs(order)
+            legs = list(_protective_legs(order))
+            # An OCO (protect.py's re-arm) carries the target as the parent
+            # order itself; a bracket's parent is the filled ENTRY, never a leg.
+            if str(order.get("order_class") or "").lower() == "oco" and \
+                    str(order.get("status") or "").lower() in _ACTIVE_LEGS:
+                legs.append(order)
             types = {str(leg.get("type") or "").lower() for leg in legs}
             if "stop" in types and "limit" in types:
                 protected = True
