@@ -50,22 +50,18 @@ REM process that may have reached the broker must be reconciled rather than
 REM blindly restarted.
 ".venv\Scripts\python.exe" "scripts\manage_positions.py" --execute >> "%LOG%" 2>&1
 
-".venv\Scripts\python.exe" "scripts\trade.py" --submit-paper >> "%LOG%" 2>&1
-
-REM --- stage 4: the model reads every open position -------------------
+REM --- SWEEP-SCANNER ENTRIES PAUSED, 2026-10-06 (WORKLIST §37) ---------
 REM
-REM RECORDED, NOT ENFORCED. Three things watch a position today and all are
-REM mechanical: the bracket's stop and target, the 60-bar limit, and the
-REM Friday flatten. Nothing READS it. A name can lose its trend or have its
-REM thesis contradicted overnight and the system holds until a price level
-REM is touched.
+REM trade.py no longer runs on the schedule. Measured: -0.041R per trade on
+REM the unseen 2018-24 store (§30) and -11.1% in the two-year account replay
+REM with live settings (§29). The code is kept; run it by hand to look:
+REM     .venv\Scripts\python.exe scripts\trade.py          (preview, no orders)
 REM
-REM review_positions.py has no --execute and no close path. It writes a
-REM hold/exit_early call to the audit log so the question can be settled
-REM later: did the positions it wanted out of do worse than the ones it
-REM wanted held? That needs weeks of records. This starts the clock.
+REM The Gemma position review that ran here is removed too: 119 calls, 119
+REM "hold", including five trades that went on to stop out (§27). A call
+REM that never varies carries no information and cost the GPU every 30 min.
 REM
-REM Last, and its exit code deliberately ignored, because it must never
-REM delay or fail a scan. Evidence about a decision, not an input to one.
-".venv\Scripts\python.exe" "scripts\review_positions.py" >> "%LOG%" 2>&1
-exit /b %errorlevel%
+REM What stays on this half-hourly rhythm is SAFETY: protect.py above keeps
+REM a stop under every manual and scanner position; manage_positions.py
+REM applies the 60-bar limit to scanner positions only.
+exit /b 0

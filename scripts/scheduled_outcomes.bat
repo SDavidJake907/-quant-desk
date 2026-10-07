@@ -21,6 +21,10 @@ echo ===== OUTCOMES %DATE% %TIME% ===== >> "%LOG%"
 
 ".venv\Scripts\python.exe" "scripts\record_outcomes.py" --write >> "%LOG%" 2>&1
 
+REM One scorecard split by strategy: scanner vs manual picks vs momentum
+REM (WORKLIST §37). Read-only.
+".venv\Scripts\python.exe" "scripts\strategy_scorecard.py" >> "%LOG%" 2>&1
+
 REM Mark the model's recorded calls against outcomes, the day they land.
 REM Read-only, advisory; its exit code is ignored like the archive's.
 ".venv\Scripts\python.exe" "scripts\score_gemma.py" >> "%LOG%" 2>&1

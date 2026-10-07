@@ -23,12 +23,24 @@ $tasks = @(
     "stock-scanner-flatten",
     "stock-scanner-outcomes",
     "stock-scanner-news",
-    "stock-scanner-sector",
     "stock-scanner-extended",
     "stock-scanner-extras",
     "stock-scanner-advisor-pre",
-    "stock-scanner-advisor-live"
+    "stock-scanner-momentum"
 )
+
+# Retired 2026-10-06 (WORKLIST §37). Unregistered on every run so a machine
+# that still has them stops firing them.
+#   sector       fed a relative-strength gate removed as null
+#   advisor-live 117 ratings, none scoreable, and it shared the GPU with the
+#                news gate every 30 minutes
+$retired = @("stock-scanner-sector", "stock-scanner-advisor-live")
+foreach ($name in $retired) {
+    try {
+        Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction Stop
+        Write-Output "retired $name"
+    } catch { }
+}
 
 if ($Remove) {
     foreach ($name in $tasks) {
@@ -63,7 +75,7 @@ $scanTrigger.Repetition = $repeating.Repetition
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 25) -MultipleInstances IgnoreNew
 
 $scanAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_scan.bat" -WorkingDirectory $root
-Register-ScheduledTask -TaskName "stock-scanner-scan" -Trigger $scanTrigger -Action $scanAction -Settings $settings -Description "SMC scan and paper bracket orders, US market hours (05:33-12:03 AK)" -Force | Out-Null
+Register-ScheduledTask -TaskName "stock-scanner-scan" -Trigger $scanTrigger -Action $scanAction -Settings $settings -Description "Safety pass every 30 min, US market hours: protect.py re-arms stops, 60-bar limit on scanner positions (05:33-12:03 AK). Scanner entries paused." -Force | Out-Null
 Write-Output "registered stock-scanner-scan   05:33-12:03 AK, every 30 min"
 
 # --- off-hours data collection --------------------------------------------
@@ -147,24 +159,6 @@ $newsAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_news.bat
 Register-ScheduledTask -TaskName "stock-scanner-news" -Trigger $newsTrigger -Action $newsAction -Settings $newsSettings -Description "Archive point-in-time headlines for the liquid universe" -Force | Out-Null
 Write-Output "registered stock-scanner-news    14:00 AK daily"
 
-# --- sector strength, pre-open ---------------------------------------------
-# 05:00 AK, half an hour before the first scan. Writes today's median sector
-# relative strength so the 05:33 scan does not pay 14.42s computing it.
-#
-# THE TIME IS THE POINT. This first went into the 13:00 AK data job, which
-# stamps the file with that day; the next morning's scans ask for the next
-# day, miss, and recompute. A job that runs after the data it feeds is no job
-# at all.
-#
-# Advisory only, so unsupervised and never retried: the medians are context
-# for the ranking prompt and gate nothing, and the scan computes them itself
-# when the file is missing or stale.
-$sectorTrigger = New-ScheduledTaskTrigger -Daily -At 5:00AM
-$sectorSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
-$sectorAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_sector.bat" -WorkingDirectory $root
-Register-ScheduledTask -TaskName "stock-scanner-sector" -Trigger $sectorTrigger -Action $sectorAction -Settings $sectorSettings -Description "Median sector relative strength, written before the first scan (05:00 AK)" -Force | Out-Null
-Write-Output "registered stock-scanner-sector  05:00 AK daily"
-
 # --- extended-hours research data -------------------------------------------
 # 18:00 AK = 22:00 ET, after the post-market session closes, so the day is
 # complete. Writes to data/intraday_extended, which the trading path never
@@ -211,13 +205,14 @@ $advPreAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_tradin
 Register-ScheduledTask -TaskName "stock-scanner-advisor-pre" -Trigger $advPreTrigger -Action $advPreAction -Settings $advSettings -Description "TradingAgents ratings before the open, recorded only (03:30 AK weekdays)" -Force | Out-Null
 Write-Output "registered stock-scanner-advisor-pre  03:30 AK weekdays"
 
-# :06/:36 -- three minutes after each scan fires, and the pass waits out a scan
-# still running. 05:36 to 11:36: the 12:03 scan is the session's last.
-$advLiveSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 28) -MultipleInstances IgnoreNew
-$advLiveTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At 5:36AM
-$advRepeat = New-ScheduledTaskTrigger -Once -At 5:36AM -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Hours 6 -Minutes 1)
-$advLiveTrigger.Repetition = $advRepeat.Repetition
-$advLiveAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_tradingagents.bat" -Argument "live" -WorkingDirectory $root
-Register-ScheduledTask -TaskName "stock-scanner-advisor-live" -Trigger $advLiveTrigger -Action $advLiveAction -Settings $advLiveSettings -Description "TradingAgents ratings between scans, recorded only (05:36-11:36 AK weekdays)" -Force | Out-Null
-Write-Output "registered stock-scanner-advisor-live 05:36-11:36 AK weekdays, every 30 min"
-
+# --- momentum paper rebalance ------------------------------------------------
+# 11:40 AK = 15:40 ET weekdays, ten minutes before Alpaca's 15:50 ET cutoff
+# for market-on-close orders. It acts once a month: the first session of a
+# month whose tranche is not yet formed; every other day it prints "already
+# rebuilt" and exits. A failed send leaves the book unsaved, so the next
+# day's run retries, and the fixed mom- client ids stop a double order.
+$momTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At 11:40AM
+$momSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 9) -MultipleInstances IgnoreNew
+$momAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_momentum.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-momentum" -Trigger $momTrigger -Action $momAction -Settings $momSettings -Description "Momentum paper book: monthly tranche rebuild, market-on-close (11:40 AK weekdays)" -Force | Out-Null
+Write-Output "registered stock-scanner-momentum 11:40 AK weekdays, acts once a month"

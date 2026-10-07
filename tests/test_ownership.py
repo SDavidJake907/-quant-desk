@@ -66,3 +66,24 @@ def test_orders_for_keeps_own_entries_and_legs_on_owned_symbols():
     ]
     kept = own.orders_for(open_orders, owners, [own.SMC])
     assert [o["id"] for o in kept] == ["1", "3"]
+
+
+def test_weekend_flatten_plan_touches_only_the_scanner():
+    """The account as it will look: one position per owner, each with its
+    protective leg, plus a resting manual entry. Only smc may be planned."""
+    from scanner.execution.flatten import plan_flatten
+
+    history = [buy("NKE", "smc-NKE-1"), buy("NVDA", "man-NVDA-1"),
+               buy("MU", "mom-MU-202610-buy")]
+    owners = own.owners(history)
+    positions = [{"symbol": s, "qty": "10"} for s in ("NKE", "NVDA", "MU", "HAND")]
+    open_orders = [
+        {"id": "nke-stop", "symbol": "NKE", "status": "new", "client_order_id": "u1"},
+        {"id": "nvda-stop", "symbol": "NVDA", "status": "new", "client_order_id": "u2"},
+        {"id": "gs-entry", "symbol": "GS", "status": "new", "client_order_id": "man-GS-2"},
+    ]
+    plan = plan_flatten(
+        positions=own.positions_for(positions, owners, ("smc",)),
+        orders=own.orders_for(open_orders, owners, ("smc",)))
+    assert plan.close == ("NKE",)
+    assert plan.cancel_first == ("nke-stop",)
