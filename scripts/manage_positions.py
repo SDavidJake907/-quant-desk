@@ -48,6 +48,7 @@ import httpx
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.audit import append_event
+from scanner.execution import ownership
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.provenance import build_id
 from scanner.features.intraday import fetch_intraday, max_range
@@ -88,8 +89,23 @@ async def main(max_bars: int, minutes: int, execute: bool) -> None:
                   f"Re-run during regular hours.{RESET}")
             execute = False
 
-        positions = await broker._get("/v2/positions")
-        orders = await broker._get("/v2/orders", status="open", nested="true")
+        # ONLY THE STRATEGIES THE LIMIT WAS MEASURED ON (WORKLIST §37). The
+        # 60-bar limit is the sweep backtest's; applied account-wide it sold a
+        # manual pick or a momentum hold in its first week.
+        history = await broker._get("/v2/orders", status="all", limit=500,
+                                    nested="true")
+        owner_map = ownership.owners(history)
+        scope = POLICY.max_hold_strategies
+        every_position = await broker._get("/v2/positions")
+        positions = ownership.positions_for(every_position, owner_map, scope)
+        orders = ownership.orders_for(
+            await broker._get("/v2/orders", status="open", nested="true"),
+            owner_map, scope)
+        exempt = [f"{p['symbol']} ({ownership.owner(p['symbol'], owner_map)})"
+                  for p in every_position if p not in positions]
+        if exempt:
+            print(f"{DIM}no hold limit (not {'/'.join(scope)}): "
+                  f"{', '.join(exempt)}{RESET}")
 
         if not execute:
             print(f"{YELLOW}report only — nothing will be closed or cancelled{RESET}")

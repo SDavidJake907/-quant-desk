@@ -51,6 +51,7 @@ from scanner.execution.audit import append_event
 from scanner.execution.flatten import (closes_for_weekend, closing_within, flatten_alert_text,
                                       is_flat, plan_flatten)
 from scanner.execution.flatten_run import close_when_released
+from scanner.execution import ownership
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.provenance import build_id
 from scanner.models import AuditEvent
@@ -63,6 +64,29 @@ POLICY = TradingPolicy()
 #: Seconds to keep asking the broker whether the book is empty.
 VERIFY_SECONDS = 45
 VERIFY_INTERVAL = 5
+
+
+async def _book(broker: Alpaca, owner_map: dict[str, str]):
+    """Positions and working orders this flatten is responsible for.
+
+    Only the strategies in `flatten_strategies` (WORKLIST §37). A manual pick
+    or a momentum hold is someone else's exit, and so is anything bought by
+    hand in the dashboard; their stops and entries are left untouched too.
+    """
+    positions = await broker._get("/v2/positions")
+    orders = await broker._get("/v2/orders", status="open", limit=500)
+    scope = POLICY.flatten_strategies
+    return (ownership.positions_for(positions, owner_map, scope),
+            ownership.orders_for(orders, owner_map, scope))
+
+
+def _report_untouched(positions, owner_map: dict[str, str]) -> None:
+    kept = [f"{p['symbol']} ({ownership.owner(p['symbol'], owner_map)})"
+            for p in positions
+            if ownership.owner(p["symbol"], owner_map) not in POLICY.flatten_strategies]
+    if kept:
+        print(f"{DIM}held over the closure, not this rule's to close: "
+              f"{', '.join(kept)}{RESET}")
 
 
 async def _session_close(broker: Alpaca) -> datetime | None:
@@ -142,8 +166,13 @@ async def main(submit: bool, only_within: int | None, before_closure: bool = Fal
 
         print(f"{DIM}paper account: equity {account.equity:,.2f}, "
               f"status {account.status}{RESET}")
-        positions = await broker._get("/v2/positions")
-        orders = await broker._get("/v2/orders", status="open", limit=500)
+        history = await broker._get("/v2/orders", status="all", limit=500,
+                                    nested="true")
+        owner_map = ownership.owners(history)
+        _report_untouched(await broker._get("/v2/positions"), owner_map)
+        positions, orders = await _book(broker, owner_map)
+        print(f"{DIM}flattening strategies: "
+              f"{', '.join(POLICY.flatten_strategies) or 'none'}{RESET}")
         plan = plan_flatten(positions=positions, orders=orders)
         print(f"{BOLD}{plan.describe()}{RESET}")
 
@@ -177,8 +206,7 @@ async def main(submit: bool, only_within: int | None, before_closure: bool = Fal
         remaining, still_working = positions, orders
         for _ in range(VERIFY_SECONDS // VERIFY_INTERVAL):
             await asyncio.sleep(VERIFY_INTERVAL)
-            remaining = await broker._get("/v2/positions")
-            still_working = await broker._get("/v2/orders", status="open", limit=500)
+            remaining, still_working = await _book(broker, owner_map)
             if is_flat(positions=remaining, orders=still_working):
                 break
 

@@ -363,6 +363,34 @@ class TradingPolicy(Frozen):
     # --- how it ends --------------------------------------------------------
     max_hold_bars: int = 60
 
+    # --- which strategy each rule applies to (WORKLIST §37) -----------------
+    #: The weekend flatten and the hold limit were written for the sweep
+    #: scanner and used to act on EVERY position in the account. Ownership is
+    #: read from the client_order_id prefix (execution/ownership.py). A
+    #: strategy not named here is never closed by that rule; a position no
+    #: prefix claims (bought by hand in the dashboard) is never closed by any.
+    #: Manual picks hold over weekends: the operator's choice, 2026-10-06.
+    flatten_strategies: tuple[str, ...] = ("smc",)
+    max_hold_strategies: tuple[str, ...] = ("smc",)
+    #: Held without a stop by design: the momentum backtest had none (its
+    #: guard is the S&P trend filter), so protect.py must not "re-arm" one.
+    stopless_strategies: tuple[str, ...] = ("momentum",)
+
+    # --- the operator's own picks (scripts/manual_trade.py) -----------------
+    #: Same 1% risk and the per-position cap as the scanner. Target defaults
+    #: to this multiple of the stop distance when none is given: a CHOSEN
+    #: number, not a measured one.
+    manual_default_reward_risk: float = 2.0
+    #: At most this many open positions per GICS sector across the account.
+    #: 10 of the 18 core names are chips/AI hardware; 8 of them open at once
+    #: is one bet with 8% at risk. 0 disables. Chosen, not measured.
+    max_per_sector: int = 3
+
+    # --- momentum engine sleeve ---------------------------------------------
+    #: Share of equity the momentum book is sized against; the rest is for
+    #: manual picks and the scanner. Operator default 2026-10-06: half.
+    momentum_allocation_pct: float = 50.0
+
     # --- recorded, never enforced ------------------------------------------
     #: Each of these improved the holdout and none has forward evidence. They
     #: are logged on every decision so the question can be settled later on

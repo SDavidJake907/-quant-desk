@@ -48,7 +48,8 @@ import httpx
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError, protective_payload
 from scanner.execution.audit import append_event, submitted_levels
-from scanner.execution import protection
+from scanner.execution import ownership, protection
+from scanner.execution.policy import TradingPolicy
 from scanner.models import AuditEvent
 
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
@@ -74,6 +75,18 @@ async def main(submit: bool) -> None:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
 
         naked = await broker.unprotected_positions()
+        # Momentum holds have no stop BY DESIGN (WORKLIST §37): its backtest
+        # had none, so arming one would trade a strategy nobody tested.
+        stopless = TradingPolicy().stopless_strategies
+        if naked and stopless:
+            owner_map = ownership.owners(await broker._get(
+                "/v2/orders", status="all", limit=500, nested="true"))
+            skipped = [p.symbol for p in naked
+                       if ownership.owner(p.symbol, owner_map) in stopless]
+            if skipped:
+                print(f"{DIM}no stop by design ({'/'.join(stopless)}): "
+                      f"{', '.join(skipped)}{RESET}")
+            naked = tuple(p for p in naked if p.symbol not in skipped)
         if not naked:
             print(f"{GREEN}every open position has a live stop.{RESET}")
             return
