@@ -1,3 +1,101 @@
+# Handoff — 2026-10-06 (Tuesday ~11:10 AK) — for a REMOTE session
+
+Branch `momentum-swing-research`, clean at the commit that adds this file.
+**1100 tests green.** Paper account only, **$102,040.97, flat.**
+
+## 0. Read first: what a remote session can and cannot do
+
+The LIVE SYSTEM RUNS ON THE HOME PC ONLY (Windows, scheduled tasks, Ollama +
+gemma4:12b on an RTX 5060 Ti, the TradingAgents venv, `.env` with Alpaca PAPER
+keys). A remote session gets **the code, docs and tests only**. NOT in git:
+`data/` (3.9 GB: price stores, factor panels, partial earnings, insiders,
+short volume, news), `.env`, `logs/`, `tmp/`. So remotely: code, docs, tests
+and research DESIGN are fine; anything needing data, the broker, Gemma or the
+GPU waits for the home PC. **Do not touch the trading path** (FREEZE.md list)
+without the operator — any change ends window 16.
+
+## 1. What's live now — window 16 (declared today)
+
+| | |
+|---|---|
+| policy fingerprint | `dcc6291a4ec2` (earnings block 7 -> 0: hold through earnings) |
+| code build | `e67b955` |
+| universe | **`watchlists/core.txt` ONLY**: AMD, MRVL, INTC. The operator hand-picks names weekly/daily. **Commit every edit** (each trade must trace to its list). Bitcoin-linked names stay out (stocks only). Empty file = back to the S&P 500 |
+| why | the full-S&P sweep found nothing in the Oct 2-6 rally (4.6-18% of stocks swept a 10-day low vs 27-45% in late Sept); the operator prefers their own picks |
+| expect | few trades: the sweep needs a dip below a recent low |
+| window 15 | closed today, 0 completed trades |
+
+Schedule (Alaska time) is unchanged — scans 05:33-12:03 every 30 min, flatten
+before 3+ day closures, data/outcomes/news jobs after the close. Changed today
+or yesterday, all committed:
+- `protect.py` SELLS a position whose stop is already breached (+ Desktop
+  `PROTECTION_ALERT.txt`) instead of leaving it naked.
+- TradingAgents (record-only): structured output fixed (JSON schema);
+  premarket is **connected to the scan**: rates core list -> held -> slate ->
+  last-5-session live setups -> `watchlists/kraken.txt`, 30 names premarket,
+  8 per live pass. Rule for it ever acting: TRIALS #44.
+- `review_positions.py` = **monitor v2**: Gemma gets the trade math as codes
+  (`monitor/codes.py`), a chart-pattern card with its measured record, 48h
+  headlines; temperature 0 + seed; record-only. Rule for it ever acting: #45.
+- All prompts share one event vocabulary (`monitor/events.py`); registry in
+  `apprentice/PROMPTS.md`.
+
+Built but NOT scheduled (run by hand): `momentum_rebalance.py` (dry run),
+`momentum_watch.py` (daily after close), `momentum_report.py` (TradingAgents
+on the picks), `risk_monitor.py` (3%/6%/15%, record-only), `notify_watch.py`
+(ntfy; the operator declined phone alerts), `watch_list.py` (view-only).
+
+## 2. Research since 10-05 — ~101 trials, 0 surviving passes (TRIALS.md)
+
+Everything built from price/volume alone failed on data it was not found on:
+Gate 1 (sweep −0.041R on 2018-24), every sweep filter/exit/ladder, MPC,
+breadth (twice), opening bar, momentum add-ons, 12 indicators, the GPU factor
+lab (10 signals, Romano-Wolf), 10 LMW chart patterns (bullish = bearish),
+the operator's `signals.py` (entries WORSE than random, t −4.2/−4.1), and the
+skills bundle's VCP / follow-through / distribution days (two backwards).
+Momentum + trend filter is the best lead but its 2016-26 edge sits in five
+names. Low-vol and MAX going the wrong way in both periods = survivorship in
+the free data. Details: WORKLIST §30-§36.
+
+GPU research: `research_gpu/` runs in the Microsoft Store Python 3.12 (torch
+2.11 cu128 on Blackwell sm_120, CuPy, pandas), reading panels written by
+`scripts/factor_export.py` / `index_export.py`. Refuses market hours.
+
+## 3. Next, in order
+
+1. **Earnings download**: 2,410 of ~4,200 days (to 2019-05). Resume AFTER
+   the close, in its own terminal (Claude Code's memory guard killed it twice
+   during market hours): `uv run python scripts/collect_earnings.py`. Then
+   `scripts/pead_test.py` (rules already committed, #27).
+2. **Momentum November dry run**: `momentum_rebalance.py` early November,
+   `momentum_watch.py` after closes, `momentum_report.py` after the rebalance.
+3. **Low-float day-trading historical test** (#70-71): scoped, NOT started,
+   waiting for the operator's go. Alpaca free plan has 1-min SIP premarket,
+   historical NBBO quotes, 19,169 delisted symbols and news; float via SEC
+   shares outstanding. Expect it to fail (day-trader studies: >97% lose).
+4. **Operator decisions pending**: Norgate survivorship-free data; Alpaca
+   $99 SIP feed; FRED key; Ollama 1 parallel slot (memory); core-list names.
+5. **Window boundary**: `TradingPolicy.as_prose()` is stale (calendar
+   flatten, +0.30% limit, breached-stop sale); drop the null ranking prompt.
+
+## 4. Operator preferences (also in Claude memory)
+
+Stocks only, no crypto. Read FREEZE.md before the trading path. Grep WORKLIST
+for an idea before testing it. Commit rules before any test runs. One big
+model on the GPU. Commit at end of day. Wants depth and real numbers; prefers
+own stock picks now (core list). No phone alerts.
+
+## Useful commands
+
+    powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1   # health check
+    uv run pytest -q                                                 # 1100 tests
+    python scripts/watch_list.py                                     # view any list
+    python scripts/tradingagents_pass.py --mode premarket --dry-run  # TA queue
+    python scripts/momentum_rebalance.py --preview                   # engine picks
+    <GPU python> research_gpu/factor_lab.py                          # GPU lab
+
+---
+
 # Handoff — 2026-10-05 (Monday, 09:50 AK)
 
 Branch `momentum-swing-research`, clean at `8211779`. **995 tests green.**
