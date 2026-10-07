@@ -424,6 +424,10 @@ class TradingPolicy(Frozen):
     #: was split Gemma +20 / picks + manual +20 (operator's choice).
     gemma_allocation_pct: float = 60.0
     gemma_max_positions: int = 5
+    #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
+    #: (it wants its record to be its own judgement); TradingAgents keeps running
+    #: as a graded shadow the operator still sees (second_opinion.py, weekly report).
+    gemma_sees_tradingagents: bool = False
 
     # --- momentum engine sleeve ---------------------------------------------
     #: Share of equity the momentum book is sized against. 50% on 2026-10-06,

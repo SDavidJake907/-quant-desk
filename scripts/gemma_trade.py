@@ -8,7 +8,7 @@
    before they are bought), plus whatever Gemma's book holds now.
 2  Facts per name, computed here (Gemma writes no numbers): 1/3/12-month and
    12-1 momentum returns, daily ATR, the S&P trend, earnings within 7 days,
-   recent headlines, TradingAgents' latest call.
+   recent headlines (TradingAgents is a shadow Gemma does not see).
 3  Gemma answers holdings (symbols from the list only) + reason + quoted
    evidence + a journal line (advisor/gemma_trader.py validates it).
 4  Sell what it dropped, buy what it added -- priced, sized and stopped by
@@ -87,7 +87,12 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
                  f"12m {_ret(b.closes, 252)} | 12-1 momentum {mom} | daily ATR {atr_text}"]
         report = earnings.get(s)
         lines.append(f"earnings: {report.label}" if report else "earnings: none in the next 7 days")
-        ta = opinions.latest_calls(rows, s).get("tradingagents")
+        # TradingAgents runs as a SHADOW (2026-10-07): Gemma asked not to see it
+        # ("a black box that might lead me to mimic the system's logic") so its
+        # record is its own. TradingAgents is still rated, graded, and shown to
+        # the operator; policy.gemma_sees_tradingagents turns this back on.
+        ta = (opinions.latest_calls(rows, s).get("tradingagents")
+              if POLICY.gemma_sees_tradingagents else None)
         if ta:
             # The verdict AND a short reason from its report (2026-10-07), so
             # Gemma weighs why, not just what. Labelled: its reasons lean on
