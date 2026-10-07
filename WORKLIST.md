@@ -994,6 +994,28 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 43. Kronos (candlestick foundation model, AAAI 2026) -- FAIL on US stocks, not adopted (2026-10-07)
+
+github.com/shiyu-coder/Kronos (MIT, last commit 2026-04-13). Reviewed and tested
+OUTSIDE this repo (C:/Users/kitti/kronos-review, own venv; nothing imported here).
+Code is clean: ~1,250 lines, safetensors weights, no hidden network/shell calls.
+
+Clean test: its pre-training data ends June 2024, so every forecast was made
+from 2024-08 on. Kronos-small, the authors' own quant setup (finetune/config.py:
+90 daily bars in, 10 sessions out), 3 sampled paths, S&P 500 + MidCap 400
+(~890 names), first session of each month, rules fixed before the run.
+
+```
+26 months   mean RankIC -0.019 (t -0.67)   top decile +0.28% per 10 sessions (t 0.52)
+monthly RankIC swings -0.30 .. +0.19 with no persistence
+pre-set PASS needed mean RankIC > 0 with t >= 2 and a positive top decile -> FAIL
+```
+
+The paper's +0.025 RankIC does not show up on US large/mid caps after its
+training cutoff. Another chart-reading signal with no edge here (cf. §31, §34,
+§35). The operator chose not to integrate it; the 21-session secondary run was
+not needed. Re-test only with a new idea (fine-tuning on US data), not as is.
+
 ## 42. Gemma's goal: junior trader with its own book, and desk officer (2026-10-06)
 
 The operator gave Gemma a goal: be a successful trader, live (paper orders),
