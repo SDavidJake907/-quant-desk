@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 
@@ -225,6 +226,21 @@ def _range_pct(bars, window: int = 20) -> float:
     closes = bars.closes[-window:]
     spans = [(h - l) / c * 100 for h, l, c in zip(highs, lows, closes) if c]
     return sum(spans) / len(spans) if spans else 0.0
+
+
+CORE_LIST = Path("watchlists/core.txt")
+
+
+def _core_list(path: Path = CORE_LIST) -> tuple[str, ...]:
+    """The operator's hand-picked names, or () to scan the full index."""
+    if not path.exists():
+        return ()
+    names: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name = line.split("#", 1)[0].strip().upper()
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
 
 
 def _liquid(bars, window: int = 20) -> bool:
@@ -458,6 +474,14 @@ async def main(
         universe = await composite.load_universe(client, INDEXES[index])
         symbols = tuple(m.symbol for m in universe)
         sector_of = {m.symbol: m.sector for m in universe}
+        # CLAMPED TO THE OPERATOR'S CORE LIST (window 16, 2026-10-06): when
+        # watchlists/core.txt names any stocks, they are the ONLY names scanned.
+        # The index universe is still loaded for sector context.
+        core = _core_list()
+        if core:
+            symbols = core
+            print(f"{YELLOW}CORE LIST: scanning only {len(core)} hand-picked name(s): "
+                  f"{', '.join(core)}{RESET}")
         range_ = max_range(minutes)
         print(f"{DIM}scanning {len(symbols)} symbols on {minutes}m bars{RESET}")
         print(f"{DIM}policy: {policy.describe()}{RESET}")
@@ -693,9 +717,12 @@ async def main(
                           f"{DIM}{note}{RESET}")
 
         earnings = {}
-        if news_gate and candidates:
+        # Honours policy.block_earnings_within_days: 0 means hold through
+        # earnings, so the calendar is not consulted (window 16 runs at 0).
+        if news_gate and candidates and policy.block_earnings_within_days:
             wanted = frozenset(setup.symbol for setup, _, _ in rankable)
-            earnings = await event_calendar.upcoming_earnings(wanted, client)
+            earnings = await event_calendar.upcoming_earnings(
+                wanted, client, horizon=policy.block_earnings_within_days)
             if earnings:
                 print(f"  {YELLOW}earnings inside the holding period: "
                       f"{', '.join(f'{s} {e.label}' for s, e in sorted(earnings.items()))}{RESET}")

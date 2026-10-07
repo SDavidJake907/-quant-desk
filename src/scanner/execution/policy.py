@@ -205,7 +205,9 @@ class TradingPolicy(Frozen):
 
     # --- what stops a trade -----------------------------------------------
     block_structural_news: bool = True
-    block_earnings_within_days: int = 7
+    #: 0 = hold through earnings (operator's choice for window 16, 2026-10-06:
+    #: the core list is hand-picked trending names). Was 7.
+    block_earnings_within_days: int = 0
 
     #: Refuse a long whose stop would be consumed by the mechanical
     #: ex-dividend price drop. THIS IS NOT A PREDICTIVE FILTER. Every context

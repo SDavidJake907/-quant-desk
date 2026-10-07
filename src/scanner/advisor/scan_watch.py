@@ -91,7 +91,8 @@ async def build(client, *, limit: int = 10) -> tuple[str, ...]:
                          bars.closes[-1], dvol, priority(setup)))
     recent = set(sorted(days)[-SESSIONS:])
     from_scan = select(rows, sessions=recent, limit=limit) if recent else ()
-    chosen = tuple(dict.fromkeys((*from_scan, *operator_names())))
+    core = operator_names(Path("watchlists/core.txt"))
+    chosen = tuple(dict.fromkeys((*core, *from_scan, *operator_names())))
     WATCH.parent.mkdir(parents=True, exist_ok=True)
     WATCH.write_text(json.dumps({"made": datetime.now().astimezone().isoformat(),
                                  "sessions": sorted(d.isoformat() for d in recent),
