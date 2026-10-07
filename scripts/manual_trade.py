@@ -49,7 +49,6 @@ from scanner.execution.ownership import MANUAL
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.provenance import build_id
 from scanner.execution.sizing import size_position
-from scanner.execution.taper import position_cap_for
 from scanner.features.intraday import fetch_intraday, max_range
 from scanner.models import AuditEvent, TradeIntent
 from scanner.sources import composite
@@ -136,7 +135,7 @@ async def main(a: argparse.Namespace) -> int:
 
     # --- size ---------------------------------------------------------------
     sleeve = manual.sleeve_equity(account.equity, POLICY.own_sleeves_pct)
-    cap = min(POLICY.max_position_pct, position_cap_for(date.today(), POLICY))
+    cap = min(POLICY.max_position_pct, POLICY.shared_position_cap_pct)
     sizing = size_position(sleeve, limit, stop, risk_pct=POLICY.risk_pct,
                            max_position_pct=cap,
                            buying_power=min(account.buying_power, sleeve))

@@ -36,7 +36,6 @@ from scanner.execution.guards import RiskLimits, check_account
 from scanner.execution.ownership import PICKS
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.safety import kill_switch_active
-from scanner.execution.taper import position_cap_for
 
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN, RED, YELLOW = "\033[32m", "\033[31m", "\033[33m"
@@ -109,7 +108,7 @@ async def main(submit: bool) -> int:
                        if ownership.owner(p["symbol"], owner_map) not in ownership.OWN_SLEEVE
                        and p["symbol"] not in plan.sells)
         room = max(0.0, min(account.buying_power, sleeve - deployed))
-        cap = min(POLICY.max_position_pct, position_cap_for(date.today(), POLICY))
+        cap = min(POLICY.max_position_pct, POLICY.shared_position_cap_pct)
         for symbol in plan.buys:
             gate = check_account(account.equity, float(raw.get("last_equity") or account.equity),
                                  len(in_use), limits, market_open=True,

@@ -240,7 +240,7 @@ class TradingPolicy(Frozen):
 
     risk_pct: float = 1.0
     max_position_pct: float = 20.0
-    max_positions: int = 8
+    max_positions: int = 12
     max_daily_loss_pct: float = 3.0
     min_equity: float = 1_000.0
 
@@ -385,6 +385,14 @@ class TradingPolicy(Frozen):
     #: 10 of the 18 core names are chips/AI hardware; 8 of them open at once
     #: is one bet with 8% at risk. 0 disables. Chosen, not measured.
     max_per_sector: int = 3
+
+    # --- the shared sleeve: picks list + one-off manual trades ---------------
+    #: Per-stock cap for the shared sleeve, FIXED rather than 100/max_positions.
+    #: 2026-10-07: slots 8 -> 12 so one-off manual trades fit beside the 8
+    #: picks; deriving the cap from the slot count would have shrunk every pick
+    #: from 12.5% to 8.3%. Total spend is still bounded by the sleeve itself
+    #: (buying room = sleeve - deployed), so a full book cannot exceed it.
+    shared_position_cap_pct: float = 12.5
 
     # --- the operator's list, traded automatically (execution/picks.py) ----
     #: watchlists/picks.txt is kept in sync every 30 min in market hours:
