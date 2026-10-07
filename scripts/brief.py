@@ -3,9 +3,18 @@
     python scripts/brief.py AMD
     python scripts/brief.py AMD NVDA MU
 
-This assembles what is already computed and then discarded a line at a time:
-trend, momentum, relative strength, liquidity, the setup, its size, the news,
-and the calendar risks around it.
+What matters for a manual pick or a momentum holding: returns, 12-1
+momentum against the S&P, volatility for placing a stop, liquidity, the
+calendar risks, and structural news.
+
+ADVISORY, NOT PRIORITY (WORKLIST §38)
+RSI and the 50/200-day averages were measured here with no edge -- classic TA
+|t| < 1.7 inside momentum (§31), RSI/MACD/ADX entries significantly WORSE than
+random (§35) -- so they sit in a fenced SECOND OPINIONS block at the bottom,
+labelled, beside TradingAgents' latest (unproven, graded) call. No verdict
+words like "overbought": that reading argues against the one rule that held
+up. The sweep-setup block is gone; the sweep is paused (-0.041R unseen, §30).
+Full page: scripts/second_opinion.py.
 
 WHAT IS DELIBERATELY ABSENT
 No probability estimates, no T1/T2 target ladders, no analyst grades, no
@@ -23,18 +32,22 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime as dt
-import statistics
+
+import sys
 
 import httpx
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from scanner.execution.news_gate import check as check_news
-from scanner.execution.sizing import size_position
 from scanner.features import technicals
 from scanner.features.bars import fetch_bars
-from scanner.features.intraday import fetch_intraday, max_range, session_slot
-from scanner.features.intraday_context import atr_pct, ema, rsi
+from scanner.features.intraday import fetch_intraday, max_range
+from scanner.features.intraday_context import atr_pct, rsi
+from scanner.advisor import opinions as op
+from scanner.execution.scorecard import read_rows
 from scanner.execution.policy import TradingPolicy
-from scanner.screens.smc import priority, scan
 from scanner.sources import composite
 from scanner.sources import calendar as event_calendar
 from scanner.sources import dividends
@@ -68,37 +81,31 @@ async def brief(symbol: str, client, policy, universe, bench, ex_div, equity):
     closes, price = daily.closes, daily.closes[-1]
     feats = technicals.compute(daily)
 
-    # ---- trend -----------------------------------------------------------
-    print(f"\n  {BOLD}TREND{RESET} {DIM}(daily){RESET}")
+    # ---- returns and momentum -------------------------------------------
+    print(f"\n  {BOLD}RETURNS AND MOMENTUM{RESET} {DIM}(daily){RESET}")
     _row("last close", f"{price:,.2f}")
-    for window in (20, 50, 200):
-        value = ema(closes, window)
-        if value:
-            gap = (price / value - 1) * 100
-            _row(f"{window}-day EMA", f"{value:,.2f}",
-                 f"price {gap:+.1f}% {'above' if gap > 0 else 'below'}")
-    if len(closes) >= 50:
-        _row("50-day SMA", f"{statistics.fmean(closes[-50:]):,.2f}")
     for label, back in (("1 month", 21), ("3 month", 63), ("12 month", 252)):
         if len(closes) > back:
             change = (price / closes[-back - 1] - 1) * 100
             _row(f"{label} return", f"{change:+.1f}%")
-
-    # ---- momentum & volatility -------------------------------------------
-    print(f"\n  {BOLD}MOMENTUM AND VOLATILITY{RESET}")
-    daily_rsi = rsi(closes)
-    _row("RSI(14) daily", f"{daily_rsi:.1f}" if daily_rsi else "unknown")
-    intra_rsi = rsi(bars.closes)
-    _row(f"RSI(14) {policy.interval_minutes}m", f"{intra_rsi:.1f}" if intra_rsi else "unknown")
-    atr = atr_pct(bars)
-    _row(f"ATR% {policy.interval_minutes}m", f"{atr:.2f}%" if atr else "unknown",
-         "typical bar range")
+    if feats.momentum_12_1 is not None:
+        _row("12-1 momentum", f"{feats.momentum_12_1:+.1f}%",
+             "what the momentum engine ranks on")
     rs = technicals.relative_strength(feats, bench) if bench else None
     if rs is not None:
         _row("vs S&P 500 (12-1)", f"{rs:+.1f}pp",
              "leading" if rs > 0 else "lagging")
     if member:
         _row("sector", member.sector)
+
+    # ---- volatility, for placing a stop ----------------------------------
+    print(f"\n  {BOLD}VOLATILITY{RESET} {DIM}(for placing a stop, not a signal){RESET}")
+    atr = atr_pct(daily)
+    _row("ATR% daily", f"{atr:.2f}%" if atr else "unknown",
+         f"a stop inside ~1 ATR ({price * atr / 100:,.2f}) is noise" if atr else "")
+    intra = atr_pct(bars)
+    _row(f"ATR% {policy.interval_minutes}m", f"{intra:.2f}%" if intra else "unknown",
+         "typical bar range")
 
     # ---- liquidity -------------------------------------------------------
     window = bars.closes[-20:], bars.volumes[-20:]
@@ -110,36 +117,6 @@ async def brief(symbol: str, client, policy, universe, bench, ex_div, equity):
     _row("price floor", f"{policy.min_price:,.2f}",
          "passes" if price >= policy.min_price else "FAILS")
 
-    # ---- the setup -------------------------------------------------------
-    print(f"\n  {BOLD}SETUP{RESET} {DIM}(sweep -> CHoCH -> BOS, "
-          f"{policy.interval_minutes}m){RESET}")
-    setups = scan(bars, k=policy.swing_k,
-                  require_value_sweep=policy.require_value_sweep,
-                  min_risk_pct=policy.min_risk_pct,
-                  min_reward_risk=policy.min_reward_risk)
-    if not setups:
-        print(f"    {DIM}no setup on the visible history{RESET}")
-    else:
-        s = setups[-1]
-        age = len(bars) - 1 - s.trigger_index
-        fresh = age <= policy.fresh_bars
-        stop_pct = s.risk / s.entry_price * 100
-        _row("triggered", f"{bars.times[s.trigger_index]:%Y-%m-%d %H:%M}",
-             f"{age} bars ago — {'FRESH' if fresh else 'stale, not tradeable'}")
-        _row("entry (trigger close)", f"{s.entry_price:,.2f}")
-        _row("stop (higher low)", f"{s.stop_price:,.2f}", f"{stop_pct:.2f}% risk")
-        _row("target (range high)", f"{s.target_price:,.2f}")
-        _row("reward : risk", f"{s.reward_risk:.2f}R",
-             f"floor is {policy.min_reward_risk}R")
-        _row("priority score", f"{priority(s):.1f}")
-        _row("session slot", session_slot(bars.times[s.trigger_index]))
-        sizing = size_position(equity, s.entry_price, s.stop_price,
-                               risk_pct=policy.risk_pct,
-                               max_position_pct=policy.max_position_pct)
-        _row("size", f"{sizing.shares} sh",
-             f"{sizing.position_dollars:,.0f} at risk {sizing.risk_dollars:,.0f} "
-             f"({sizing.limited_by})")
-
     # ---- calendar risk ---------------------------------------------------
     print(f"\n  {BOLD}CALENDAR{RESET}")
     try:
@@ -149,20 +126,15 @@ async def brief(symbol: str, client, policy, universe, bench, ex_div, equity):
             _row("earnings", "none in window")
         else:
             days = (report.on - dt.date.today()).days
-            blocked = 0 <= days <= policy.block_earnings_within_days
             _row("earnings", f"{report.on:%Y-%m-%d} {report.when}",
-                 f"{days}d away — {'BLOCKS entry' if blocked else 'outside the '
-                 f'{policy.block_earnings_within_days}d gate'}")
+                 f"{days}d away" + (" -- a hold now carries the report gap"
+                                    if 0 <= days <= 7 else ""))
     except Exception:
         _row("earnings", "unknown", "calendar unavailable — treat as unknown")
     event = ex_div.get(symbol)
-    if event and setups:
-        drop = event.drop_pct(price)
-        stop_pct = setups[-1].risk / setups[-1].entry_price * 100
+    if event:
         _row("ex-dividend", str(event.ex_date),
-             f"drops {drop:.2f}% = {drop/stop_pct*100:.0f}% of the stop")
-    elif event:
-        _row("ex-dividend", str(event.ex_date), f"{event.cash:.3f} per share")
+             f"{event.cash:.3f} per share, price drops ~{event.drop_pct(price):.2f}%")
     else:
         _row("ex-dividend", "none declared")
     history = await fetch_dividends(symbol, client)
@@ -172,8 +144,8 @@ async def brief(symbol: str, client, policy, universe, bench, ex_div, equity):
              f"{'CUT in window' if history.was_cut() else 'no cuts'}")
 
     # ---- news, read by Gemma ---------------------------------------------
-    print(f"\n  {BOLD}NEWS{RESET} {DIM}(Gemma 3 — every claim must quote the "
-          f"headline verbatim or it is discarded){RESET}")
+    print(f"\n  {BOLD}NEWS{RESET} {DIM}(only a merger or other structural event is "
+          f"flagged: news labels did not predict returns here, news_event_test){RESET}")
     try:
         flag = await check_news(symbol, client)
         verdict = flag.verdict()
@@ -183,18 +155,32 @@ async def brief(symbol: str, client, policy, universe, bench, ex_div, equity):
             print(f"    {DIM}- {str(headline)[:88]}{RESET}")
         cats = ", ".join(sorted(set(flag.categories))) or "nothing material"
         _row("categories", cats)
-        _row("gate", "PASS" if verdict else "BLOCKED",
-             verdict.reason if not verdict else "no structural news")
+        _row("structural", "none" if verdict else "FLAGGED",
+             verdict.reason if not verdict else "")
     except Exception as exc:
         _row("news", "unavailable", f"{type(exc).__name__} — treated as unknown")
 
+    # ---- second opinions: advisory, not priority --------------------------
+    print(f"\n  {BOLD}SECOND OPINIONS{RESET} {DIM}(advisory, not priority -- never "
+          f"block, size or close; full page: scripts/second_opinion.py {symbol}){RESET}")
+    calls = op.latest_calls(read_rows(settings.audit_log_path), symbol)
+    ta = calls.get("tradingagents")
+    _row("TradingAgents", f"{ta['call']} {ta['at']}" if ta else "no call",
+         f"[{op.UNPROVEN}] graded, not yet proven")
+    value = rsi(closes)
+    _row("RSI(14) daily", f"{value:.1f}" if value else "unknown",
+         f"[{op.NOISE}] §35, §31")
+    for n in (50, 200):
+        if len(closes) >= n:
+            gap = (price / (sum(closes[-n:]) / n) - 1) * 100
+            _row(f"vs {n}-day average", f"{gap:+.1f}%", f"[{op.NOISE}] §31, §12")
+
     # ---- what the evidence says ------------------------------------------
-    print(f"\n  {BOLD}WHAT THE EVIDENCE ACTUALLY SUPPORTS{RESET}")
-    print(f"    {DIM}This setup type: +0.247R over 43 holdout trades,")
-    print(f"    95% CI [-0.342R, +0.836R] — the interval includes zero.")
-    print(f"    ~244 trades are needed before that interval means anything.")
-    print(f"    No price target beyond the range high is modelled, and no")
-    print(f"    probability is estimated, because nothing here supports one.{RESET}")
+    print(f"\n  {BOLD}WHAT THE EVIDENCE SUPPORTS{RESET}")
+    print(f"    {DIM}One rule held up out of sample: buying the top 10 by 12-1 momentum,")
+    print(f"    in cash when the S&P is under its 210-day average -- +2.38pp a")
+    print(f"    3-month hold over random picks 2016-26, t 1.49, worst hold -36.9%.")
+    print(f"    Nothing on this page predicts a single stock's next move.{RESET}")
 
 
 async def main(symbols: tuple[str, ...], equity: float) -> None:
@@ -210,8 +196,8 @@ async def main(symbols: tuple[str, ...], equity: float) -> None:
                             ex_div, equity)
             except Exception as exc:
                 print(f"\n  {RED}{symbol}: {type(exc).__name__}: {exc}{RESET}")
-    print(f"\n{YELLOW}This is a briefing, not a recommendation. Position sizes")
-    print(f"come from the measured stop distance, never from conviction.{RESET}")
+    print(f"\n{YELLOW}This is a briefing, not a recommendation. Size a pick with")
+    print(f"scripts/manual_trade.py: it comes from the stop distance, never conviction.{RESET}")
 
 
 if __name__ == "__main__":

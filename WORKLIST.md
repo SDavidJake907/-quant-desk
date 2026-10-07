@@ -994,6 +994,44 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 38. Second opinions: one tier for evidence, one for opinions, graded (2026-10-06)
+
+The operator's ask: stop indicators that contradict each other from muddying
+decisions, but keep them where they can check one another. Register:
+`src/scanner/advisor/opinions.py`; grading: `advisor/grading.py`; page:
+`scripts/second_opinion.py SYMBOL` (`--grades` for the record).
+
+```
+PRIMARY               momentum rule (12-1 top 10, trend filter)     §31 arm A
+ADVISORY - UNPROVEN   TradingAgents (market+news analysts)           graded
+                      Gemma news read on momentum holdings           graded
+ADVISORY - NO EDGE    RSI(14), price vs 50/200-day averages,         shown, labelled,
+                      chart patterns, the sweep scanner              never re-graded
+```
+
+RULES FIXED BEFORE THE FIRST GRADE
+- A call is a direction (+1 buy/overweight/hold-long, -1 sell/underweight/
+  exit; 0 hold is not graded). Score = direction x (stock - S&P) return over
+  21 sessions from the call day's close. Last call per opinion/symbol/day.
+- Graduation: >= 100 graded calls AND t >= 2.0 (two opinions under test).
+- Disagreement column: only -1 calls on a momentum pick in force that day.
+- No combined score or vote; an unproven opinion never outweighs the rule
+  with evidence. Advisory tiers never block, size or close.
+- Noise-tier indicators are NOT re-graded: 23,000-143,000 historical events
+  outweigh a few dozen live calls, and a lucky streak would read as a revival.
+
+Wired: TradingAgents back at 03:30 AK weekdays, re-aimed at held + momentum
+picks + watchlists/core.txt (the paused sweep's slate and setups dropped);
+the 30-min live pass stays retired. manual_trade.py shows the opinions in
+the preview and logs `second_opinion_snapshot` with each submitted pick, so
+"did following TradingAgents help?" can be answered later. brief.py keeps
+measured facts on top and a fenced SECOND OPINIONS block below (no
+"overbought" verdict words); levels.py keeps RSI as a labelled column. The
+13:30 outcomes task prints the graded record.
+
+State at build: 84 TradingAgents and 20 Gemma directional calls on record,
+all pending (first grades ~2026-11-04).
+
 ## 37. Simplify: one job per piece, one rhythm (operator, 2026-10-06) -- TODO
 
 Audit of all 10 scheduled tasks and every live policy field, 2026-10-06.

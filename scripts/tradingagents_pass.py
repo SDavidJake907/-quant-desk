@@ -38,7 +38,7 @@ from scanner.advisor.tradingagents import (
     pick_tickers, rated_on, rating_event, scan_deadline, stale_checkpoints,
     worker_deadline,
 )
-from scanner.advisor import scan_watch
+from scanner.advisor import opinions, scan_watch
 from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.audit import append_event
@@ -178,22 +178,19 @@ def main(mode: str, tickers: list[str], limit: int | None, min_minutes: float, d
     rows = _rows(settings.audit_log_path)
     book = asyncio.run(_book())
     held = tuple(p["ticker"] for p in (book or {}).get("positions", []))
-    # CONNECTED TO THE SCAN (2026-10-06): premarket first runs the live screen
-    # read-only and saves a ranked watchlist of the last session's still-live
-    # setups; every pass then rates held -> slate -> watchlist.
+    # SECOND OPINIONS (WORKLIST §38, 2026-10-06): rate what the operator and
+    # the momentum book actually hold or watch -- held positions, then the
+    # momentum picks, then watchlists/core.txt. The sweep scanner is paused,
+    # so its setups and slate are no longer rated. Every rating is graded by
+    # second_opinion.py; none of them gates anything.
     watch: tuple[str, ...] = ()
     if not tickers:
-        if mode == "premarket":
-            try:
-                watch = asyncio.run(_scan_watch())
-            except Exception as exc:                     # noqa: BLE001
-                print(f"  ! scan watchlist unavailable: {exc}")
-        else:
-            watch = scan_watch.saved()
+        _, picks, _ = opinions.momentum_picks()
+        watch = (*picks, *scan_watch.operator_names(Path("watchlists/core.txt")))
     names = tuple(t.upper() for t in tickers) or pick_tickers(
-        held=held, rows=rows, skip=rated_on(rows, now.date()), limit=limit, watch=watch)
+        held=held, rows=[], skip=rated_on(rows, now.date()), limit=limit, watch=watch)
     print(f"TRADINGAGENTS {mode}  {now:%Y-%m-%d %H:%M}  model {settings.triage_model}")
-    print(f"  held {list(held) or 'none'}  scan watchlist {list(watch) or 'none'}")
+    print(f"  held {list(held) or 'none'}  momentum + core {list(watch) or 'none'}")
     print(f"  ->  rating {list(names) or 'nothing'}")
     if dry or not names:
         return 0

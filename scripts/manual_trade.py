@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from datetime import date, datetime
 
@@ -36,7 +37,9 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.advisor import opinions
 from scanner.config import settings
+from scanner.execution.scorecard import read_rows
 from scanner.execution import manual
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.audit import append_event
@@ -171,6 +174,18 @@ async def main(a: argparse.Namespace) -> int:
     if not market_open:
         print(f"  {YELLOW}market is closed: the limit rests until the open{RESET}")
 
+    # SECOND OPINIONS, shown and recorded, never acted on (WORKLIST §38). The
+    # snapshot lets a later question -- did following TradingAgents help? --
+    # be answered from data rather than memory.
+    _, picks, _ = opinions.momentum_picks()
+    snap = opinions.snapshot(symbol, read_rows(settings.audit_log_path), picks)
+    calls = ", ".join(f"{k} {c['call']} ({c['at']})" for k, c in snap["opinions"].items())
+    print(f"  {DIM}second opinions (advisory): momentum {snap['momentum']}"
+          f"{'; ' + calls if calls else '; none on record'}{RESET}")
+    if snap["disagrees_with_primary"]:
+        print(f"  {YELLOW}{', '.join(snap['disagrees_with_primary'])} disagrees with the "
+              f"momentum rule on {symbol} -- unproven, see second_opinion.py{RESET}")
+
     intent = TradeIntent(
         symbol=symbol, action="buy", strategy=MANUAL, trigger_at=now,
         entry_price=limit, stop_price=stop, target_price=target,
@@ -205,6 +220,11 @@ async def main(a: argparse.Namespace) -> int:
             symbol=symbol, intent=intent, order_id=str(order.get("id", "")),
             request_id=broker.last_request_id, stage="trade",
             reason=a.note or "manual pick",
+            policy=POLICY.fingerprint, build=build_id()))
+        append_event(settings.audit_log_path, AuditEvent(
+            event="second_opinion_snapshot", at=datetime.now().astimezone(),
+            symbol=symbol, order_id=str(order.get("id", "")), stage="advisor",
+            reason=json.dumps({**snap, "client_order_id": payload["client_order_id"]}),
             policy=POLICY.fingerprint, build=build_id()))
     print(f"\n{GREEN}{BOLD}submitted{RESET} {DIM}id {order.get('id', '?')}, "
           f"client id {payload['client_order_id']}{RESET}")
