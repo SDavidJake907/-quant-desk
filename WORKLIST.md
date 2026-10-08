@@ -994,6 +994,35 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 51. Momentum earns overnight, not in the session (2026-10-08)
+
+Asked by the operator (from an outside review): how much of momentum's return
+comes overnight vs in market hours, and is there a Monday effect?
+`scripts/overnight_momentum_test.py`: current S&P 500 members (survivors),
+cached 5y daily bars, 3.9 years; top 10% by 12-1 momentum rebuilt monthly,
+equal weight, no costs. Read-only.
+
+```
+                           top 10% momentum            all stocks
+                           total   /day     t          total   /day     t
+weeknights close->open     +129.5% +0.104%  +2.9       +44.6%  +0.046%  +2.4
+weekends Fri close->Mon op  +21.5% +0.106%  +1.2        +4.7%  +0.025%  +0.6
+sessions open->close         +1.0% +0.001%  +0.0        +7.6%  +0.007%  +0.3
+weeknights by half: +0.104% / +0.103% per day; sessions +0.006% / -0.004%
+Monday (whole day) +0.317%, t 3.0; Monday minus other days +0.260%, t 2.1
+```
+
+- Essentially ALL of momentum's return arrived overnight; the session added
+  nothing, in both halves. Matches the published result that momentum
+  profits accrue overnight (Lou, Polk & Skouras, JFE 2019).
+- Supports the current policy: picks and Gemma hold overnight and through
+  weekends (flatten only `smc`). A flat-overnight or day-trading version of
+  momentum would have earned ~nothing. Agrees with §29 (Friday flatten cost).
+- Entry time does not matter much on average: the first session averages ~0.
+- Monday: t 2.1 after looking at five weekdays, 3.9 years, survivors -- NOT
+  a rule. "Buy Friday for Monday" stays an untested hypothesis.
+- Caveats: survivorship (flatters momentum), one bull period, Yahoo opens.
+
 ## 50. Gemma chooses its own stop, target and size (2026-10-08)
 
 Operator: "let it pick its own TP and SL, everything, own decision, just as I
