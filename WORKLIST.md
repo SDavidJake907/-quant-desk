@@ -994,6 +994,31 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 47. From Jansen's ML for Algorithmic Trading: grade selection, not just P/L (2026-10-07)
+
+Read from the book (C:/Users/kitti/Downloads/9781839217715.pdf, 821 pp.): ch. 4
+(alpha factors, IC, turnover), ch. 5 (Sharpe/IR, fundamental law of active
+management IR = IC x sqrt(breadth)), ch. 6/8 (purging and embargo, backtest
+pitfalls, deflated Sharpe, minimum backtest length: 2y of daily data supports
+~7 strategy variants, 5y ~45), ch. 7 (factor models), ch. 10 (Bayesian Sharpe
+comparison of two return streams).
+
+Built (rules fixed before the first grade):
+1. ops/selection.py + scripts/selection_grade.py -- Gemma graded on its chosen
+   vs passed-over names every morning (~35 forecasts a day, not 5 positions);
+   TradingAgents graded by daily rank correlation (IC) of its calls. Horizons 5
+   and 21 sessions, open of the decision day to the close h-1 sessions on.
+2. competition.prob_better -- probability one book is really better, from a
+   bootstrap of paired daily returns, once 10 trading days exist.
+Both reach the operator (standings, Friday report) and Gemma (scoreboard).
+
+Adopted as standing rules: count every trial (TRIALS.md) and deflate any
+winning Sharpe for the number tried before calling a strategy real; one of
+six competition books will look good by chance.
+
+Later: factor-adjusted alpha per book (market + momentum regression) once
+~2-3 months of daily snapshots exist; turnover of Gemma's book.
+
 ## 46. The competition: you vs Gemma, monthly, with a season and a reward (2026-10-07)
 
 Rules set before any month was scored (scanner/ops/competition.py):
