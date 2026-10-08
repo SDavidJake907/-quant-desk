@@ -10,3 +10,9 @@ INTC
 AMAT
 TSM
 PLTR
+# 2026-10-08: added from the morning global scan (one-year momentum, near highs,
+# no earnings within 3 weeks); XOM and ABBV spread the book beyond chips.
+NVDA
+XOM
+ABBV
+ZETA
