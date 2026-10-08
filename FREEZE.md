@@ -1,8 +1,8 @@
 # Evaluation window — FROZEN
 
-    window               31  (window 30 closed 2026-10-07: Gemma pushed for profit)
-    policy fingerprint   91a089ed56b4  (gemma_risk_pct 2.0; before it cda6989dfbac)
-    code build           89c88a4  — the last commit that can change behaviour
+    window               32  (window 31 closed 2026-10-08: Gemma's stop/target/size menu)
+    policy fingerprint   466533d96ea9  (Gemma menu; before it 91a089ed56b4)
+    code build           5d33c80  — the last commit that can change behaviour
     what trades          1. PICKS via scripts/picks_sync.py (`pck-` ids): watchlists/picks.txt kept in
                             sync every 30 min, 2.5-ATR safety stop, no target, sector cap off
                          2. MOMENTUM paper book (`mom-` ids), 40% of equity, monthly MOC, no stops
@@ -1218,3 +1218,4 @@ research.
 | 2026-10-07 | **window 28 CLOSED; window 29 declared at `cda6989dfbac` / `0a1358d`** -- THE COMPETITION, rules set before any month was scored (WORKLIST §46): operator's picks vs Gemma, monthly win/lose on change in P/L over average money invested; quarters by months won; season = calendar year (season 1: 2026-10-07..12-31), winner +10 points of the account next season from the other book. Ghost books (random 8 / random 5, same stops), the momentum rule and the S&P 500 scored on paper beside them. Gemma's charter states it. Policy unchanged | 13 open + MU |
 | 2026-10-07 | **window 29 CLOSED; window 30 declared at `cda6989dfbac` / `c7662fa`** -- selection skill graded across the whole menu (WORKLIST §47): Gemma's chosen vs passed-over names and TradingAgents' IC, 5/21 sessions; probability of the better trader from paired daily returns (after 10 days). Gemma's scoreboard adds its own selection record; gemma_decision logs its menu. Policy unchanged | 13 open + MU |
 | 2026-10-07 | **window 30 CLOSED; window 31 declared at `91a089ed56b4` / `89c88a4`** -- the operator asked to push Gemma to max out profit: gemma_risk_pct 1% -> 2% of its sleeve (new buys only; the five open positions keep their size), charter objective 'maximise profit within the 25% drawdown', and the market context it asked for (sector, strength vs S&P, VIX, 10-year yield, breadth, coming events, its last decisions). Monday research task 04:30 AK refreshes Gemma's list and writes the operator's research pack. Competition score unaffected (% on money invested) | 13 open + MU |
+| 2026-10-08 | **window 31 CLOSED; window 32 declared at `466533d96ea9` / `5d33c80`** -- the operator gave Gemma its own stop, target and size (WORKLIST §50): per NEW buy it names stop tight/normal/wide (1.5/2.5/3.5 daily ATRs), target none/2R/3R/5R, size small/normal/large (1/2/3% of its sleeve at risk), enum names only; the 20% per-name cap still binds. Held names keep their brackets. Picks unchanged (2.5 ATR, no target, 1%). Choices logged for grading | 13 open |

@@ -124,8 +124,12 @@ headlines -- plus its charter and scoreboard. It answers which names to hold
 (at most 5), each with a reason and an exact quote from its facts. The answer
 format can only name stocks from its menu and has no numbers; a new buy
 without a findable quote is ignored; a bad or missing answer changes nothing;
-it is told churn costs money. The system then prices, sizes (60% of the
-account, its own 5 slots) and stops each buy exactly like your picks.
+it is told churn costs money. Since 2026-10-08 it also chooses, for each new
+buy, its own stop (tight / normal / wide = 1.5 / 2.5 / 3.5 daily ATRs), target
+(none / 2R / 3R / 5R) and size (small / normal / large = 1 / 2 / 3% of its book
+at risk) -- by name only; the system turns the names into prices and sends
+the bracket (60% of the account, its own 5 slots, no stock over a fifth of
+its book). A position it already holds keeps the bracket it was bought with.
 `python scripts/gemma_trade.py` shows its decision without trading.
 
 Gemma's list (`watchlists/gemma.txt`) rolls weekly by

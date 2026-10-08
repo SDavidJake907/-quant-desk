@@ -18,7 +18,7 @@ without the operator — any change ends window 16.
 
 | | |
 |---|---|
-| policy fingerprint | `91a089ed56b4` (window 31: Gemma 60% at 2% risk / picks+manual 40% at 1%; competition season 1) |
+| policy fingerprint | `466533d96ea9` (window 32: Gemma 60% with its own stop/target/size menu / picks+manual 40% at 1%; competition season 1) |
 | code build | `e67b955` |
 | universe | **`watchlists/core.txt` ONLY**: AMD, MRVL, INTC. The operator hand-picks names weekly/daily. **Commit every edit** (each trade must trace to its list). Bitcoin-linked names stay out (stocks only). Empty file = back to the S&P 500 |
 | why | the full-S&P sweep found nothing in the Oct 2-6 rally (4.6-18% of stocks swept a 10-day low vs 27-45% in late Sept); the operator prefers their own picks |

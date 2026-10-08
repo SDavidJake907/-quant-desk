@@ -994,6 +994,31 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 50. Gemma chooses its own stop, target and size (2026-10-08)
+
+Operator: "let it pick its own TP and SL, everything, own decision, just as I
+will make mine." Gemma asked for the same in its README feedback, and named
+its own risk: "picking a wide stop just to keep a losing trade alive rather
+than admitting the thesis has failed." The prompt now says so in its rules.
+
+- Per NEW buy, enum names only: stop tight/normal/wide (1.5/2.5/3.5 daily
+  ATRs), target none/2R/3R/5R (none = the picks ceiling, ride it), size
+  small/normal/large (1/2/3% of its sleeve at risk). Policy maps names to
+  numbers (`gemma_*_menu`, fingerprinted); `bookorders.buy_with_stop` takes
+  `atr_multiple` and `reward_risk`. 20% per-name cap unchanged, so a large
+  size on a wide stop is often capped.
+- Held names keep their brackets: no re-pricing of open positions.
+- Logged: `plans` in each gemma_decision, and the choice in each trade reason.
+- First preview (market closed, nothing sent): LITE wide/none/normal,
+  FCX normal/none/normal; it also wanted to drop FIX and TER after one day.
+- Picks unchanged: 2.5 ATR, no target, 1% risk. Operator chose Gemma only.
+- [ ] Grade the menu once ~20 Gemma buys have closed: R by stop choice and by
+      size choice. A choice that never differs in outcome is noise.
+- [ ] Time-stop REVIEW flag (Gemma's request #2): offered, not built.
+- Not built: Gemma's 1-10 "thesis score" for sizing (its request #3). Tested
+  before -- it rated 159 of 161 takes "strong" (see the conviction note);
+  the small/normal/large size choice does the same job and gets graded.
+
 ## 49. After-hours moves: recovery is the base rate, not an edge (2026-10-08)
 
 The operator asked whether night-time drops come back and make higher highs.
