@@ -994,6 +994,28 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 48. Pushing Gemma for profit; Monday research for both competitors (2026-10-07)
+
+Operator: "push Gemma to max out profit ... I'm going to do some deep research,
+and I want you to do the same, every Monday."
+- gemma_risk_pct 2.0 (picks stay at 1%): Gemma had deployed ~$17.6k of ~$61k.
+  The competition is scored on % of money invested, so size does not tilt it;
+  dollar swings roughly double, and the 3% account-wide daily brake trips sooner.
+- Charter: maximise profit within the 25% drawdown limit.
+- Gemma's facts gained (advisor/market_context.py) sector and 12-1 strength vs
+  the S&P per stock, and a market line: VIX with its 1-year percentile, the
+  10-year yield, % of S&P 500 above the 50-day, coming events, its last five
+  decisions. Context only (breadth §25 and VIX bands §17 tested null).
+- scripts/monday_research.py (Mondays 04:30 AK): Gemma's list rolls and is
+  committed alone; logs/research/YYYY-MM-DD.md gives the operator new leaders,
+  pullback rebounds, sector leadership, the momentum rule's picks and their own
+  picks' trend and earnings. Claude's own deep research happens when the
+  operator opens a Monday session (it cannot run unattended on this PC).
+
+First pack (2026-10-07): IT the only sector up on the month (+7.3% median);
+every other sector -3% to -7%; 29% of S&P 500 stocks above their 50-day.
+A narrow, tech-led tape -- both books lean into it.
+
 ## 47. From Jansen's ML for Algorithmic Trading: grade selection, not just P/L (2026-10-07)
 
 Read from the book (C:/Users/kitti/Downloads/9781839217715.pdf, 821 pp.): ch. 4
