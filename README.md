@@ -172,6 +172,27 @@ None of this is a stop or target rule. It says the 2.5 x ATR stops should not
 be tightened to dodge overnight noise, and that earnings gaps are the one
 after-hours risk a stop cannot catch.
 
+### The daily brief (03:00 AK, read by Gemma at 05:45)
+
+`scripts/week_ahead.py` writes `logs/week_ahead/YYYY-MM-DD.md` (yours) and
+`data/brief/YYYY-MM-DD.json` (Gemma's) every day at 03:00 AK, before
+TradingAgents takes the GPU:
+
+- **Calendar, next 10 sessions:** US market-moving releases (CPI, PPI, Fed
+  speakers...), FOMC meetings, the midterms, and earnings for every stock either
+  book holds or may pick. Your positions with a dated risk are flagged.
+- **The President:** his Truth Social posts (via the trumpstruth.org mirror, in
+  full), White House releases, and the official schedule (published about a day
+  ahead -- nobody publishes his moves weeks out).
+- **News -> stocks:** the last 48 hours of headlines; Gemma links each
+  market-relevant one to the desk's stocks it touches (names from the lists only,
+  an exact quote required, its helps/hurts read shown to you as a read).
+
+Gemma gets the dates and headlines -- a market line plus each stock's own
+"calendar:" and "in the news:" lines -- not its own 03:00 read, and a rule that
+news is usually in the price within minutes: context for timing and risk, not a
+reason to swap. Switch: `gemma_sees_brief`. WORKLIST §52.
+
 ### Second opinions, kept apart
 
 `scripts/second_opinion.py SYMBOL` shows every opinion in a tier:

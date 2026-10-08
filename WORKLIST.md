@@ -994,6 +994,39 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 52. The daily brief: calendar, news, the President -> Gemma (2026-10-08)
+
+Operator: tie the news into Gemma -- a daily and nightly picture, which stocks
+each item affects, and what the President says and plans. Built:
+
+- `scripts/week_ahead.py`, 03:00 AK daily (`stock-scanner-weekahead`, own log,
+  20-minute limit so it is off the GPU before TradingAgents at 03:30).
+- `sources/president.py`: Truth Social via the trumpstruth.org RSS mirror
+  (third-party, labelled), whitehouse.gov feeds, factba.se official schedule.
+  Posts kept in FULL: a 450-char cut once turned "not attacking Iran at any
+  time prior to the Midterm Elections" into "at any time" in a summary.
+- `advisor/news_impact.py`: Gemma links headlines to stocks; headline ids,
+  symbols, sectors and effect are enums; the quote must occur in the headline.
+- `ops/week_ahead.py`: calendar merge, flags, Gemma's lines, the report.
+- Gemma's facts get the market line and each stock's own lines (max 3 news
+  lines); the facts, never its own 03:00 read. New rule: news is context.
+  First dry run: it held COHR "despite recent sector-wide profit taking" and
+  bought nothing "while the market digests upcoming CPI and Fed news".
+
+**Bug found and fixed on the way:** Nasdaq's economic calendar answers
+`date=D` with D-1's releases (date=10-09 returned Thursday's jobless claims and
+30-year auction; date=10-15 returned Wednesday's CPI). Every caller -- Gemma's
+market line since §48, the weekly report -- showed yesterday's events as today's.
+Now asks for D+1, keeps US releases only (German and Chinese CPI shared the
+names), one line per release.
+
+Not built: "where the billions go" from USAspending -- its award amounts are
+lifetime contract values (a decades-old $43B DOE contract surfaced as "this
+week"), so it needs real work to separate new money from paperwork.
+
+- [ ] Grade it: Gemma's selection grade and churn before vs after window 33.
+- [ ] Add 2027 FOMC dates to `FIXED_EVENTS` when the Fed publishes them.
+
 ## 51. Momentum earns overnight, not in the session (2026-10-08)
 
 Asked by the operator (from an outside review): how much of momentum's return
