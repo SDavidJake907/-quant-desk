@@ -994,6 +994,37 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 49. After-hours moves: recovery is the base rate, not an edge (2026-10-08)
+
+The operator asked whether night-time drops come back and make higher highs.
+`scripts/after_hours_test.py`, Alpaca SIP extended 30m bars, ~42,000 S&P 500
+stock-nights, 2026-06 to 2026-10, split at 2026-08-15. Read-only.
+
+```
+after-hours move      back above close <=5d   higher high <=5d   5d from close
+every night           75%                     74%                +0.09%
+down 0.3-1%           73%                     74%                -0.04%
+down 1-3%             72%                     71%                -0.29%
+down >3% (n=118)      44%                     38%                -6.38%
+up >1%                80%                     76%                +0.97%
+
+from the NEXT OPEN, 5d          Jun-Aug15            Aug15-Oct
+every night                     +0.47%               -0.83%     (regime)
+down >3%                        -0.26% n=94  t-0.3   +0.82% n=24  t+0.6
+up >3%                          -2.64% n=104 t-3.1   -2.34% n=35  t-1.8
+```
+
+- Recovery after small drops is the base rate, slightly worse: not an edge,
+  not a stop/target rule. Same family as the null "gap reversion" test above.
+- Big drops: the damage is in the gap. Nothing left to dodge from the open.
+- Big jumps fade from the open in both halves. Candidate, NOT adopted: n=139,
+  four months, overlapping 5-day windows inflate t. If ever tested: do not
+  enter a pick/Gemma buy at the open after a >3% after-hours jump; rules fixed
+  first, graded on the next months.
+- Market-wide down gaps (12 nights): slower recovery. Too few to use.
+- [ ] Re-run in January with twice the nights before considering the
+      jump-fade rule.
+
 ## 48. Pushing Gemma for profit; Monday research for both competitors (2026-10-07)
 
 Operator: "push Gemma to max out profit ... I'm going to do some deep research,

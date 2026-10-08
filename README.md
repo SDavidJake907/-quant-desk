@@ -145,6 +145,29 @@ join from the same screen (up to two per sector from the 150 most-traded S&P
 | Desk journal | 13:45: code checks that every task ran, nothing logged an error, every stop is live, and no sector is over 50% of the money across books |
 | Records | `logs/trading_audit.jsonl`: every intent, order, refusal and outcome, never edited |
 
+### After hours: what it does and does not tell you
+
+Measured 2026-10-08 on ~42,000 S&P 500 stock-nights, June-October 2026
+(`scripts/after_hours_test.py`, WORKLIST §49). Backtests use regular hours
+only; stops act only in regular hours.
+
+- **A red night is mostly noise.** After a 0.3-3% after-hours drop, about 3 in
+  4 stocks are back above the close within 5 days and make a higher high --
+  nearly the same as after any night. Not a dip to buy either: the odds are
+  slightly *worse* than normal, not better.
+- **A drop over 3% (news, earnings) is real**: -6.4% over 5 days measured from
+  the close. But almost all of it is already in the opening price; from the
+  open on it is noise. Selling at the open would not have saved anything.
+- **A jump over 3% fades from the open**: about -2.5% over 5 days in both
+  halves of the data (139 cases). A hypothesis, not a rule: don't chase it.
+- **Whole-market down nights** (global money, Asia and Europe hours) recover
+  more slowly than one stock's red night: 66% make a higher high within a week
+  vs 80% after market-up nights. Only 12 such nights: a hint.
+
+None of this is a stop or target rule. It says the 2.5 x ATR stops should not
+be tightened to dodge overnight noise, and that earnings gaps are the one
+after-hours risk a stop cannot catch.
+
 ### Second opinions, kept apart
 
 `scripts/second_opinion.py SYMBOL` shows every opinion in a tier:
