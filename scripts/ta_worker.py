@@ -46,6 +46,50 @@ MEMORY_ENTRIES = 200
 
 _ACTION = re.compile(r"\**Action\**:\s*\**\s*(Buy|Hold|Sell)\b", re.IGNORECASE)
 
+#: The risk team (three debaters) and the Portfolio Manager changed the
+#: trader's call in 0 of 196 runs (2026-10-05..08, WORKLIST §53) and cost about
+#: 4 of every ~10 model turns. The run now ends at the trader; its Buy/Hold/
+#: Sell is the rating, which is all the grade reads (a direction).
+RISK_STAGE = ("Aggressive Analyst", "Neutral Analyst", "Conservative Analyst",
+              "Portfolio Manager")
+
+
+def _trader_decision(state: dict) -> dict:
+    """End of the shortened run: the trader's own direction becomes the rating."""
+    plan = str(state.get("trader_investment_plan") or "")
+    found = _ACTION.search(plan) or re.search(
+        r"FINAL TRANSACTION PROPOSAL:\s*\**\s*(BUY|HOLD|SELL)", plan, re.IGNORECASE)
+    rating = found.group(1).title() if found else "REVIEW"
+    return {"final_trade_decision": f"Rating: {rating}\n\n{plan}", "final_rating": rating}
+
+
+def _stop_at_trader() -> None:
+    """Rewire TradingAgents' graph, in this process only: Trader -> decision -> END.
+
+    Raises if the graph no longer has the Trader -> risk-team edge, so an
+    upgrade that reshapes it fails loudly instead of running the full chain.
+    """
+    from langgraph.graph import END
+    from tradingagents.graph import setup as ta_setup
+
+    original = ta_setup.GraphSetup.setup_graph
+
+    def setup_graph(self, *args, **kwargs):
+        workflow = original(self, *args, **kwargs)
+        if ("Trader", "Aggressive Analyst") not in workflow.edges:
+            raise RuntimeError("TradingAgents graph changed: re-check the trader-only cut")
+        workflow.edges = {e for e in workflow.edges
+                          if e[0] not in RISK_STAGE and e != ("Trader", "Aggressive Analyst")}
+        for node in RISK_STAGE:
+            workflow.nodes.pop(node, None)
+            workflow.branches.pop(node, None)
+        workflow.add_node("Trader Decision", _trader_decision)
+        workflow.add_edge("Trader", "Trader Decision")
+        workflow.add_edge("Trader Decision", END)
+        return workflow
+
+    ta_setup.GraphSetup.setup_graph = setup_graph
+
 
 def _thinking_off() -> None:
     """Send reasoning_effort="none" to Ollama, in this process only.
@@ -138,6 +182,7 @@ def main() -> int:
 
     _thinking_off()
     _structured_json_schema()
+    _stop_at_trader()
     config = DEFAULT_CONFIG.copy()
     # checkpoint_enabled is what makes this run in pieces: every finished
     # agent step is saved, so a run stopped for a scan resumes at the next
