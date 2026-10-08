@@ -75,6 +75,26 @@ def pick_tickers(*, held: tuple[str, ...], rows: list[dict],
     return tuple(picked[:limit])
 
 
+def rated_since(rows: list[dict], since: date) -> frozenset[str]:
+    """Symbols rated -- or failed -- on or after `since`.
+
+    One opinion per stock per week (WORKLIST §53): a rating is graded on the next
+    21 sessions, so a re-rating the next day mostly repeats the same test, and
+    a third of names flipped within days anyway.
+    """
+    done = set()
+    for row in rows:
+        if row.get("event") not in (EVENT, ERROR_EVENT):
+            continue
+        try:
+            when = datetime.fromisoformat(str(row.get("at", "")))
+        except ValueError:
+            continue
+        if when.date() >= since:
+            done.add(str(row.get("symbol", "")).upper())
+    return frozenset(done)
+
+
 def rated_on(rows: list[dict], day: date) -> frozenset[str]:
     """Symbols rated -- or failed -- on `day`, so a later pass skips them.
 

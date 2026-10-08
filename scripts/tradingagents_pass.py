@@ -25,7 +25,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -35,7 +35,7 @@ import httpx
 
 from scanner.advisor.tradingagents import (
     error_event, expired_folders, may_start, outcome, parse_worker_output,
-    pick_tickers, rated_on, rating_event, scan_deadline, stale_checkpoints,
+    pick_tickers, rated_on, rated_since, rating_event, scan_deadline, stale_checkpoints,
     worker_deadline,
 )
 from scanner.advisor import opinions, scan_watch
@@ -56,6 +56,11 @@ TICKER_TIMEOUT_S = 45 * 60
 #: Days of reports kept, ours and TradingAgents'. The rating itself lives in
 #: the audit log for good; a report is only the reasoning behind it.
 REPORT_DAYS = 30
+
+#: A stock is re-rated at most once in this many days (WORKLIST §53).
+RERATE_DAYS = 7
+#: Most stocks rated in one premarket pass.
+PREMARKET_DAILY = 12
 
 TA_HOME = Path.home() / ".tradingagents"
 _STATE_LOG = re.compile(r"^full_states_log_(\d{4}-\d{2}-\d{2})\.json$")
@@ -167,9 +172,10 @@ def _run_one(request: dict, log: Path) -> tuple[str, str]:
 
 
 def main(mode: str, tickers: list[str], limit: int | None, min_minutes: float, dry: bool) -> int:
-    # 50 premarket: held + momentum + core + Gemma's list, ~2 min each, inside
-    # the 03:30-05:32 window (the pass stops itself before the first scan).
-    limit = limit or (50 if mode == "premarket" else 8)
+    # Premarket: a stock is re-rated at most once a week (RERATE_DAYS), and at
+    # most PREMARKET_DAILY a morning (~80s each since the trader-only cut), so
+    # the list cycles through the week instead of all of it every day. §53.
+    limit = limit or (PREMARKET_DAILY if mode == "premarket" else 8)
     if not Path(settings.tradingagents_python).exists():
         print(f"TradingAgents venv not found: {settings.tradingagents_python}")
         return 1
@@ -191,7 +197,8 @@ def main(mode: str, tickers: list[str], limit: int | None, min_minutes: float, d
         watch = (*picks, *scan_watch.operator_names(Path("watchlists/core.txt")),
                  *scan_watch.operator_names(Path("watchlists/gemma.txt")))
     names = tuple(t.upper() for t in tickers) or pick_tickers(
-        held=held, rows=[], skip=rated_on(rows, now.date()), limit=limit, watch=watch)
+        held=held, rows=[], limit=limit, watch=watch,
+        skip=rated_since(rows, now.date() - timedelta(days=RERATE_DAYS - 1)))
     print(f"TRADINGAGENTS {mode}  {now:%Y-%m-%d %H:%M}  model {settings.triage_model}")
     print(f"  held {list(held) or 'none'}  momentum + core {list(watch) or 'none'}")
     print(f"  ->  rating {list(names) or 'nothing'}")

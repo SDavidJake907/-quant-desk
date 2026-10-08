@@ -212,3 +212,14 @@ def test_scan_watch_selection_rules():
     ]
     assert scan_watch.select(rows, sessions={last}, limit=5) == ("F", "A")
     assert scan_watch.select(rows, sessions={last, date(2026, 10, 2)}, limit=5) == ("B", "F", "A")
+
+
+def test_rated_since_skips_a_name_rated_within_the_week():
+    # WORKLIST §53: one opinion per stock per week, not a re-rating every day.
+    from scanner.advisor.tradingagents import rated_since
+    rows = [{"event": "tradingagents_rating", "symbol": "AON", "at": "2026-10-05T03:40:00-08:00"},
+            {"event": "tradingagents_rating", "symbol": "SNPS", "at": "2026-09-30T03:40:00-08:00"}]
+    since = datetime(2026, 10, 12).date() - timedelta(days=6)        # 10-06
+    assert rated_since(rows, datetime(2026, 10, 6).date()) == frozenset()
+    assert rated_since(rows, datetime(2026, 10, 5).date()) == frozenset({"AON"})
+    assert "SNPS" not in rated_since(rows, since)
