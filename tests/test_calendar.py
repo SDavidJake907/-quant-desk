@@ -125,3 +125,11 @@ def test_economic_parse_drops_sub_series_of_the_same_release():
     payload = {"data": {"rows": [{"country": "United States", "eventName": n} for n in names]}}
     assert parse_economic(payload) == ("Core CPI", "CPI", "Philadelphia Fed Manufacturing Index",
                                        "Fed Waller Speaks")
+
+
+def test_regional_fed_surveys_and_pce_sub_series_are_dropped():
+    from scanner.sources.calendar import parse_economic
+    names = ["KC Fed Manufacturing Index", "Dallas Fed PCE", "Chicago Fed National Activity",
+             "PCE Price index", "PCE price index", "Core PCE Prices", "GDP", "GDP Price Index"]
+    payload = {"data": {"rows": [{"country": "United States", "eventName": n} for n in names]}}
+    assert parse_economic(payload) == ("PCE Price index", "GDP")

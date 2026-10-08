@@ -41,20 +41,28 @@ from scanner.sources.market_calendar import parse_sessions
 BRIEF_DIR = Path("data/brief")
 REPORT_DIR = Path("logs/week_ahead")
 LISTS = (Path("watchlists/core.txt"), Path("watchlists/gemma.txt"))
-SESSIONS_AHEAD = 10
+#: The calendar looks four weeks out (big tech reports late in the month);
+#: Gemma's market line and the flags look one week out.
+SESSIONS_AHEAD = 20
+SESSIONS_FOR_GEMMA = 5
 MARKET_FEEDS = ("^GSPC", "CL=F", "^TNX")     # S&P, crude oil, 10-year: Yahoo's market news
 PER_HELD = 3
 HEADLINE_HOURS = 48
 
 
-async def _sessions(broker, today: date) -> list[date]:
+async def _sessions(broker, today: date):
+    """(the next SESSIONS_AHEAD trading days, the broker's sessions -- for
+    holidays and early closes; empty if the broker could not be read)."""
     try:
         rows = await broker._get("/v2/calendar", start=today.isoformat(),
-                                 end=(today + timedelta(days=21)).isoformat())
-        days = [s.on for s in parse_sessions(rows)]
+                                 end=(today + timedelta(days=40)).isoformat())
+        sessions = parse_sessions(rows)
+        days = [s.on for s in sessions]
     except Exception:                                      # noqa: BLE001
-        days = [today + timedelta(days=k) for k in range(21) if (today + timedelta(days=k)).weekday() < 5]
-    return days[:SESSIONS_AHEAD]
+        sessions = ()
+        days = [today + timedelta(days=k) for k in range(40)
+                if (today + timedelta(days=k)).weekday() < 5]
+    return days[:SESSIONS_AHEAD], sessions
 
 
 async def _headlines(client, symbols) -> list[str]:
@@ -88,10 +96,20 @@ async def main(use_llm: bool) -> int:
         sector = {m.symbol: m.sector for m in members}
         universe = {s: sector.get(s, "sector unknown") for s in names}
 
-        days = await _sessions(broker, today)
-        econ = {d: await cal.market_moving_events(client, on=d) for d in days}
-        earnings = await cal.upcoming_earnings(frozenset(names), client, horizon=16)
-        evts = wa.events(days, econ=econ, earnings=earnings)
+        days, sessions = await _sessions(broker, today)
+        econ, sector_econ = {}, {}
+        for d in days:
+            econ[d], sector_econ[d] = await cal.scheduled_events(client, on=d)
+        span = (days[-1] - today).days + 1 if days else 28
+        found = await cal.upcoming_earnings(frozenset(names) | frozenset(wa.BELLWETHERS), client,
+                                            horizon=span)
+        earnings = {s: e for s, e in found.items() if s in names}
+        bells = {s: e for s, e in found.items() if s in wa.BELLWETHERS and s not in names}
+        fixed = list(wa.FIXED_EVENTS) + (wa.market_mechanics(today, days[-1]) if days else [])
+        if sessions and days:
+            fixed += wa.closures(sessions, today, days[-1])
+        evts = wa.events(days, econ=econ, earnings=earnings, fixed=fixed,
+                         sector_econ=sector_econ, bellwethers=bells)
         posts = await president.posts(client)
         sched = await president.schedule(client, days={today, today + timedelta(days=1)})
         market = await _headlines(client, (*MARKET_FEEDS, *held))
@@ -114,13 +132,22 @@ async def main(use_llm: bool) -> int:
     pres_lines += [f"schedule {s.day:%a} {s.time}: {s.details}" for s in sched
                    if s.day == today and "Executive Time" not in s.details][:4]
     wide = [i.headline for i in impacts if not i.symbols and i.headline not in pres_lines]
-    market_text = wa.market_text(evts, president_lines=pres_lines,
+    near = [e for e in evts if e.day in set(days[:SESSIONS_FOR_GEMMA])]
+    far_earnings = [e for e in evts if e.kind == "earnings" and e not in near]
+    market_text = wa.market_text(near, president_lines=pres_lines,
                                  headlines=wide + [h for h in market if h in linked and h not in wide])
     brief = {
         "date": today.isoformat(), "written_at": datetime.now(timezone.utc).isoformat(),
         "market_text": market_text,
-        "stock_lines": {s: lines for s in universe if (lines := wa.stock_lines(s, evts, impacts))},
-        "flags": wa.flags(evts, held=held),
+        # Its sector's dates and its news for the next week; its OWN earnings
+        # for the whole window, so it knows when it would hold into a report.
+        "stock_lines": {s: lines for s in universe
+                        if (lines := wa.stock_lines(s, near, impacts, sector=universe[s])
+                            + wa.stock_lines(s, far_earnings, ()))},
+        # Market-wide and sector flags for the next week; a held stock's own
+        # earnings for the whole window -- that is the gap a stop cannot catch.
+        "flags": wa.flags(near, held=held, sectors=universe) + wa.flags(
+            far_earnings, held=held),
         "events": [e.model_dump(mode="json") for e in evts],
         "impacts": [i.model_dump(mode="json") for i in impacts],
     }

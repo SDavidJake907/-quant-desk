@@ -994,6 +994,35 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 54. The calendar, filled in: what else moves the market (2026-10-08)
+
+Operator: the President's dates are not enough -- what else is coming? The
+brief now looks 20 sessions (4 weeks) out; Gemma's market line and the
+market-wide flags one week; a held stock's own earnings the whole window.
+
+- **Market-wide releases** added to `calendar.MARKET_MOVING`: retail sales,
+  PCE, ISM, Beige Book, Michigan sentiment, manufacturing PMI, 10/30-year
+  Treasury auctions (yields drive tech). Sub-series and regional Fed surveys
+  dropped (one line per release).
+- **Sector releases** (`calendar.SECTOR_EVENTS`): OPEC and IEA monthly reports,
+  crude inventories -> Energy; housing starts/permits/sales -> Real Estate and
+  Consumer Discretionary. Flagged only for held names in that sector.
+- **Market mechanics**, computed from the rule: monthly options expiry (third
+  Friday), quad witching + S&P quarterly rebalance (Mar/Jun/Sep/Dec);
+  holidays and early closes from the broker's own calendar.
+- **Bellwether earnings** (`week_ahead.BELLWETHERS`): NVDA, TSM, ASML, AVGO,
+  MSFT, AAPL, GOOGL, META, AMZN, TSLA, JPM, XOM, CVX, UNH, LLY, CAT -- they move
+  a sector even when no book holds them.
+- Gemma's stock lines: its sector's dates (max 3) for the week, its news, and its
+  own earnings date across the window.
+
+First run (2026-10-08), what is next: CPI + Beige Book Wed 10/14 (with ASML
+earnings: flagged for every chip name); OPEC 10/13 and IEA 10/14 (XOM, MPC,
+VLO); retail sales and TSM 10/15; options expiry 10/16; VLO earnings 10/22;
+FOMC 10/28 with GOOGL; PCE + GDP + AAPL/AMZN 10/29; XOM/ABBV 10/30; PLTR 11/2;
+AMD/ZETA/MPC + the midterms 11/3; MSFT/META/COHR 11/4. Gemma dry run: held all
+three, no new buys "to let the upcoming CPI and Fed-related news settle".
+
 ## 53. TradingAgents, lightened -- and its grade made honest (2026-10-08)
 
 Operator: lighten the agents' load; find what is noise vs what is used. Measured

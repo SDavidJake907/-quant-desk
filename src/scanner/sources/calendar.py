@@ -52,11 +52,24 @@ US = "United States"
 
 #: Sub-series printed alongside a headline release (CPI's n.s.a. index, the
 #: Philly Fed's components, nowcasts): one line per release is enough.
-SUB_SERIES = re.compile(r"n\.s\.a|\bs\.a\b|CPI Index|Cleveland|Philly Fed|GDPNow")
+SUB_SERIES = re.compile(r"n\.s\.a|\bs\.a\b|CPI Index|Cleveland|Philly Fed|GDPNow|Core Retail|Retail Control|Retail Sales Ex|Cushing|KC Fed|Dallas Fed|Chicago Fed|Richmond Fed|GDP Price|GDP Sales|PCE Prices", re.IGNORECASE)
 
 #: US releases that move the whole tape rather than one name.
 MARKET_MOVING = ("FOMC", "CPI", "Nonfarm", "PPI", "GDP", "Unemployment",
-                 "Interest Rate", "Fed ")
+                 "Interest Rate", "Fed ",
+                 # added 2026-10-08 (WORKLIST §54): the rest of what moves the index
+                 "Retail Sales", "PCE", "ISM", "Beige Book", "Michigan Consumer Sentiment",
+                 "Manufacturing PMI", "10-Year Note Auction", "30-Year Bond Auction")
+#: Releases that move one part of the market: name token -> sectors it touches.
+SECTOR_EVENTS: dict[str, tuple[str, ...]] = {
+    "OPEC": ("Energy",),
+    "IEA Monthly": ("Energy",),
+    "Crude Oil Inventories": ("Energy",),
+    "Housing Starts": ("Real Estate", "Consumer Discretionary"),
+    "Building Permits": ("Real Estate", "Consumer Discretionary"),
+    "Existing Home Sales": ("Real Estate", "Consumer Discretionary"),
+    "New Home Sales": ("Real Estate", "Consumer Discretionary"),
+}
 
 
 class Earnings(Frozen):
@@ -140,8 +153,42 @@ def parse_economic(payload: dict, *, country: str = US) -> tuple[str, ...]:
     rows = (payload.get("data") or {}).get("rows") or []
     names = (str(row.get("eventName") or row.get("event") or "").strip() for row in rows
              if str(row.get("country") or "") == country)
-    return tuple(dict.fromkeys(n for n in names
-                               if n and is_market_moving(n) and not SUB_SERIES.search(n)))
+    seen, out = set(), []
+    for n in names:
+        if n and is_market_moving(n) and not SUB_SERIES.search(n) and n.lower() not in seen:
+            seen.add(n.lower())
+            out.append(n)
+    return tuple(out)
+
+
+def parse_sector_events(payload: dict, *, country: str = US
+                        ) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Pure parse: the day's sector-moving releases as (name, sectors), each once."""
+    rows = (payload.get("data") or {}).get("rows") or []
+    out: dict[str, tuple[str, ...]] = {}
+    for row in rows:
+        name = str(row.get("eventName") or row.get("event") or "").strip()
+        if str(row.get("country") or "") != country or not name or SUB_SERIES.search(name):
+            continue
+        for token, sectors in SECTOR_EVENTS.items():
+            if token.lower() in name.lower():
+                out.setdefault(name, sectors)
+    return tuple(out.items())
+
+
+async def scheduled_events(client: httpx.AsyncClient, *, on: date
+                           ) -> tuple[tuple[str, ...], tuple[tuple[str, tuple[str, ...]], ...]]:
+    """(market-wide releases, sector releases) for one day, from one request."""
+    try:
+        response = await client.get(
+            ECONOMIC_URL, params={"date": economic_query_date(on).isoformat()},
+            headers=HEADERS, timeout=15.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        return (), ()
+    return parse_economic(payload), parse_sector_events(payload)
 
 
 async def market_moving_events(

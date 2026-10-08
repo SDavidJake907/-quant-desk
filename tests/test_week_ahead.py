@@ -142,3 +142,52 @@ def test_a_stock_gets_at_most_three_news_lines():
     impacts = tuple(ni.Impact(headline=f"MPC story {k}", symbols=("MPC",), sectors=(),
                               effect="unclear", why="", quote="MPC story") for k in range(5))
     assert len(wa.stock_lines("MPC", [], impacts)) == 3
+
+
+# --- the wider calendar (§54) -----------------------------------------------
+
+def test_options_expiry_is_the_third_friday_and_quad_witching_in_quarter_months():
+    exp = dict(((d, t) for d, k, t in wa.market_mechanics(date(2026, 10, 1), date(2026, 12, 31))))
+    assert "monthly options expiry" in exp[date(2026, 10, 16)]
+    assert "monthly options expiry" in exp[date(2026, 11, 20)]
+    assert "quad witching" in exp[date(2026, 12, 18)] and "S&P" in exp[date(2026, 12, 18)]
+
+
+def test_holidays_and_early_closes_come_from_the_broker_sessions():
+    from datetime import time as t
+    from scanner.sources.market_calendar import Session
+    sessions = (Session(on=date(2026, 11, 25), opens=t(9, 30), closes=t(16)),
+                Session(on=date(2026, 11, 27), opens=t(9, 30), closes=t(13)))
+    out = wa.closures(sessions, date(2026, 11, 25), date(2026, 11, 27))
+    assert (date(2026, 11, 26), "market", "market CLOSED (holiday)") in out
+    assert (date(2026, 11, 27), "market", "early close 13:00 ET") in out
+
+
+def test_sector_events_touch_only_held_names_in_that_sector():
+    evts = wa.events(DAYS, econ={}, earnings={}, fixed=(),
+                     sector_econ={date(2026, 10, 13): (("OPEC Monthly Report", ("Energy",)),)})
+    flags = wa.flags(evts, held={"MPC": "gemma", "AMD": "picks"},
+                     sectors={"MPC": "Energy", "AMD": "Information Technology"})
+    assert any("OPEC" in f and "MPC" in f for f in flags)
+    assert not any("OPEC" in f and "AMD" in f for f in flags)
+    assert wa.stock_lines("MPC", evts, (), sector="Energy") == ["calendar: Tue 10/13 OPEC Monthly Report (Energy)"]
+
+
+def test_bellwether_earnings_reach_the_whole_sector():
+    evts = wa.events(DAYS, econ={}, fixed=(), earnings={},
+                     bellwethers={"TSM": Earnings(symbol="TSM", on=date(2026, 10, 15), when="pre-mkt")},
+                     bellwether_sectors={"TSM": ("Information Technology",)})
+    lines = wa.stock_lines("AMD", evts, (), sector="Information Technology")
+    assert lines == ["calendar: Thu 10/15 TSM reports earnings pre-mkt (bellwether for Information Technology)"]
+
+
+def test_economic_parse_splits_market_wide_from_sector_events():
+    from scanner.sources.calendar import parse_sector_events, parse_economic
+    rows = [{"country": "United States", "eventName": n} for n in
+            ("Retail Sales", "Beige Book", "OPEC Monthly Report", "Crude Oil Inventories",
+             "Housing Starts", "30-Year Bond Auction", "Redbook")]
+    payload = {"data": {"rows": rows}}
+    assert set(parse_economic(payload)) == {"Retail Sales", "Beige Book", "30-Year Bond Auction"}
+    assert dict(parse_sector_events(payload)) == {
+        "OPEC Monthly Report": ("Energy",), "Crude Oil Inventories": ("Energy",),
+        "Housing Starts": ("Real Estate", "Consumer Discretionary")}
