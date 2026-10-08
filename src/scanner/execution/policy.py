@@ -424,6 +424,12 @@ class TradingPolicy(Frozen):
     #: was split Gemma +20 / picks + manual +20 (operator's choice).
     gemma_allocation_pct: float = 60.0
     gemma_max_positions: int = 5
+    #: Risk per Gemma trade, as % of ITS sleeve. 2.0 from 2026-10-07 (operator:
+    #: "push Gemma to max out profit"): at 1% with ~10% stops its five positions
+    #: used ~$17.6k of a ~$61k sleeve. 2% lets it near-fully deploy (the 20%
+    #: per-name cap binds). Twice the dollar swing; the competition score is %
+    #: on money invested, so it stays comparable with the picks book (1%).
+    gemma_risk_pct: float = 2.0
     #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
     #: (it wants its record to be its own judgement); TradingAgents keeps running
     #: as a graded shadow the operator still sees (second_opinion.py, weekly report).

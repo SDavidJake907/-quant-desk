@@ -50,7 +50,7 @@ async def price_and_atr(symbol: str, client) -> tuple[float, float]:
 
 async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: float,
                         room: float, cap_pct: float, policy: TradingPolicy,
-                        reason: str) -> Bought:
+                        reason: str, risk_pct: float | None = None) -> Bought:
     """Price, size, send and log one bracket buy. Never raises on a broker or
     pricing failure; the refusal is logged and returned."""
     try:
@@ -61,7 +61,8 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
     except Exception as exc:                               # noqa: BLE001
         log(f"{strategy}_refused", symbol, f"cannot price: {exc}", policy)
         return Bought(symbol=symbol, ok=False, message=f"cannot price: {exc}")
-    sizing = size_position(sleeve, limit, stop, risk_pct=policy.risk_pct,
+    sizing = size_position(sleeve, limit, stop,
+                           risk_pct=policy.risk_pct if risk_pct is None else risk_pct,
                            max_position_pct=cap_pct, buying_power=room)
     if not sizing.is_tradeable:
         log(f"{strategy}_refused", symbol, sizing.limited_by, policy)

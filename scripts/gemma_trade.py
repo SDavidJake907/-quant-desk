@@ -25,7 +25,7 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
@@ -33,6 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.advisor import gemma_trader as gt
+from scanner.advisor import market_context as mc
 from scanner.advisor import opinions
 from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
@@ -46,9 +47,11 @@ from scanner.execution.scorecard import read_rows
 from scanner.features.bars import fetch_bars, fetch_many
 from scanner.momentum import state as mstate
 from scanner.features.intraday_context import atr_pct
-from scanner.features.technicals import compute
+from scanner.features.technicals import compute, relative_strength
 from scanner.llm.ollama import LLMError, chat_json
 from scanner.sources import calendar as event_calendar
+from scanner.sources import composite
+from scanner.sources.index_history import COMPOSITE_1500, SP500
 from scanner.sources import yahoo_rss
 from pathlib import Path
 
@@ -69,6 +72,29 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
     sma = sum(spx.closes[-210:]) / 210
     trend = (f"S&P 500 {spx.closes[-1]:,.0f} is {'ABOVE' if spx.closes[-1] > sma else 'BELOW'} "
              f"its 210-day average {sma:,.0f}")
+    # Market context Gemma asked for (WORKLIST §48): context only, labelled.
+    bench = compute(spx)
+    members = await composite.load_universe(client, COMPOSITE_1500)
+    sector = {m.symbol: m.sector for m in members}
+    try:
+        vix = await fetch_bars("^VIX", client, range_="1y")
+        tnx = await fetch_bars("^TNX", client, range_="3mo")
+        sp500 = [m.symbol for m in await composite.load_universe(client, (SP500,))]
+        wide, _ = await fetch_many(tuple(sp500), client, range_="6mo")
+        width = mc.breadth(b.closes for b in wide.values())
+        upcoming = {}
+        for k in range(0, 8):
+            day = date.today() + timedelta(days=k)
+            if day.weekday() < 5 and len(upcoming) < 5:
+                upcoming[f"{day:%a %m/%d}"] = await event_calendar.market_moving_events(client, on=day)
+        trend += ". " + "; ".join((
+            mc.vix_text(vix.closes), mc.yield_text(tnx.closes),
+            f"{width:.0f}% of S&P 500 stocks are above their 50-day average" if width is not None
+            else "breadth unavailable",
+            mc.events_text(upcoming)))
+        trend += ". (Context only: none of these was a tested edge on this desk.)"
+    except Exception as exc:                             # noqa: BLE001
+        trend += f". (market context unavailable: {type(exc).__name__})"
     try:
         earnings = await event_calendar.upcoming_earnings(frozenset(symbols), client)
     except Exception:                                    # noqa: BLE001
@@ -83,8 +109,11 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
         mom = f"{f.momentum_12_1:+.1f}%" if f.momentum_12_1 is not None else "n/a"
         atr = atr_pct(b)
         atr_text = f"{atr:.1f}%" if atr else "n/a"
-        lines = [f"{s} | 1m {_ret(b.closes, 21)} | 3m {_ret(b.closes, 63)} | "
-                 f"12m {_ret(b.closes, 252)} | 12-1 momentum {mom} | daily ATR {atr_text}"]
+        rs = relative_strength(f, bench)
+        lines = [f"{s} ({sector.get(s, 'sector unknown')}) | 1m {_ret(b.closes, 21)} | "
+                 f"3m {_ret(b.closes, 63)} | 12m {_ret(b.closes, 252)} | 12-1 momentum {mom}"
+                 + (f" ({rs:+.0f} pts vs the S&P 500)" if rs is not None else "")
+                 + f" | daily ATR {atr_text}"]
         report = earnings.get(s)
         lines.append(f"earnings: {report.label}" if report else "earnings: none in the next 7 days")
         # TradingAgents runs as a SHADOW (2026-10-07): Gemma asked not to see it
@@ -167,6 +196,17 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
             start_value = sum(t.cash for t in book.tranches) + sum(
                 n * float(first["prices"].get(s, 0)) for s, n in held.items())
             text += f", momentum rule {(value / start_value - 1) * 100:+.2f}%"
+    recent = []
+    for r in rows:
+        if r.get("event") == "gemma_decision":
+            try:
+                body = json.loads(r.get("reason", "{}"))
+            except ValueError:
+                continue
+            if body.get("submitted"):
+                recent.append({"day": str(r["at"])[:10], "buys": body.get("buys", []),
+                               "sells": body.get("sells", [])})
+    text += ". " + mc.decisions_text(recent[-5:])
     sel_file = Path("data/competition/selection.json")
     if sel_file.exists():
         try:
@@ -306,7 +346,8 @@ async def main(submit: bool) -> int:
                 continue
             result = await bookorders.buy_with_stop(
                 broker, client, s, strategy=GEMMA, sleeve=sleeve, room=room, cap_pct=cap,
-                policy=POLICY, reason=f"Gemma: {reasons.get(s, '')}")
+                policy=POLICY, reason=f"Gemma: {reasons.get(s, '')}",
+                risk_pct=POLICY.gemma_risk_pct)
             if not result.ok:
                 print(f"  {YELLOW}{s:<6} not bought -- {result.message}{RESET}")
                 continue

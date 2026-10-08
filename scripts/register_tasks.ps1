@@ -29,7 +29,8 @@ $tasks = @(
     "stock-scanner-momentum",
     "stock-scanner-gemma",
     "stock-scanner-journal",
-    "stock-scanner-weekly"
+    "stock-scanner-weekly",
+    "stock-scanner-monday"
 )
 
 # Retired 2026-10-06 (WORKLIST §37). Unregistered on every run so a machine
@@ -233,6 +234,15 @@ $wkSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLim
 $wkAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_weekly.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-weekly" -Trigger $wkTrigger -Action $wkAction -Settings $wkSettings -Description "Weekly review of every position and book vs the S&P 500, logs/weekly (Fridays 07:00 AK)" -Force | Out-Null
 Write-Output "registered stock-scanner-weekly  Fridays 07:00 AK"
+
+# --- Monday research (WORKLIST §48) -----------------------------------------
+# Mondays 04:30 AK: refresh Gemma's rolling list (committed on its own) and the
+# operator's research pack in logs/research/, before Gemma's 05:45 decision.
+$moTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 4:30AM
+$moSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 20) -MultipleInstances IgnoreNew
+$moAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_monday.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-monday" -Trigger $moTrigger -Action $moAction -Settings $moSettings -Description "Monday research: Gemma list refresh + operator research pack (Mondays 04:30 AK)" -Force | Out-Null
+Write-Output "registered stock-scanner-monday  Mondays 04:30 AK"
 
 # --- momentum paper rebalance ------------------------------------------------
 # 11:40 AK = 15:40 ET weekdays, ten minutes before Alpaca's 15:50 ET cutoff
