@@ -447,6 +447,11 @@ class TradingPolicy(Frozen):
     #: (it wants its record to be its own judgement); TradingAgents keeps running
     #: as a graded shadow the operator still sees (second_opinion.py, weekly report).
     gemma_sees_tradingagents: bool = False
+    #: The 03:00 daily brief in Gemma's facts (WORKLIST §52, operator 2026-10-08):
+    #: coming events, the President's posts and schedule, the news, and which of
+    #: its stocks each item touches -- dates and headlines, never its own earlier
+    #: read of them. Context, labelled as such; not a tested edge.
+    gemma_sees_brief: bool = True
 
     # --- momentum engine sleeve ---------------------------------------------
     #: Share of equity the momentum book is sized against. 50% on 2026-10-06,

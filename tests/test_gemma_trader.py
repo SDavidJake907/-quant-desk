@@ -136,3 +136,8 @@ def test_unknown_or_missing_choices_fall_back_to_the_defaults():
                             "stop": "yolo"}], "journal": ""}
     d = gt.validate(answer, FACTS, held=set(), max_positions=5, menu=MENU)
     assert d.plans == (gt.Plan(symbol="GS", stop="normal", target="none", size="normal"),)
+
+
+def test_prompt_says_news_and_calendar_lines_are_context_not_swap_signals():
+    text = gt.prompt(FACTS, held={}, max_positions=5)
+    assert "in the news" in text and "in the price" in text and "not as a" in text

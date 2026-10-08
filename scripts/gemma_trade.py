@@ -58,6 +58,17 @@ from pathlib import Path
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN, RED, YELLOW = "\033[32m", "\033[31m", "\033[33m"
 POLICY = TradingPolicy()
+BRIEF_DIR = Path("data/brief")
+
+
+def daily_brief(day: date) -> dict | None:
+    """Today's brief from scripts/week_ahead.py, or None. A stale or broken file
+    is ignored: yesterday's news must never pass for today's."""
+    try:
+        brief = json.loads((BRIEF_DIR / f"{day.isoformat()}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return brief if brief.get("date") == day.isoformat() and brief.get("market_text") else None
 CORE = Path("watchlists/core.txt")
 GEMMA_LIST = Path("watchlists/gemma.txt")
 
@@ -289,7 +300,17 @@ async def main(submit: bool) -> int:
                 if s in facts:
                     facts[s] += (f"\nmomentum rule: #{rank} of its 10 picks for this month "
                                  f"(formed {mom_day}) -- the rule you are measured against")
-        held_status = {s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
+        # The 03:00 daily brief (WORKLIST §52): coming events, the President, the
+        # news, and which of these stocks each item touches. Facts, not its read.
+        brief = daily_brief(date.today()) if POLICY.gemma_sees_brief else None
+        if brief:
+            trend += ". " + brief["market_text"]
+            for s, lines in brief.get("stock_lines", {}).items():
+                if s in facts and lines:
+                    facts[s] += "\n" + "\n".join(lines)
+        elif POLICY.gemma_sees_brief:
+            print(f"  {YELLOW}no daily brief for today -- deciding without it{RESET}")
+        held_status ={s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
                        for s, p in mine.items()}
         sleeve_dollars = account.equity * POLICY.gemma_allocation_pct / 100
         try:

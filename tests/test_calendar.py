@@ -96,3 +96,32 @@ def test_market_moving_releases_are_recognised():
 def test_label_reads_as_a_human_would_write_it():
     event = Earnings(symbol="LITE", on=date(2026, 8, 11), when="after-close")
     assert "08/11" in event.label and "after-close" in event.label
+
+
+def test_economic_parse_keeps_us_market_movers_once():
+    from scanner.sources.calendar import parse_economic
+    payload = {"data": {"rows": [
+        {"country": "United States", "eventName": "CPI"},
+        {"country": "United States", "eventName": "CPI"},
+        {"country": "Germany", "eventName": "German CPI"},
+        {"country": "China", "eventName": "CPI"},
+        {"country": "United States", "eventName": "Redbook"},
+    ]}}
+    assert parse_economic(payload) == ("CPI",)
+
+
+def test_economic_calendar_is_asked_for_the_next_day():
+    # Nasdaq answers date=D with D-1's releases (checked 2026-10-08).
+    from datetime import date
+    from scanner.sources.calendar import economic_query_date
+    assert economic_query_date(date(2026, 10, 14)) == date(2026, 10, 15)
+
+
+def test_economic_parse_drops_sub_series_of_the_same_release():
+    from scanner.sources.calendar import parse_economic
+    names = ["Core CPI", "Core CPI Index", "CPI", "CPI Index, n.s.a.", "CPI Index, s.a",
+             "CPI, n.s.a", "Cleveland CPI", "Philly Fed Prices Paid",
+             "Philadelphia Fed Manufacturing Index", "Atlanta Fed GDPNow", "Fed Waller Speaks"]
+    payload = {"data": {"rows": [{"country": "United States", "eventName": n} for n in names]}}
+    assert parse_economic(payload) == ("Core CPI", "CPI", "Philadelphia Fed Manufacturing Index",
+                                       "Fed Waller Speaks")

@@ -30,7 +30,8 @@ $tasks = @(
     "stock-scanner-gemma",
     "stock-scanner-journal",
     "stock-scanner-weekly",
-    "stock-scanner-monday"
+    "stock-scanner-monday",
+    "stock-scanner-weekahead"
 )
 
 # Retired 2026-10-06 (WORKLIST §37). Unregistered on every run so a machine
@@ -243,6 +244,16 @@ $moSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLim
 $moAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_monday.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-monday" -Trigger $moTrigger -Action $moAction -Settings $moSettings -Description "Monday research: Gemma list refresh + operator research pack (Mondays 04:30 AK)" -Force | Out-Null
 Write-Output "registered stock-scanner-monday  Mondays 04:30 AK"
+
+# --- daily brief (WORKLIST §52) ----------------------------------------------
+# 03:00 AK daily: calendar, news, the President, and which stocks each item
+# touches, for Gemma's 05:45 decision and the operator. Before TradingAgents
+# takes the GPU at 03:30; the 20-minute limit keeps it out of that slot.
+$waTrigger = New-ScheduledTaskTrigger -Daily -At 3:00AM
+$waSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 20) -MultipleInstances IgnoreNew
+$waAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_weekahead.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-weekahead" -Trigger $waTrigger -Action $waAction -Settings $waSettings -Description "Daily brief: calendar, news, President, news->stocks for Gemma (03:00 AK)" -Force | Out-Null
+Write-Output "registered stock-scanner-weekahead  daily 03:00 AK"
 
 # --- momentum paper rebalance ------------------------------------------------
 # 11:40 AK = 15:40 ET weekdays, ten minutes before Alpaca's 15:50 ET cutoff

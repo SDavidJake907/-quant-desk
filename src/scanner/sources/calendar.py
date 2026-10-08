@@ -24,6 +24,7 @@ become permission to trade through earnings.
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 
 import httpx
@@ -39,6 +40,19 @@ HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 #: Days ahead to look. The strategy's time limit is 60 bars of 30m, about 4.6
 #: sessions, so a week covers the whole holding period.
 DEFAULT_HORIZON = 7
+
+#: Nasdaq's economic calendar answers `date=D` with D-1's releases. Checked
+#: 2026-10-08: date=10-09 returned Thursday 10-08's jobless claims and 30-year
+#: auction; date=10-15 returned Wednesday 10-14's CPI. Until then every caller
+#: showed YESTERDAY's releases as today's (Gemma's market line, the weekly
+#: report). Ask for the next day.
+ECONOMIC_DATE_OFFSET = timedelta(days=1)
+#: Only US releases: the feed carries German and Chinese CPI under the same names.
+US = "United States"
+
+#: Sub-series printed alongside a headline release (CPI's n.s.a. index, the
+#: Philly Fed's components, nowcasts): one line per release is enough.
+SUB_SERIES = re.compile(r"n\.s\.a|\bs\.a\b|CPI Index|Cleveland|Philly Fed|GDPNow")
 
 #: US releases that move the whole tape rather than one name.
 MARKET_MOVING = ("FOMC", "CPI", "Nonfarm", "PPI", "GDP", "Unemployment",
@@ -117,6 +131,19 @@ def is_market_moving(event_name: str) -> bool:
     return any(token.lower() in event_name.lower() for token in MARKET_MOVING)
 
 
+def economic_query_date(day: date) -> date:
+    return day + ECONOMIC_DATE_OFFSET
+
+
+def parse_economic(payload: dict, *, country: str = US) -> tuple[str, ...]:
+    """Pure parse: the day's market-moving releases for `country`, each once."""
+    rows = (payload.get("data") or {}).get("rows") or []
+    names = (str(row.get("eventName") or row.get("event") or "").strip() for row in rows
+             if str(row.get("country") or "") == country)
+    return tuple(dict.fromkeys(n for n in names
+                               if n and is_market_moving(n) and not SUB_SERIES.search(n)))
+
+
 async def market_moving_events(
     client: httpx.AsyncClient, *, on: date | None = None
 ) -> tuple[str, ...]:
@@ -124,15 +151,10 @@ async def market_moving_events(
     day = on or date.today()
     try:
         response = await client.get(
-            ECONOMIC_URL, params={"date": day.isoformat()},
+            ECONOMIC_URL, params={"date": economic_query_date(day).isoformat()},
             headers=HEADERS, timeout=15.0,
         )
         response.raise_for_status()
-        rows = (response.json().get("data") or {}).get("rows") or []
+        return parse_economic(response.json())
     except (httpx.HTTPError, ValueError):
         return ()
-    return tuple(
-        str(row.get("eventName") or row.get("event") or "").strip()
-        for row in rows
-        if is_market_moving(str(row.get("eventName") or row.get("event") or ""))
-    )
