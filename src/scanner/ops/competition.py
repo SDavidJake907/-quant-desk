@@ -134,3 +134,34 @@ def quarter_winner(months: Sequence[MonthResult]) -> str | None:
     if total[PICKS] == total[GEMMA]:
         return None
     return max(total, key=total.get)
+
+
+# --- how sure is the lead? (Jansen ch. 10: compare return streams with their
+# uncertainty, not "who is ahead"; a bootstrap here instead of PyMC3) ---------
+MIN_DAYS_FOR_PROBABILITY = 10
+
+
+def daily_returns(snaps: Iterable[Snapshot], book: str) -> dict[date, float]:
+    """{day: % return} from consecutive snapshots: change in total P/L over the
+    previous day's money invested."""
+    s = sorted((x for x in snaps if x.book == book), key=lambda x: x.day)
+    out = {}
+    for prev, cur in zip(s, s[1:]):
+        if prev.invested > 0:
+            out[cur.day] = (cur.pl_total - prev.pl_total) / prev.invested * 100
+    return out
+
+
+def prob_better(a: Mapping[date, float], b: Mapping[date, float], *, draws: int = 5000,
+                seed: int = 0) -> float | None:
+    """Probability that A's true daily edge over B is positive: resample the
+    paired daily differences with replacement and count how often their mean
+    is above zero. None until MIN_DAYS_FOR_PROBABILITY shared days exist."""
+    days = sorted(set(a) & set(b))
+    if len(days) < MIN_DAYS_FOR_PROBABILITY:
+        return None
+    diffs = [a[d] - b[d] for d in days]
+    rng = random.Random(seed)
+    n = len(diffs)
+    wins = sum(1 for _ in range(draws) if sum(rng.choice(diffs) for _ in range(n)) > 0)
+    return wins / draws

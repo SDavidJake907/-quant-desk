@@ -58,3 +58,17 @@ def test_winners():
     assert c.quarter_winner(months) == c.GEMMA          # 1-1 in months; Gemma +3 vs +2 overall
     months.append(c.MonthResult(month="2026-12", scores={c.PICKS: 1.0, c.GEMMA: 0.0}, winner=c.PICKS))
     assert c.quarter_winner(months) == c.PICKS          # 2-1 in months
+
+
+def test_daily_returns_and_probability_of_being_better():
+    from datetime import timedelta
+    snaps = [c.Snapshot(day=D(2026, 10, 7) + timedelta(days=i), book=c.PICKS, pl_total=10.0 * i,
+                        invested=1000) for i in range(4)]
+    r = c.daily_returns(snaps, c.PICKS)
+    assert list(r.values()) == pytest.approx([1.0, 1.0, 1.0])
+    days = [D(2026, 10, 1) + timedelta(days=i) for i in range(12)]
+    strong = {d: 1.0 + (0.1 if i % 2 else -0.1) for i, d in enumerate(days)}
+    weak = {d: 0.0 for d in days}
+    assert c.prob_better(strong, weak) == pytest.approx(1.0)
+    assert c.prob_better(weak, strong) == pytest.approx(0.0)
+    assert c.prob_better({days[0]: 1.0}, {days[0]: 0.0}) is None      # too few days

@@ -197,10 +197,16 @@ def standings_text(snaps, books, last_close) -> str:
         lines.append(f"- {q}: months won -- you {tally[c.PICKS]}, Gemma {tally[c.GEMMA]}; "
                      f"leader {NAMES[w] if w else 'tied'}")
     season = {k: sum(r.scores.get(k, 0.0) for r in results) for k in (c.PICKS, c.GEMMA)}
+    p = c.prob_better(c.daily_returns(snaps, c.GEMMA), c.daily_returns(snaps, c.PICKS))
+    how_sure = (f"Probability Gemma is really the better trader so far: {p:.0%} "
+                f"(you: {1 - p:.0%}), from the daily returns resampled."
+                if p is not None else
+                f"How sure is the lead? Needs {c.MIN_DAYS_FOR_PROBABILITY} trading days of "
+                "snapshots; until then the lead is mostly noise.")
     lines += ["", f"## Season {results[0].month[:4] if results else ''}", "",
               f"You {season[c.PICKS]:+.2f}%, Gemma {season[c.GEMMA]:+.2f}% (sum of monthly returns). "
               f"Season ends Dec 31; the winner gets +{c.REWARD_POINTS:.0f} points of the account "
-              "for next season, taken from the other book.", ""]
+              "for next season, taken from the other book.", "", how_sure, ""]
     return "\n".join(lines)
 
 

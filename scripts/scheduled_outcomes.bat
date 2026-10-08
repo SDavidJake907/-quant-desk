@@ -36,6 +36,10 @@ REM month's ghost and benchmark paper books, then the standings table.
 ".venv\Scripts\python.exe" "scripts\competition.py" snapshot >> "%LOG%" 2>&1
 ".venv\Scripts\python.exe" "scripts\competition.py" standings >> "%LOG%" 2>&1
 
+REM Selection skill across the whole menu (WORKLIST §47): Gemma's chosen vs
+REM passed-over names, TradingAgents' rank correlation. Feeds Gemma's scoreboard.
+".venv\Scripts\python.exe" "scripts\selection_grade.py" >> "%LOG%" 2>&1
+
 REM Mark the model's recorded calls against outcomes, the day they land.
 REM Read-only, advisory; its exit code is ignored like the archive's.
 ".venv\Scripts\python.exe" "scripts\score_gemma.py" >> "%LOG%" 2>&1

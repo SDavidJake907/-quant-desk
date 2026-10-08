@@ -124,6 +124,10 @@ def render(account, positions, history, bars, spx, earnings, events) -> str:
     if standings.exists():
         body = standings.read_text(encoding="utf-8").split("\n", 2)[-1]
         lines += ["## The competition (from last evening's standings)", "", body.strip(), ""]
+    selection = Path("logs/competition/selection.md")
+    if selection.exists():
+        body = selection.read_text(encoding="utf-8").split("\n", 1)[-1]
+        lines += ["## Selection skill (from last evening)", "", body.strip(), ""]
     lines += ["## Next week's market calendar", ""]
     lines += [f"- {d:%a %m/%d}: {', '.join(sorted(set(ev))) if ev else 'nothing market-moving'}"
               for d, ev in events.items()]

@@ -167,6 +167,15 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
             start_value = sum(t.cash for t in book.tranches) + sum(
                 n * float(first["prices"].get(s, 0)) for s, n in held.items())
             text += f", momentum rule {(value / start_value - 1) * 100:+.2f}%"
+    sel_file = Path("data/competition/selection.json")
+    if sel_file.exists():
+        try:
+            g = json.loads(sel_file.read_text(encoding="utf-8"))["gemma"]["5"]
+            text += ("; your selection record (chosen minus passed-over names, 5 sessions on): "
+                     + (f"{g['mean']:+.2f} pts over {g['days']} graded days, positive on "
+                        f"{g['positive_days']}" if g["days"] else "no day graded yet"))
+        except (ValueError, KeyError):
+            pass
     return text
 
 
@@ -250,6 +259,9 @@ async def main(submit: bool) -> int:
             "keep": decision.keep, "buys": buys, "sells": sells,
             "reasons": dict(decision.reasons), "rejected": dict(decision.rejected),
             "journal": decision.journal, "unchanged": decision.unchanged,
+            # The whole menu, so the names Gemma PASSED OVER can be graded
+            # against the ones it chose (ops/selection.py, WORKLIST §47).
+            "menu": sorted(facts),
             "submitted": submit and market_open}), POLICY)
 
         print(f"\n  {BOLD}Gemma holds{RESET} {list(decision.keep) or 'nothing'}")
