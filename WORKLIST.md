@@ -994,6 +994,33 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 53. TradingAgents, lightened -- and its grade made honest (2026-10-08)
+
+Operator: lighten the agents' load; find what is noise vs what is used. Measured
+on 196-199 reports (2026-10-05..08). Each change tested before the next:
+
+1. **Risk team + Portfolio Manager cut.** They agreed with the trader's
+   direction in **196 of 196** runs. `ta_worker.py` rewires TradingAgents'
+   graph in-process (Trader -> decision -> END), raising if an upgrade
+   reshapes it. Re-run AMD/MPC/NEE: same direction 3/3, 115/102/120s ->
+   82/81/74s (**-29%**; the market analyst's data calls are most of a run).
+   "Buy" now where "Overweight" was: both grade +1.
+2. **Once a week per stock, 12 a morning.** A third of names re-rated within
+   days had flipped. `rated_since()` skips anything rated in the last 6 days.
+   Next pass: XOM, ZETA (new) instead of 46. Load ~1.5 h/day -> ~15 min.
+3. **Independent calls only** (grading rule amended BEFORE the first grade):
+   a stock's call counts again only after its previous counted call's 21
+   sessions have passed. On the real record: 142 pending -> **97 independent
+   + 45 repeats set aside** (Gemma's news read: 10 + 10).
+
+Unused by any code, kept for people: the market/news reports and plans (~93%
+of the text). Only the rating is read (grade, selection grade, second opinion,
+weekly report).
+
+- [ ] **Decision, fixed now:** when TradingAgents reaches 100 independent graded
+      calls (early-mid December at ~45 a month): t >= 2.0 -> it may advise and
+      the operator decides who sees it; otherwise retire it and free 03:30-05:00.
+
 ## 52. The daily brief: calendar, news, the President -> Gemma (2026-10-08)
 
 Operator: tie the news into Gemma -- a daily and nightly picture, which stocks

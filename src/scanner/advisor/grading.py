@@ -7,6 +7,13 @@ return minus the S&P 500's) from the call date's close to the close
 HORIZON_DAYS trading days later. One call per opinion, symbol and day (the
 last). A call whose horizon has not passed is PENDING, never guessed.
 
+INDEPENDENT CALLS (amended 2026-10-08, before the first grade; WORKLIST §53)
+A stock's call counts again only once its previous counted call's horizon has
+passed. Daily re-ratings of one stock are 21 nearly identical tests of one
+opinion: counted separately they would reach "100 calls" on a few days of
+views and make t look far surer than it is. Set-aside calls are reported as
+`overlapping`.
+
 Graduation: GRADUATION_CALLS graded calls and mean score with t >=
 GRADUATION_T. The DISAGREEMENT column scores only calls against the primary
 rule (a sell on a momentum pick): the one place an opinion could change a
@@ -44,6 +51,7 @@ class Record(Frozen):
     t: float
     disagreements: int
     disagreement_mean: float
+    overlapping: int = 0
 
     @property
     def graduated(self) -> bool:
@@ -103,8 +111,17 @@ def grade(calls: Iterable[Call], prices: Mapping[str, Series], bench: Series,
     scores: dict[str, list[float]] = {}
     against: dict[str, list[float]] = {}
     pending: dict[str, int] = {}
-    for c in calls:
+    overlapping: dict[str, int] = {}
+    sessions = [d for d, _ in bench]
+    last: dict[tuple[str, str], int] = {}
+    for c in sorted(calls, key=lambda c: c.day):
         scores.setdefault(c.opinion, [])
+        at = bisect_right(sessions, c.day) - 1
+        prev = last.get((c.opinion, c.symbol))
+        if prev is not None and at - prev < horizon:
+            overlapping[c.opinion] = overlapping.get(c.opinion, 0) + 1
+            continue
+        last[(c.opinion, c.symbol)] = at
         stock = forward_return(prices.get(c.symbol, ()), c.day, horizon)
         market = forward_return(bench, c.day, horizon)
         if stock is None or market is None:
@@ -122,5 +139,6 @@ def grade(calls: Iterable[Call], prices: Mapping[str, Series], bench: Series,
         dis = against.get(name, [])
         out[name] = Record(opinion=name, graded=len(xs), pending=pending.get(name, 0),
                            mean=mean, t=t, disagreements=len(dis),
-                           disagreement_mean=_mean_t(dis)[0])
+                           disagreement_mean=_mean_t(dis)[0],
+                           overlapping=overlapping.get(name, 0))
     return out

@@ -66,7 +66,9 @@ def test_grade_signs_by_direction_and_isolates_disagreements():
                           direction=1)]
     rec = grading.grade(calls, prices, bench, picks_on={d0: frozenset({"UP"})},
                         horizon=2)["tradingagents"]
-    assert rec.graded == 2 and rec.pending == 1
+    # UP's second call is one session after its first, inside the first call's
+    # horizon: the same test again, so it is set aside, not counted (§53).
+    assert rec.graded == 2 and rec.pending == 0 and rec.overlapping == 1
     assert rec.mean == pytest.approx(0.0)                    # -10 and +10
     assert rec.disagreements == 1                            # sold a momentum pick
     assert rec.disagreement_mean == pytest.approx(-10.0)     # and was wrong
@@ -107,3 +109,14 @@ def test_report_summary_takes_the_executive_summary_opening():
     assert "Investment Thesis" not in s and "**" not in s and len(s) <= 200
     assert op.report_summary("", max_chars=200) == ""
     assert op.report_summary("no headings here at all. second.", max_chars=200) == "no headings here at all. second."
+
+
+def test_a_stock_counts_again_only_after_its_previous_call_is_scored():
+    d0 = date(2026, 1, 1)
+    bench = series(d0, [100] * 12)
+    prices = {"UP": series(d0, [100 + k for k in range(12)])}
+    calls = [grading.Call(opinion="tradingagents", symbol="UP", day=d0 + timedelta(days=k),
+                          direction=1) for k in (0, 1, 2, 3, 4, 5)]
+    rec = grading.grade(calls, prices, bench, horizon=3)["tradingagents"]
+    # sessions 0 and 3 are independent tests; 1, 2, 4, 5 overlap one of them
+    assert rec.graded == 2 and rec.overlapping == 4

@@ -77,11 +77,13 @@ async def records(rows, client) -> dict[str, grading.Record]:
 def _record_text(rec: grading.Record | None) -> str:
     if rec is None or rec.graded == 0:
         pending = f", {rec.pending} pending" if rec else ""
-        return f"0 graded{pending} -- unproven"
+        repeat = f", {rec.overlapping} repeats set aside" if rec and rec.overlapping else ""
+        return f"0 graded{pending}{repeat} -- unproven"
     verdict = "GRADUATED" if rec.graduated else "unproven"
     dis = (f"; vs momentum {rec.disagreements} calls, {rec.disagreement_mean:+.2f}pp"
            if rec.disagreements else "")
-    return (f"{rec.graded} graded ({rec.pending} pending), {rec.mean:+.2f}pp per call, "
+    return (f"{rec.graded} graded ({rec.pending} pending, {rec.overlapping} repeats set aside), "
+            f"{rec.mean:+.2f}pp per call, "
             f"t {rec.t:+.2f} -- {verdict}{dis}")
 
 
