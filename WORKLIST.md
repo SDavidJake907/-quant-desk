@@ -994,6 +994,28 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 55. Earnings: buy the day before, or the morning after? -- after (2026-10-08)
+
+`scripts/earnings_timing_test.py`, S&P 500 reports 2024-10..2026-09 (dates from
+Nasdaq's calendar, cached in data/earnings/history.json), survivors, 0.10%
+costs. Amended once for missing data (past reports carry no time, so both
+possible reaction days are covered); the first run had only 26 timed reports.
+
+```
+                                   n      mean    vs random days   win   worst 5%
+A  close before -> +6 sessions    3841   +0.56%   +0.19pp          52%   -13.4%  (random -8.5%)
+B  open +2 -> +10 sessions        3841   +0.78%   +0.21pp          54%    -9.7%  (random -10.9%)
+strong momentum (12-1 > +40%):
+A  before                          770   +0.80%                    49%   -16.4%
+B  after                           770   +1.14%                    54%   -12.3%
+gap past a 2.5 x ATR stop at an event open: 13.9% of reports (momentum 15.8%)
+```
+
+Same small premium either way (~+0.2pp a week); buying before adds the tail
+(1 report in 7 opens through the stop). Decision: event names join Gemma's
+list the morning AFTER, screened. Not proof of the premium -- the risk gap is
+the solid part.
+
 ## 54. The calendar, filled in: what else moves the market (2026-10-08)
 
 Operator: the President's dates are not enough -- what else is coming? The
