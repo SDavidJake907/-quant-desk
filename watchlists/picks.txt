@@ -4,11 +4,7 @@
 # 2026-10-06: the operator's 1-month leaders. MSTR left out (bitcoin proxy).
 AMD
 MRVL
-ARM
-META
-INTC
 AMAT
-TSM
 PLTR
 # 2026-10-08: added from the morning global scan (one-year momentum, near highs,
 # no earnings within 3 weeks); XOM and ABBV spread the book beyond chips.
@@ -16,3 +12,4 @@ NVDA
 XOM
 ABBV
 ZETA
+# 2026-10-08: ARM, INTC, META, TSM removed (operator): replaced by the four above.
