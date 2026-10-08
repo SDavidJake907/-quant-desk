@@ -110,6 +110,11 @@ async def main(use_llm: bool) -> int:
             fixed += wa.closures(sessions, today, days[-1])
         evts = wa.events(days, econ=econ, earnings=earnings, fixed=fixed,
                          sector_econ=sector_econ, bellwethers=bells)
+        # The last session's numbers, actual vs expected (WORKLIST §56).
+        last = today - timedelta(days=1)
+        while last.weekday() > 4:
+            last -= timedelta(days=1)
+        results = await cal.releases_on(client, on=last)
         posts = await president.posts(client)
         sched = await president.schedule(client, days={today, today + timedelta(days=1)})
         market = await _headlines(client, (*MARKET_FEEDS, *held))
@@ -134,7 +139,7 @@ async def main(use_llm: bool) -> int:
     wide = [i.headline for i in impacts if not i.symbols and i.headline not in pres_lines]
     near = [e for e in evts if e.day in set(days[:SESSIONS_FOR_GEMMA])]
     far_earnings = [e for e in evts if e.kind == "earnings" and e not in near]
-    market_text = wa.market_text(near, president_lines=pres_lines,
+    market_text = wa.market_text(near, president_lines=pres_lines, results=results,
                                  headlines=wide + [h for h in market if h in linked and h not in wide])
     brief = {
         "date": today.isoformat(), "written_at": datetime.now(timezone.utc).isoformat(),
@@ -150,13 +155,14 @@ async def main(use_llm: bool) -> int:
             far_earnings, held=held),
         "events": [e.model_dump(mode="json") for e in evts],
         "impacts": [i.model_dump(mode="json") for i in impacts],
+        "results": [r.model_dump(mode="json") for r in results],
     }
     BRIEF_DIR.mkdir(parents=True, exist_ok=True)
     (BRIEF_DIR / f"{today.isoformat()}.json").write_text(json.dumps(brief, indent=1), encoding="utf-8")
     posts_md = [f"{p.when:%a %H:%M UTC} [{p.source}] {p.text}" for p in posts[:12]]
     sched_md = [f"{s.day:%a %m/%d} {s.time}: {s.details}" for s in sched]
     md = wa.render_md(today, evts, brief["flags"], posts_md, sched_md, impacts,
-                      [h for h in market if h not in linked][:15])
+                      [h for h in market if h not in linked][:15], results=results)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     path = REPORT_DIR / f"{today.isoformat()}.md"
     path.write_text(md, encoding="utf-8")

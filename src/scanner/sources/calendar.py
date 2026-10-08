@@ -84,6 +84,17 @@ class Earnings(Frozen):
         return f"{self.on:%a %m/%d}" + (f" {self.when}" if self.when else "")
 
 
+class Release(Frozen):
+    """One scheduled release: what came in, what was expected, what came before
+    (WORKLIST §56). Blank until published; several rows of one name (CPI m/m
+    and y/y) are joined with " / "."""
+
+    name: str
+    actual: str = ""
+    consensus: str = ""
+    previous: str = ""
+
+
 class CalendarError(RuntimeError):
     """Raised only where a caller has asked to be told about failure."""
 
@@ -161,6 +172,49 @@ def parse_economic(payload: dict, *, country: str = US) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _value(raw: object) -> str:
+    text = str(raw or "").replace("&nbsp;", " ").strip()
+    return text
+
+
+def parse_releases(payload: dict, *, country: str = US) -> tuple[Release, ...]:
+    """Pure parse: the day's market-moving and sector releases with their numbers."""
+    rows = (payload.get("data") or {}).get("rows") or []
+    found: dict[str, dict[str, list[str]]] = {}
+    for row in rows:
+        name = str(row.get("eventName") or row.get("event") or "").strip()
+        if (str(row.get("country") or "") != country or not name or SUB_SERIES.search(name)
+                or not (is_market_moving(name)
+                        or any(t.lower() in name.lower() for t in SECTOR_EVENTS))):
+            continue
+        slot = found.setdefault(name, {"actual": [], "consensus": [], "previous": []})
+        for key in slot:
+            if value := _value(row.get(key)):
+                slot[key].append(value)
+    return tuple(Release(name=n, **{k: " / ".join(v) for k, v in vals.items()})
+                 for n, vals in found.items())
+
+
+def _number(text: str) -> float | None:
+    raw = text.split("/")[0].strip().replace(",", "").rstrip("%")
+    scale = {"K": 1e3, "M": 1e6, "B": 1e9, "T": 1e12}.get(raw[-1:].upper(), 1.0) if raw else 1.0
+    raw = raw[:-1] if scale != 1.0 else raw
+    try:
+        return float(raw) * scale
+    except ValueError:
+        return None
+
+
+def surprise(actual: str, consensus: str) -> str:
+    """above / below / in line, or "" when either number is missing."""
+    a, c = _number(actual or ""), _number(consensus or "")
+    if a is None or c is None:
+        return ""
+    if abs(a - c) <= 1e-9 * max(1.0, abs(c)):
+        return "in line"
+    return "above" if a > c else "below"
+
+
 def parse_sector_events(payload: dict, *, country: str = US
                         ) -> tuple[tuple[str, tuple[str, ...]], ...]:
     """Pure parse: the day's sector-moving releases as (name, sectors), each once."""
@@ -177,8 +231,9 @@ def parse_sector_events(payload: dict, *, country: str = US
 
 
 async def scheduled_events(client: httpx.AsyncClient, *, on: date
-                           ) -> tuple[tuple[str, ...], tuple[tuple[str, tuple[str, ...]], ...]]:
-    """(market-wide releases, sector releases) for one day, from one request."""
+                           ) -> tuple[tuple[Release, ...], tuple[tuple[str, tuple[str, ...]], ...]]:
+    """(market-wide releases with their numbers, sector releases) for one day,
+    from one request."""
     try:
         response = await client.get(
             ECONOMIC_URL, params={"date": economic_query_date(on).isoformat()},
@@ -188,7 +243,22 @@ async def scheduled_events(client: httpx.AsyncClient, *, on: date
         payload = response.json()
     except (httpx.HTTPError, ValueError):
         return (), ()
-    return parse_economic(payload), parse_sector_events(payload)
+    wide = set(parse_economic(payload))
+    return (tuple(r for r in parse_releases(payload) if r.name in wide),
+            parse_sector_events(payload))
+
+
+async def releases_on(client: httpx.AsyncClient, *, on: date) -> tuple[Release, ...]:
+    """Every market-wide and sector release on `on`, with its numbers."""
+    try:
+        response = await client.get(
+            ECONOMIC_URL, params={"date": economic_query_date(on).isoformat()},
+            headers=HEADERS, timeout=15.0,
+        )
+        response.raise_for_status()
+        return parse_releases(response.json())
+    except (httpx.HTTPError, ValueError):
+        return ()
 
 
 async def market_moving_events(

@@ -22,7 +22,7 @@ from datetime import date, time, timedelta
 
 from scanner.advisor.news_impact import Impact
 from scanner.models import Frozen
-from scanner.sources.calendar import Earnings
+from scanner.sources.calendar import Earnings, Release, surprise
 from scanner.sources.market_calendar import Session
 
 #: Dated events no feed carries. FOMC dates from federalreserve.gov
@@ -63,6 +63,8 @@ class Event(Frozen):
     symbols: tuple[str, ...] = ()
     when: str = ""      # earnings only: pre-mkt | after-close | ""
     sectors: tuple[str, ...] = ()     # sector and bellwether events
+    expected: str = ""                # econ: the consensus, once published
+    previous: str = ""                # econ: the last reading
 
 
 def _label(day: date) -> str:
@@ -105,7 +107,7 @@ def closures(sessions: Iterable[Session], start: date, end: date) -> list[tuple[
     return out
 
 
-def events(days: Sequence[date], *, econ: Mapping[date, Iterable[str]],
+def events(days: Sequence[date], *, econ: Mapping[date, Iterable[str | Release]],
            earnings: Mapping[str, Earnings],
            fixed: Iterable[tuple[date, str, str]] = FIXED_EVENTS,
            sector_econ: Mapping[date, Iterable[tuple[str, tuple[str, ...]]]] | None = None,
@@ -113,8 +115,9 @@ def events(days: Sequence[date], *, econ: Mapping[date, Iterable[str]],
            bellwether_sectors: Mapping[str, tuple[str, ...]] = BELLWETHERS) -> list[Event]:
     """Everything dated inside `days`, in date order."""
     window = set(days)
-    out = [Event(day=d, kind="econ", text=name) for d, names in econ.items() if d in window
-           for name in names]
+    out = [Event(day=d, kind="econ", text=r) if isinstance(r, str) else
+           Event(day=d, kind="econ", text=r.name, expected=r.consensus, previous=r.previous)
+           for d, items in econ.items() if d in window for r in items]
     out += [Event(day=d, kind="sector", text=name, sectors=sectors)
             for d, items in (sector_econ or {}).items() if d in window
             for name, sectors in items]
@@ -165,13 +168,33 @@ def stock_lines(symbol: str, evts: Iterable[Event], impacts: Iterable[Impact],
     return lines
 
 
+def _numbers(e: Event) -> str:
+    bits = ([f"expected {e.expected}"] if e.expected else []) + (
+        [f"last {e.previous}"] if e.previous else [])
+    return f" ({', '.join(bits)})" if bits else ""
+
+
+def result_line(r: Release) -> str:
+    """'Initial Jobless Claims 197K vs 200K expected (below)'."""
+    if r.consensus:
+        verdict = surprise(r.actual, r.consensus)
+        return f"{r.name} {r.actual} vs {r.consensus} expected" + (f" ({verdict})" if verdict else "")
+    return f"{r.name} {r.actual}" + (f" (last {r.previous})" if r.previous else "")
+
+
 def market_text(evts: Iterable[Event], *, president_lines: Sequence[str],
-                headlines: Sequence[str], max_events: int = 8) -> str:
+                headlines: Sequence[str], max_events: int = 8,
+                results: Sequence[Release] = ()) -> str:
     """One paragraph for Gemma's market line. Short on purpose."""
     wide = [e for e in evts if e.kind in MARKET_WIDE][:max_events]
     parts = []
+    came_in = [result_line(r) for r in results if r.actual]
+    if came_in:
+        parts.append("Last session's data, actual vs expected (a surprise is what moves "
+                     "prices): " + "; ".join(came_in[:6]))
     if wide:
-        parts.append("Coming up: " + "; ".join(f"{_label(e.day)}: {e.text}" for e in wide))
+        parts.append("Coming up: " + "; ".join(f"{_label(e.day)}: {e.text}{_numbers(e)}"
+                                               for e in wide))
     if president_lines:
         parts.append("The President: " + " | ".join(p[:300] for p in president_lines[:3]))
     if headlines:
@@ -182,14 +205,20 @@ def market_text(evts: Iterable[Event], *, president_lines: Sequence[str],
 
 def render_md(day: date, evts: Sequence[Event], flag_lines: Sequence[str],
               posts_md: Sequence[str], schedule_md: Sequence[str],
-              impacts: Sequence[Impact], unlinked: Sequence[str]) -> str:
+              impacts: Sequence[Impact], unlinked: Sequence[str],
+              results: Sequence[Release] = ()) -> str:
     """The operator's copy (logs/week_ahead/YYYY-MM-DD.md)."""
     lines = [f"# Daily brief {day:%A %Y-%m-%d}", "",
              "What is coming, what the news is, which stocks it touches. Gemma reads the same "
              "facts at 05:45. " + CONTEXT_NOTE, "", "## Watch: your positions", ""]
     lines += [f"- ⚠ {f}" for f in flag_lines] or ["- nothing dated against a held position"]
-    lines += ["", "## Calendar, next sessions", "", "| Day | What | Kind |", "|---|---|---|"]
-    lines += [f"| {_label(e.day)} | {e.text} | {e.kind} |" for e in evts] or ["| - | nothing found | - |"]
+    lines += ["", "## Last session's numbers: actual vs expected", "",
+              "_Expected news is mostly priced in; the surprise is what moves prices._", ""]
+    lines += [f"- {result_line(r)}" for r in results if r.actual] or ["- nothing published"]
+    lines += ["", "## Calendar, next sessions", "", "| Day | What | Kind | Expected | Last |",
+              "|---|---|---|---|---|"]
+    lines += [f"| {_label(e.day)} | {e.text} | {e.kind} | {e.expected or '-'} | {e.previous or '-'} |"
+              for e in evts] or ["| - | nothing found | - | - | - |"]
     lines += ["", "## The President", "", "**Schedule (official, as published):**"]
     lines += [f"- {s}" for s in schedule_md] or ["- not published yet"]
     lines += ["", "**Posts and releases** _(Truth Social via the trumpstruth.org mirror; whitehouse.gov)_:"]

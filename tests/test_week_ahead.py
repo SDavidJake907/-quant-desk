@@ -191,3 +191,43 @@ def test_economic_parse_splits_market_wide_from_sector_events():
     assert dict(parse_sector_events(payload)) == {
         "OPEC Monthly Report": ("Energy",), "Crude Oil Inventories": ("Energy",),
         "Housing Starts": ("Real Estate", "Consumer Discretionary")}
+
+
+# --- expected vs actual (§56) -----------------------------------------------
+
+def test_releases_keep_actual_expected_and_previous_joining_repeat_rows():
+    from scanner.sources.calendar import parse_releases
+    rows = [{"country": "United States", "eventName": "CPI", "actual": "&nbsp;", "consensus": " ",
+             "previous": "0.4%"},
+            {"country": "United States", "eventName": "CPI", "actual": "&nbsp;", "consensus": "3.3%",
+             "previous": "3.4%"},
+            {"country": "United States", "eventName": "Crude Oil Inventories", "actual": "-3.186M",
+             "consensus": "1.900M", "previous": "0.922M"},
+            {"country": "Germany", "eventName": "German CPI", "actual": "2%", "consensus": "2%",
+             "previous": "2%"}]
+    out = {r.name: r for r in parse_releases({"data": {"rows": rows}})}
+    assert set(out) == {"CPI", "Crude Oil Inventories"}
+    assert out["CPI"].actual == "" and out["CPI"].previous == "0.4% / 3.4%"
+    assert out["CPI"].consensus == "3.3%"
+    assert out["Crude Oil Inventories"].actual == "-3.186M"
+
+
+def test_surprise_reads_numbers_with_units():
+    from scanner.sources.calendar import surprise
+    assert surprise("-3.186M", "1.900M") == "below"
+    assert surprise("197K", "200K") == "below"
+    assert surprise("0.5%", "0.3%") == "above"
+    assert surprise("1,716K", "1,710K") == "above"
+    assert surprise("0.3%", "0.3%") == "in line"
+    assert surprise("", "0.3%") == "" and surprise("0.3%", "") == ""
+
+
+def test_market_text_shows_what_is_expected_and_what_came_in():
+    from scanner.sources.calendar import Release
+    evts = wa.events(DAYS, econ={date(2026, 10, 14): (Release(name="CPI", consensus="0.3%",
+                                                              previous="0.4%"),)},
+                     earnings={}, fixed=())
+    results = (Release(name="Initial Jobless Claims", actual="197K", consensus="200K"),)
+    text = wa.market_text(evts, president_lines=[], headlines=[], results=results)
+    assert "Wed 10/14: CPI (expected 0.3%, last 0.4%)" in text
+    assert "Initial Jobless Claims 197K vs 200K expected (below)" in text

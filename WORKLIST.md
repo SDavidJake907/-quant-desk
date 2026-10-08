@@ -994,6 +994,21 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 56. Expected vs actual in the brief (2026-10-08)
+
+From the operator's "expected vs unexpected news" whiteboard: scheduled news is
+mostly priced in; the SURPRISE (actual minus consensus) moves prices. Nasdaq's
+calendar carries actual / consensus / previous. The brief now shows the last
+session's releases as actual vs expected (above / below / in line) and the
+coming releases with their consensus (once published) and last reading; Gemma's
+market line carries both, labelled. Context, not a signal.
+
+First run: crude inventories -3.186M vs +1.900M expected (a big draw: oil up);
+NY Fed 1-year inflation expectations 3.9% vs 3.6% (hot: hike talk); 10-year
+auction 5.300% vs 4.834% last. CPI consensus not yet published (shows "last").
+Not adopted from the same whiteboard: fading the intraday spike -- minutes-long
+trades; our intraday fades tested null and news-driven gaps continued (§49).
+
 ## 55. Earnings: buy the day before, or the morning after? -- after (2026-10-08)
 
 `scripts/earnings_timing_test.py`, S&P 500 reports 2024-10..2026-09 (dates from
