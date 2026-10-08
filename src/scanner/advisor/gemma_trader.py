@@ -10,9 +10,9 @@ If it does, it earns a wider list and a bigger sleeve; if not, it goes back
 to advising. It is shown its running scoreboard every morning.
 
 WHAT IT CONTROLS, AND WHAT IT CANNOT
-It names stocks. That is all. The answer schema has no numeric field and the
-symbol field is an enum of the allowed names, so it cannot emit a price, a
-size, a stop, or a ticker outside its list. The system prices, sizes, stops
+It names stocks, and since 2026-10-08 a menu choice per new buy (below). The
+answer schema has no numeric field and every field it chooses from is an enum,
+so it cannot emit a price, a share count, or a ticker outside its list. The system prices, sizes, stops
 and sends (execution/bookorders.py), exactly as for the operator's picks.
 
 ITS OWN JUDGEMENT, NOT A COPY OF MOMENTUM (2026-10-07)
@@ -20,6 +20,13 @@ The first prompt told it "what has held up here: buying 12-1 momentum", and it
 picked its five highest-momentum names -- the momentum rule on another list.
 Copying a rule cannot beat that rule, so the prompt now says so, keeps the
 tested record as context, and tells it that churn costs money.
+
+THE MENU (2026-10-08, WORKLIST §50)
+For each NEW buy it may also name a stop (tight/normal/wide), a target
+(none/2R/3R/5R) and a size (small/normal/large). Still names, still enums:
+the policy maps each name to a number and the system builds the bracket. A
+held name keeps the bracket it was bought with. A missing or unknown choice
+falls back to normal stop, no target, normal size.
 
 EVIDENCE OR NO NEW BUY
 A NEW name is bought only if its `evidence` occurs verbatim (whitespace and
@@ -47,8 +54,9 @@ CHARTER = (
     "momentum rule (its monthly top-10 record) over the same days, with its worst "
     "drawdown under 25%. If it "
     "has, you get a wider list and more capital; if not, you go back to advising. "
-    "The system sets every price, size and safety stop; you choose which stocks "
-    "to hold, and you explain every call. Your objective: MAXIMISE PROFIT -- the "
+    "You choose which stocks to hold and, for each new buy, how tight its stop, "
+    "where its target and how large its size, from a menu; the system turns those "
+    "choices into prices and orders. You explain every call. Your objective: MAXIMISE PROFIT -- the "
     "most total return you can make -- while keeping that drawdown under 25%. "
     "You are also in a head-to-head "
     "competition: the operator runs their own book of hand-picked stocks under "
@@ -79,30 +87,67 @@ RULES = "\n".join((
 ))
 
 
+class Menu(Frozen):
+    """The names Gemma may choose from; the numbers stay in the policy."""
+    stops: tuple[str, ...]
+    targets: tuple[str, ...]
+    sizes: tuple[str, ...]
+
+
+class Plan(Frozen):
+    symbol: str
+    stop: str = "normal"
+    target: str = "none"
+    size: str = "normal"
+
+
+MENU_RULES = "\n".join((
+    "Your menu, for your NEW buys (a stock you already hold keeps its stop and target):",
+    "{menu_text}",
+    "- Choose them from your reason: a wider stop gives a volatile idea room, a tighter one "
+    "says exactly where you are wrong; a target takes profit, 'none' lets a winner run.",
+    "- A wide stop is not a reason to keep a failed idea. If the reason has failed, leave "
+    "the stock out and it is sold.",
+    "- Large size is for your strongest evidence, small for an idea you are testing.",
+    "",
+))
+
+
 class Decision(Frozen):
     keep: tuple[str, ...]
+    plans: tuple[Plan, ...] = ()
     rejected: tuple[tuple[str, str], ...] = ()
     reasons: tuple[tuple[str, str], ...] = ()
     journal: str = ""
     unchanged: bool = False
 
 
-def schema(allowed: Iterable[str], max_positions: int) -> dict[str, Any]:
-    """Grammar-constrained answer: symbols from the list, text only."""
+def schema(allowed: Iterable[str], max_positions: int,
+           menu: Menu | None = None) -> dict[str, Any]:
+    """Grammar-constrained answer: symbols from the list, text only, and with a
+    menu, the stop/target/size NAMES it offers."""
+    item: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "symbol": {"type": "string", "enum": list(allowed)},
+            "reason": {"type": "string"},
+            "evidence": {"type": "string"},
+        },
+        "required": ["symbol", "reason", "evidence"],
+    }
+    if menu is not None:
+        item = {**item,
+                "properties": {**item["properties"],
+                               "stop": {"type": "string", "enum": list(menu.stops)},
+                               "target": {"type": "string", "enum": list(menu.targets)},
+                               "size": {"type": "string", "enum": list(menu.sizes)}},
+                "required": [*item["required"], "stop", "target", "size"]}
     return {
         "type": "object",
         "properties": {
             "holdings": {
                 "type": "array", "maxItems": max_positions,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "symbol": {"type": "string", "enum": list(allowed)},
-                        "reason": {"type": "string"},
-                        "evidence": {"type": "string"},
-                    },
-                    "required": ["symbol", "reason", "evidence"],
-                },
+                "items": item,
             },
             "journal": {"type": "string"},
         },
@@ -111,17 +156,20 @@ def schema(allowed: Iterable[str], max_positions: int) -> dict[str, Any]:
 
 
 def prompt(facts: Mapping[str, str], *, held: Mapping[str, str], max_positions: int,
-           scoreboard: str = "", sleeve: str = "its share") -> str:
+           scoreboard: str = "", sleeve: str = "its share",
+           menu: Menu | None = None, menu_text: str = "") -> str:
     book = "\n".join(f"- {s}: {status}" for s, status in held.items()) or "- (no positions)"
     score = scoreboard or "No scoreboard yet: this is the start of your record."
     blocks = "\n\n".join(f"[{s}]\n{text}" for s, text in facts.items())
     return "\n".join((
         CHARTER.format(sleeve=sleeve, n=max_positions), "",
         RULES.format(n=max_positions),
+        MENU_RULES.format(menu_text=menu_text) if menu is not None else "",
         f"Your scoreboard: {score}", "",
         "Your book now:", book, "",
         "The list:", "", blocks, "",
-        "Answer with your holdings and a two-sentence 'journal' entry on today's thinking.",
+        "Answer with your holdings" + (", each with its stop, target and size," if menu
+                                         is not None else "") + " and a two-sentence 'journal' entry on today's thinking.",
     ))
 
 
@@ -134,8 +182,19 @@ def grounded(evidence: str, block: str) -> bool:
     return len(quote) >= MIN_EVIDENCE_CHARS and quote in _norm(block)
 
 
+def _plan(item: Mapping[str, Any], symbol: str, menu: Menu | None) -> Plan:
+    if menu is None:
+        return Plan(symbol=symbol)
+    def pick(key: str, allowed: tuple[str, ...], default: str) -> str:
+        value = str(item.get(key, ""))
+        return value if value in allowed else default
+    return Plan(symbol=symbol, stop=pick("stop", menu.stops, "normal"),
+                target=pick("target", menu.targets, "none"),
+                size=pick("size", menu.sizes, "normal"))
+
+
 def validate(answer: Any, facts: Mapping[str, str], *, held: set[str],
-             max_positions: int) -> Decision:
+             max_positions: int, menu: Menu | None = None) -> Decision:
     """The holdings to keep after every rule above. Never raises."""
     items = answer.get("holdings") if isinstance(answer, dict) else None
     if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
@@ -144,6 +203,7 @@ def validate(answer: Any, facts: Mapping[str, str], *, held: set[str],
     keep: list[str] = []
     rejected: list[tuple[str, str]] = []
     reasons: list[tuple[str, str]] = []
+    plans: list[Plan] = []
     for item in items:
         symbol = str(item.get("symbol", "")).upper()
         if symbol in keep:
@@ -159,7 +219,9 @@ def validate(answer: Any, facts: Mapping[str, str], *, held: set[str],
             continue
         keep.append(symbol)
         reasons.append((symbol, str(item.get("reason", ""))[:300]))
+        plans.append(_plan(item, symbol, menu))
     return Decision(keep=tuple(keep), rejected=tuple(rejected), reasons=tuple(reasons),
+                    plans=tuple(plans),
                     journal=str(answer.get("journal", ""))[:600])
 
 

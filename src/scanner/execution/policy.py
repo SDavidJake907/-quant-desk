@@ -430,6 +430,19 @@ class TradingPolicy(Frozen):
     #: per-name cap binds). Twice the dollar swing; the competition score is %
     #: on money invested, so it stays comparable with the picks book (1%).
     gemma_risk_pct: float = 2.0
+    #: GEMMA'S MENU (2026-10-08, operator: "let it pick its own TP and SL";
+    #: WORKLIST §50). For each NEW buy Gemma names a stop, a target and a size
+    #: from these lists; the system turns the name into a price. Stop: daily
+    #: ATRs under the entry. Target: reward-to-risk multiple, 0 = no target
+    #: (the picks ceiling). Size: risk as % of its sleeve; "normal" is
+    #: `gemma_risk_pct`. CHOSEN, not measured: every choice is logged so it
+    #: can be graded. The 20% per-name cap still binds a large size.
+    gemma_stop_atr_menu: tuple[tuple[str, float], ...] = (
+        ("tight", 1.5), ("normal", 2.5), ("wide", 3.5))
+    gemma_target_r_menu: tuple[tuple[str, float], ...] = (
+        ("none", 0.0), ("2R", 2.0), ("3R", 3.0), ("5R", 5.0))
+    gemma_size_risk_menu: tuple[tuple[str, float], ...] = (
+        ("small", 1.0), ("normal", 2.0), ("large", 3.0))
     #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
     #: (it wants its record to be its own judgement); TradingAgents keeps running
     #: as a graded shadow the operator still sees (second_opinion.py, weekly report).
@@ -446,6 +459,12 @@ class TradingPolicy(Frozen):
     #: picks on record (Gemma's benchmark), TradingAgents rates them at 03:30,
     #: and Gemma may choose them as options. Its 40% went Gemma +20, picks +20.
     momentum_trades: bool = False
+
+    def gemma_menu_value(self, kind: str, label: str) -> float:
+        """The number behind one of Gemma's menu names. KeyError if unknown."""
+        menu = {"stop": self.gemma_stop_atr_menu, "target": self.gemma_target_r_menu,
+                "size": self.gemma_size_risk_menu}[kind]
+        return dict(menu)[label]
 
     @property
     def own_sleeves_pct(self) -> float:

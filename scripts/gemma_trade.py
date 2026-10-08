@@ -219,6 +219,21 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
     return text
 
 
+MENU = gt.Menu(stops=tuple(k for k, _ in POLICY.gemma_stop_atr_menu),
+               targets=tuple(k for k, _ in POLICY.gemma_target_r_menu),
+               sizes=tuple(k for k, _ in POLICY.gemma_size_risk_menu))
+MENU_TEXT = "\n".join((
+    "- stop: " + ", ".join(f"{k} = {v:g} daily ATRs under the entry"
+                          for k, v in POLICY.gemma_stop_atr_menu),
+    "- target: " + ", ".join("none = no target, ride it" if v == 0 else
+                            f"{k} = take profit at {v:g}x the risk above the entry"
+                            for k, v in POLICY.gemma_target_r_menu),
+    "- size: " + ", ".join(f"{k} = risk {v:g}% of your book if stopped"
+                          for k, v in POLICY.gemma_size_risk_menu)
+    + " (one stock is never more than a fifth of your book)",
+))
+
+
 async def main(submit: bool) -> int:
     async with httpx.AsyncClient(timeout=120) as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
@@ -283,30 +298,37 @@ async def main(submit: bool) -> int:
             score = ""
             print(f"  {YELLOW}scoreboard unavailable: {exc}{RESET}")
         text = gt.prompt(facts, held=held_status, max_positions=POLICY.gemma_max_positions,
-                         scoreboard=score, sleeve=f"${sleeve_dollars:,.0f}")
+                         scoreboard=score, sleeve=f"${sleeve_dollars:,.0f}",
+                         menu=MENU, menu_text=MENU_TEXT)
         text = text.replace("The list:", f"Market: {trend}.\n\nThe list:", 1)
         try:
-            answer = await chat_json(text, gt.schema(list(facts), POLICY.gemma_max_positions),
+            answer = await chat_json(text, gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU),
                                      client)
         except LLMError as exc:
             answer = None
             # Upper case on purpose: the desk journal's error check looks for it.
             print(f"  {RED}FAILED: Gemma unavailable ({exc}) -- book left unchanged{RESET}")
         decision = gt.validate(answer, facts, held=set(mine),
-                               max_positions=POLICY.gemma_max_positions)
+                               max_positions=POLICY.gemma_max_positions, menu=MENU)
         buys, sells = gt.diff(decision.keep, mine)
         bookorders.log("gemma_decision", "", json.dumps({
             "keep": decision.keep, "buys": buys, "sells": sells,
             "reasons": dict(decision.reasons), "rejected": dict(decision.rejected),
             "journal": decision.journal, "unchanged": decision.unchanged,
+            # Menu choices, for grading which choices paid (WORKLIST §50).
+            "plans": {pl.symbol: {"stop": pl.stop, "target": pl.target, "size": pl.size}
+                      for pl in decision.plans if pl.symbol in buys},
             # The whole menu, so the names Gemma PASSED OVER can be graded
             # against the ones it chose (ops/selection.py, WORKLIST §47).
             "menu": sorted(facts),
             "submitted": submit and market_open}), POLICY)
 
         print(f"\n  {BOLD}Gemma holds{RESET} {list(decision.keep) or 'nothing'}")
+        plans = {pl.symbol: pl for pl in decision.plans}
         for s, why in decision.reasons:
-            print(f"    {s:<6} {why}")
+            pl = plans[s]
+            menu = f" [{pl.stop} stop, target {pl.target}, {pl.size}]" if s in buys else ""
+            print(f"    {s:<6}{menu} {why}")
         for s, why in decision.rejected:
             print(f"    {DIM}{s:<6} not taken -- {why}{RESET}")
         if decision.journal:
@@ -344,10 +366,15 @@ async def main(submit: bool) -> int:
                 print(f"  {YELLOW}{s:<6} not bought -- {gate.reason}{RESET}")
                 bookorders.log("gemma_refused", s, gate.reason, POLICY)
                 continue
+            pl = plans[s]
             result = await bookorders.buy_with_stop(
                 broker, client, s, strategy=GEMMA, sleeve=sleeve, room=room, cap_pct=cap,
-                policy=POLICY, reason=f"Gemma: {reasons.get(s, '')}",
-                risk_pct=POLICY.gemma_risk_pct)
+                policy=POLICY,
+                reason=f"Gemma [{pl.stop} stop, target {pl.target}, {pl.size}]: "
+                       f"{reasons.get(s, '')}",
+                risk_pct=POLICY.gemma_menu_value("size", pl.size),
+                atr_multiple=POLICY.gemma_menu_value("stop", pl.stop),
+                reward_risk=POLICY.gemma_menu_value("target", pl.target))
             if not result.ok:
                 print(f"  {YELLOW}{s:<6} not bought -- {result.message}{RESET}")
                 continue

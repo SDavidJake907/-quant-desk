@@ -15,7 +15,7 @@ from datetime import datetime
 
 from scanner.config import settings
 from scanner.execution import manual, picks
-from scanner.execution.alpaca import BrokerError
+from scanner.execution.alpaca import BrokerError, round_tick
 from scanner.execution.audit import append_event
 from scanner.execution.flatten_run import close_when_released
 from scanner.execution.ownership import prefix_for
@@ -41,6 +41,13 @@ def log(event: str, symbol: str, reason: str, policy: TradingPolicy, **kw) -> No
         stage="trade", policy=policy.fingerprint, build=build_id(), **kw))
 
 
+def target_price(*, limit: float, stop: float, reward_risk: float, ceiling: float) -> float:
+    """`reward_risk` x the risk above the entry; 0 means no target (the ceiling)."""
+    if reward_risk > 0:
+        return round_tick(limit + reward_risk * (limit - stop))
+    return round_tick(limit * ceiling)
+
+
 async def price_and_atr(symbol: str, client) -> tuple[float, float]:
     intraday = await fetch_intraday(symbol, client, minutes=30, range_=max_range(30))
     daily = await fetch_bars(symbol, client, range_="6mo")
@@ -50,14 +57,20 @@ async def price_and_atr(symbol: str, client) -> tuple[float, float]:
 
 async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: float,
                         room: float, cap_pct: float, policy: TradingPolicy,
-                        reason: str, risk_pct: float | None = None) -> Bought:
+                        reason: str, risk_pct: float | None = None,
+                        atr_multiple: float | None = None,
+                        reward_risk: float = 0.0) -> Bought:
     """Price, size, send and log one bracket buy. Never raises on a broker or
-    pricing failure; the refusal is logged and returned."""
+    pricing failure; the refusal is logged and returned. `atr_multiple` and
+    `reward_risk` are Gemma's menu choices; left out, the picks defaults."""
     try:
         last, atr = await price_and_atr(symbol, client)
-        limit, stop, target = picks.levels(
-            last=last, atr_pct=atr, atr_multiple=policy.picks_stop_atr_multiple,
+        limit, stop, _ = picks.levels(
+            last=last, atr_pct=atr,
+            atr_multiple=policy.picks_stop_atr_multiple if atr_multiple is None else atr_multiple,
             offset_pct=policy.entry_limit_offset_pct, ceiling=policy.picks_target_ceiling)
+        target = target_price(limit=limit, stop=stop, reward_risk=reward_risk,
+                              ceiling=policy.picks_target_ceiling)
     except Exception as exc:                               # noqa: BLE001
         log(f"{strategy}_refused", symbol, f"cannot price: {exc}", policy)
         return Bought(symbol=symbol, ok=False, message=f"cannot price: {exc}")

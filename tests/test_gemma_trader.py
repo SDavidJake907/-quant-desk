@@ -94,3 +94,45 @@ def test_charter_tells_gemma_about_the_competition():
 def test_charter_states_the_season_and_the_reward():
     text = gt.prompt(FACTS, held={}, max_positions=5)
     assert "season ends Dec 31" in text and "10 more points" in text and "ghost" in text
+
+
+# --- the menu: Gemma chooses stop, target and size by NAME (WORKLIST §50) ---
+
+MENU = gt.Menu(stops=("tight", "normal", "wide"), targets=("none", "2R", "3R", "5R"),
+               sizes=("small", "normal", "large"))
+
+
+def test_menu_schema_offers_named_choices_and_still_no_numbers():
+    item = gt.schema(("GS",), 5, menu=MENU)["properties"]["holdings"]["items"]
+    assert item["properties"]["stop"]["enum"] == ["tight", "normal", "wide"]
+    assert item["properties"]["target"]["enum"] == ["none", "2R", "3R", "5R"]
+    assert item["properties"]["size"]["enum"] == ["small", "normal", "large"]
+    assert {"stop", "target", "size"} <= set(item["required"])
+    assert "number" not in str(item) and "integer" not in str(item)
+
+
+def test_no_menu_keeps_the_old_schema():
+    item = gt.schema(("GS",), 5)["properties"]["holdings"]["items"]
+    assert "stop" not in item["properties"]
+
+
+def test_prompt_explains_the_menu_and_the_wide_stop_trap():
+    text = gt.prompt(FACTS, held={}, max_positions=5, menu=MENU,
+                     menu_text="tight = 1.5 daily ATRs")
+    assert "tight = 1.5 daily ATRs" in text
+    assert "NEW buys" in text                       # held names keep their bracket
+    assert "failed" in text.lower()                 # a wide stop is not a reason to hold a failed idea
+
+
+def test_validate_records_each_plan():
+    answer = {"holdings": [{"symbol": "GS", "reason": "r", "evidence": "trading revenue beats estimates",
+                            "stop": "wide", "target": "3R", "size": "large"}], "journal": ""}
+    d = gt.validate(answer, FACTS, held=set(), max_positions=5, menu=MENU)
+    assert d.plans == (gt.Plan(symbol="GS", stop="wide", target="3R", size="large"),)
+
+
+def test_unknown_or_missing_choices_fall_back_to_the_defaults():
+    answer = {"holdings": [{"symbol": "GS", "reason": "r", "evidence": "trading revenue beats estimates",
+                            "stop": "yolo"}], "journal": ""}
+    d = gt.validate(answer, FACTS, held=set(), max_positions=5, menu=MENU)
+    assert d.plans == (gt.Plan(symbol="GS", stop="normal", target="none", size="normal"),)
