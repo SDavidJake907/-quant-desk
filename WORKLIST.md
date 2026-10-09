@@ -994,6 +994,37 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 57. News vs no-news after big moves -- NULL; the bounce is survivorship (2026-10-08)
+
+Prompted by SNPS (9/30-10/1: $1B Amazon deal + OpenAI partnership + investor
+day; +5%, then +7.6% at the open and +4.8% that day). Published claim (Chan,
+JFE 2003): big moves WITH news drift on, WITHOUT news reverse.
+`scripts/news_drift_test.py`, rules fixed before running: S&P 500 survivors,
+moves of 4%+ (close to close), 2024-10..2026-09; news = Alpaca/Benzinga
+headlines tagged with the symbol in the 24h to the close; earnings days apart;
+buy the next open, hold 10 sessions, excess over the equal-weight universe.
+
+```
+                    n      excess   halves
+UP   no news      3119    +0.80%   +0.63 / +0.92
+UP   news         3807    +0.73%   +0.58 / +0.83
+UP   earnings     1086    -0.20%
+DOWN no news      3164    +0.63%   +0.43 / +0.79
+DOWN news         3154    +1.56%   +1.91 / +1.29   (t 7.9)
+DOWN earnings     1050    +0.14%
+```
+
+- The prediction FAILED: news does not separate up-movers (+0.73 vs +0.80),
+  no-news moves did not reverse, and bad-news drops BOUNCED instead of drifting.
+- Do not trust the bounce: the universe is today's members, so a stock that
+  fell on news and kept falling was often dropped from the index and is missing
+  here -- the survivors are, by construction, the recoveries (§33, §4). Needs
+  delisted data (Norgate) before it means anything.
+- All rows positive = the same survivorship flattering volatile names.
+- Consequence: the "event names join Gemma's list the morning after" idea is NOT
+  built as a selection rule -- neither §55 nor this found an edge in it beyond
+  holding momentum. The brief keeps news for timing and risk.
+
 ## 56. Expected vs actual in the brief (2026-10-08)
 
 From the operator's "expected vs unexpected news" whiteboard: scheduled news is
