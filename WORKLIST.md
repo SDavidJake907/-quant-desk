@@ -994,6 +994,26 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 58. Big money movers in the calendar (2026-10-09)
+
+Operator: fill the calendar for the month -- where else does big money move?
+Added to the 03:00 brief (each from its own source):
+- Foreign central banks from the same Nasdaq feed (`GLOBAL_CENTRAL_BANKS`): ECB,
+  BoJ, BoE (all Thu 10/29 -- with US PCE, GDP, AAPL, AMZN, the day after the
+  Fed), China's 5-year loan prime rate (10/19), South Korea (10/21: memory).
+- Big IPOs (>= $1B raised) from Nasdaq's IPO calendar: big money pulled into
+  one name. None scheduled for Oct/Nov at the time.
+- Fixed, sourced: Treasury quarterly refunding Wed 11/04 (Treasury); FOMC
+  minutes ~Wed 11/18 (3 weeks after the meeting: expected); government funding
+  ends Fri 12/11, shutdown risk from 12/12 (CRS, continuing resolution).
+- Fixed sector events: OPEC+ 7-country meeting Sun 11/01 (OPEC statement of
+  4 Oct 2026) -> Energy on Mon 11/02; Microsoft Ignite 11/17-20; AWS re:Invent
+  11/30-12/04 + NVIDIA GTC Washington 11/30-12/03 -> tech.
+- [ ] 2027: refresh FIXED_EVENTS / FIXED_SECTOR_EVENTS (FOMC, index dates,
+      conferences) when published.
+Not added: company investor days (no free feed; SNPS's moved it +13%),
+congressional trades (45-day lag; post-verdict list).
+
 ## 57. News vs no-news after big moves -- NULL; the bounce is survivorship (2026-10-08)
 
 Prompted by SNPS (9/30-10/1: $1B Amazon deal + OpenAI partnership + investor

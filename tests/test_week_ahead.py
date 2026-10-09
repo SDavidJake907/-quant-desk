@@ -231,3 +231,35 @@ def test_market_text_shows_what_is_expected_and_what_came_in():
     text = wa.market_text(evts, president_lines=[], headlines=[], results=results)
     assert "Wed 10/14: CPI (expected 0.3%, last 0.4%)" in text
     assert "Initial Jobless Claims 197K vs 200K expected (below)" in text
+
+
+# --- big money movers (§58) -------------------------------------------------
+
+def test_global_central_banks_are_kept_with_their_country():
+    from scanner.sources.calendar import parse_global
+    rows = [{"country": "Euro Zone", "eventName": "ECB Interest Rate Decision", "previous": "2.00%"},
+            {"country": "Japan", "eventName": "BoJ Interest Rate Decision"},
+            {"country": "Euro Zone", "eventName": "Deposit Facility Rate"},
+            {"country": "Germany", "eventName": "German CPI"},
+            {"country": "Russia", "eventName": "Interest Rate Decision"}]
+    names = [r.name for r in parse_global({"data": {"rows": rows}})]
+    assert names == ["Euro Zone: ECB Interest Rate Decision", "Japan: BoJ Interest Rate Decision"]
+
+
+def test_only_big_ipos_make_the_calendar():
+    from scanner.sources.calendar import parse_ipos
+    payload = {"data": {"upcoming": {"upcomingTable": {"rows": [
+        {"proposedTickerSymbol": "BIG", "companyName": "Big Co", "expectedPriceDate": "10/15/2026",
+         "dollarValueOfSharesOffered": "$2,400,000,000"},
+        {"proposedTickerSymbol": "SML", "companyName": "Small Co", "expectedPriceDate": "10/15/2026",
+         "dollarValueOfSharesOffered": "$150,000,000"}]}}}}
+    out = parse_ipos(payload, min_dollars=1e9)
+    assert out == ((date(2026, 10, 15), "IPO: Big Co (BIG), about $2.4B raised"),)
+
+
+def test_fixed_sector_events_reach_their_sector():
+    evts = wa.events([date(2026, 11, 17)], econ={}, earnings={}, fixed=(),
+                     fixed_sector=((date(2026, 11, 17), "Microsoft Ignite (Nov 17-20)",
+                                    ("Information Technology",)),))
+    assert wa.stock_lines("AMD", evts, (), sector="Information Technology") == \
+        ["calendar: Tue 11/17 Microsoft Ignite (Nov 17-20) (Information Technology)"]

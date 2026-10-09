@@ -41,6 +41,22 @@ FIXED_EVENTS: tuple[tuple[date, str, str], ...] = (
     (date(2026, 11, 30), "market", "MSCI quarterly review takes effect: heavy trading at the close"),
     (date(2026, 12, 11), "market", "Nasdaq-100 additions and deletions announced"),
     (date(2026, 12, 18), "market", "Nasdaq-100 annual rebalance at the close"),
+    # Big money movers no feed carries (WORKLIST §58), each from its own source,
+    # read 2026-10-09: Treasury (refunding), the Fed (minutes, 3 weeks after the
+    # meeting: expected), Congress's research service (the continuing resolution).
+    (date(2026, 11, 4), "econ", "Treasury quarterly refunding announcement (how much debt it sells)"),
+    (date(2026, 11, 18), "fed", "FOMC minutes of the Oct 27-28 meeting (expected)"),
+    (date(2026, 12, 11), "political", "Government funding runs out (continuing resolution ends; "
+                                      "shutdown risk from 12/12)"),
+)
+#: Dated events that move ONE part of the market (WORKLIST §58). OPEC's 4 Oct 2026
+#: statement: "The next meeting will be held on 1 November 2026" (a Sunday, so the
+#: first session after it); conference dates from the organisers.
+FIXED_SECTOR_EVENTS: tuple[tuple[date, str, tuple[str, ...]], ...] = (
+    (date(2026, 11, 2), "OPEC+ (7 countries) met Sun 11/01 on output", ("Energy",)),
+    (date(2026, 11, 17), "Microsoft Ignite (Nov 17-20)", ("Information Technology",)),
+    (date(2026, 11, 30), "AWS re:Invent (Nov 30-Dec 4) and NVIDIA GTC Washington (Nov 30-Dec 3)",
+     ("Information Technology", "Communication Services")),
 )
 #: Earnings that move a whole sector even when no book holds them (WORKLIST
 #: §54). Sector names as in the index constituents; TSM and ASML are not S&P
@@ -120,7 +136,9 @@ def events(days: Sequence[date], *, econ: Mapping[date, Iterable[str | Release]]
            fixed: Iterable[tuple[date, str, str]] = FIXED_EVENTS,
            sector_econ: Mapping[date, Iterable[tuple[str, tuple[str, ...]]]] | None = None,
            bellwethers: Mapping[str, Earnings] | None = None,
-           bellwether_sectors: Mapping[str, tuple[str, ...]] = BELLWETHERS) -> list[Event]:
+           bellwether_sectors: Mapping[str, tuple[str, ...]] = BELLWETHERS,
+           fixed_sector: Iterable[tuple[date, str, tuple[str, ...]]] = FIXED_SECTOR_EVENTS,
+           ) -> list[Event]:
     """Everything dated inside `days`, in date order."""
     window = set(days)
     out = [Event(day=d, kind="econ", text=r) if isinstance(r, str) else
@@ -129,6 +147,8 @@ def events(days: Sequence[date], *, econ: Mapping[date, Iterable[str | Release]]
     out += [Event(day=d, kind="sector", text=name, sectors=sectors)
             for d, items in (sector_econ or {}).items() if d in window
             for name, sectors in items]
+    out += [Event(day=d, kind="sector", text=text, sectors=sectors)
+            for d, text, sectors in fixed_sector if d in window]
     out += [Event(day=e.on, kind="bellwether", symbols=(s,), when=e.when,
                   sectors=bellwether_sectors.get(s, ()),
                   text=f"{s} reports earnings" + (f" {e.when}" if e.when else ""))

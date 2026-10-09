@@ -106,6 +106,8 @@ async def main(use_llm: bool) -> int:
         earnings = {s: e for s, e in found.items() if s in names}
         bells = {s: e for s, e in found.items() if s in wa.BELLWETHERS and s not in names}
         fixed = list(wa.FIXED_EVENTS) + (wa.market_mechanics(today, days[-1]) if days else [])
+        months = sorted({d.replace(day=1) for d in days}) if days else []
+        fixed += [(d, "market", text) for d, text in await cal.big_ipos(client, months)]
         if sessions and days:
             fixed += wa.closures(sessions, today, days[-1])
         evts = wa.events(days, econ=econ, earnings=earnings, fixed=fixed,

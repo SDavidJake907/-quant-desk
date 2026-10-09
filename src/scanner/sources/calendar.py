@@ -25,6 +25,7 @@ become permission to trade through earnings.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import date, timedelta
 
 import httpx
@@ -60,6 +61,17 @@ MARKET_MOVING = ("FOMC", "CPI", "Nonfarm", "PPI", "GDP", "Unemployment",
                  # added 2026-10-08 (WORKLIST §54): the rest of what moves the index
                  "Retail Sales", "PCE", "ISM", "Beige Book", "Michigan Consumer Sentiment",
                  "Manufacturing PMI", "10-Year Note Auction", "30-Year Bond Auction")
+#: Foreign central banks whose decisions move global yields, and with them US
+#: stocks (WORKLIST §58): (country, event name) exactly as the feed prints them.
+GLOBAL_CENTRAL_BANKS = (
+    ("Euro Zone", "ECB Interest Rate Decision"),
+    ("Japan", "BoJ Interest Rate Decision"),
+    ("United Kingdom", "BoE Interest Rate Decision"),
+    ("China", "China Loan Prime Rate 5Y"),
+    ("South Korea", "Interest Rate Decision"),     # home of Samsung and SK Hynix memory
+)
+IPO_URL = "https://api.nasdaq.com/api/ipo/calendar"
+
 #: Releases that move one part of the market: name token -> sectors it touches.
 SECTOR_EVENTS: dict[str, tuple[str, ...]] = {
     "OPEC": ("Energy",),
@@ -215,6 +227,54 @@ def surprise(actual: str, consensus: str) -> str:
     return "above" if a > c else "below"
 
 
+def parse_global(payload: dict) -> tuple[Release, ...]:
+    """Pure parse: the day's foreign central-bank decisions, named with their country."""
+    rows = (payload.get("data") or {}).get("rows") or []
+    out: dict[str, Release] = {}
+    for row in rows:
+        key = (str(row.get("country") or ""), str(row.get("eventName") or "").strip())
+        if key in GLOBAL_CENTRAL_BANKS:
+            name = f"{key[0]}: {key[1]}"
+            out.setdefault(name, Release(name=name, actual=_value(row.get("actual")),
+                                         consensus=_value(row.get("consensus")),
+                                         previous=_value(row.get("previous"))))
+    return tuple(out.values())
+
+
+def parse_ipos(payload: dict, *, min_dollars: float = 1e9) -> tuple[tuple[date, str], ...]:
+    """Pure parse: upcoming IPOs raising at least `min_dollars`, as (day, text)."""
+    rows = ((((payload.get("data") or {}).get("upcoming") or {}).get("upcomingTable") or {})
+            .get("rows") or [])
+    out = []
+    for row in rows:
+        try:
+            dollars = float(str(row.get("dollarValueOfSharesOffered") or "").replace("$", "")
+                            .replace(",", ""))
+            month, day, year = (int(x) for x in str(row.get("expectedPriceDate")).split("/"))
+        except (ValueError, TypeError):
+            continue
+        if dollars >= min_dollars:
+            out.append((date(year, month, day),
+                        f"IPO: {row.get('companyName', '?')} ({row.get('proposedTickerSymbol', '?')}), "
+                        f"about ${dollars / 1e9:.1f}B raised"))
+    return tuple(sorted(out))
+
+
+async def big_ipos(client: httpx.AsyncClient, months: Iterable[date],
+                   *, min_dollars: float = 1e9) -> tuple[tuple[date, str], ...]:
+    """Big upcoming IPOs for the given months (one request per month)."""
+    found: list[tuple[date, str]] = []
+    for m in months:
+        try:
+            response = await client.get(IPO_URL, params={"date": f"{m:%Y-%m}"},
+                                        headers=HEADERS, timeout=15.0)
+            response.raise_for_status()
+            found += parse_ipos(response.json(), min_dollars=min_dollars)
+        except (httpx.HTTPError, ValueError):
+            continue
+    return tuple(sorted(set(found)))
+
+
 def parse_sector_events(payload: dict, *, country: str = US
                         ) -> tuple[tuple[str, tuple[str, ...]], ...]:
     """Pure parse: the day's sector-moving releases as (name, sectors), each once."""
@@ -244,7 +304,7 @@ async def scheduled_events(client: httpx.AsyncClient, *, on: date
     except (httpx.HTTPError, ValueError):
         return (), ()
     wide = set(parse_economic(payload))
-    return (tuple(r for r in parse_releases(payload) if r.name in wide),
+    return (tuple(r for r in parse_releases(payload) if r.name in wide) + parse_global(payload),
             parse_sector_events(payload))
 
 
