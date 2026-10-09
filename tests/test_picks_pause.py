@@ -16,3 +16,21 @@ def test_emptied_list_keeps_comments_and_reads_as_no_names(tmp_path):
     path.write_text(out, encoding="utf-8")
     assert picks.read_list(path)[0] == ()
     assert "# PICKS -- header" in out and "PAUSED for the weekend" in out
+
+
+def test_keep_best_ranks_picks_by_return_since_entry():
+    positions = [{"symbol": "PLTR", "unrealized_plpc": "0.062"},
+                 {"symbol": "AMD", "unrealized_plpc": "-0.05"},
+                 {"symbol": "ABBV", "unrealized_plpc": "0.021"},
+                 {"symbol": "XOM", "unrealized_plpc": "0.011"},
+                 {"symbol": "MPC", "unrealized_plpc": "0.053"}]          # Gemma's, not a pick
+    picks_held = {"PLTR", "AMD", "ABBV", "XOM"}
+    assert picks_pause.best(positions, picks_held, 3) == ("PLTR", "ABBV", "XOM")
+
+
+def test_emptied_list_can_keep_some_names(tmp_path):
+    text = "# header\nAMD\nPLTR\nXOM\n"
+    out = picks_pause.emptied(text, "PAUSED", keep=("PLTR",))
+    path = tmp_path / "picks.txt"
+    path.write_text(out, encoding="utf-8")
+    assert picks.read_list(path)[0] == ("PLTR",)
