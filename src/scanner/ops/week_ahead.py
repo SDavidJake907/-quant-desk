@@ -33,6 +33,14 @@ FIXED_EVENTS: tuple[tuple[date, str, str], ...] = (
     (date(2026, 11, 3), "political", "US midterm elections"),
     (date(2026, 12, 8), "fed", "FOMC meeting starts (Dec 8-9, decision on the 9th)"),
     (date(2026, 12, 9), "fed", "FOMC rate decision"),
+    # Index events from Nasdaq's Trading Calendar 2026 (nasdaq.com/trading-calendar,
+    # read 2026-10-08). Options expiry, triple witching and holidays are computed
+    # or come from the broker, and agree with it.
+    (date(2026, 10, 30), "market", "Russell US index rank day (sets December membership)"),
+    (date(2026, 11, 13), "market", "Russell preliminary add/delete lists, 6pm ET"),
+    (date(2026, 11, 30), "market", "MSCI quarterly review takes effect: heavy trading at the close"),
+    (date(2026, 12, 11), "market", "Nasdaq-100 additions and deletions announced"),
+    (date(2026, 12, 18), "market", "Nasdaq-100 annual rebalance at the close"),
 )
 #: Earnings that move a whole sector even when no book holds them (WORKLIST
 #: §54). Sector names as in the index constituents; TSM and ASML are not S&P
