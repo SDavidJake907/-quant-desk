@@ -72,3 +72,19 @@ def test_daily_returns_and_probability_of_being_better():
     assert c.prob_better(strong, weak) == pytest.approx(1.0)
     assert c.prob_better(weak, strong) == pytest.approx(0.0)
     assert c.prob_better({days[0]: 1.0}, {days[0]: 0.0}) is None      # too few days
+
+
+def test_competition_prices_can_be_forced_fresh(monkeypatch):
+    # The 13:30 scoring once reused prices cached that morning, so the ghosts,
+    # momentum and S&P were a day behind the live books (2026-10-09).
+    import asyncio
+    from scanner.features import bars as fb
+    seen = {}
+
+    async def fake_payload(symbol, client, *, range_, interval, ttl_seconds=None):
+        seen[symbol] = ttl_seconds
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(fb, "fetch_payload", fake_payload)
+    asyncio.run(fb.fetch_many(("AAA",), None, range_="3mo", ttl_seconds=3600))
+    assert seen == {"AAA": 3600}

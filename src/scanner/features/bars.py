@@ -328,21 +328,28 @@ def cache_payload(symbol: str, range_: str, interval: str, payload: dict) -> Non
 
 
 async def fetch_bars(
-    symbol: str, client: httpx.AsyncClient, *, range_: str = "2y"
+    symbol: str, client: httpx.AsyncClient, *, range_: str = "2y",
+    ttl_seconds: float | None = None,
 ) -> Bars:
-    """Fetch (or reuse today's cache of) daily bars for one symbol."""
-    payload = await fetch_payload(symbol, client, range_=range_, interval="1d")
+    """Fetch (or reuse today's cache of) daily bars for one symbol.
+
+    `ttl_seconds` caps the cache's age: a caller that needs TODAY's close after
+    the market shuts (the competition's 13:30 scoring) must not reuse bars cached
+    that morning. Left out, the day-stamped cache applies as before."""
+    payload = await fetch_payload(symbol, client, range_=range_, interval="1d",
+                                  ttl_seconds=ttl_seconds)
     bars = parse_chart(payload, symbol)  # parse before caching; never cache garbage
     cache_payload(symbol, range_, "1d", payload)
     return bars
 
 
 async def fetch_many(
-    symbols: tuple[str, ...], client: httpx.AsyncClient, *, range_: str = "2y"
+    symbols: tuple[str, ...], client: httpx.AsyncClient, *, range_: str = "2y",
+    ttl_seconds: float | None = None,
 ) -> tuple[dict[str, Bars], tuple[str, ...]]:
     """Fetch many symbols concurrently. Returns (bars_by_symbol, errors)."""
     settled = await asyncio.gather(
-        *(fetch_bars(s, client, range_=range_) for s in symbols),
+        *(fetch_bars(s, client, range_=range_, ttl_seconds=ttl_seconds) for s in symbols),
         return_exceptions=True,
     )
     bars: dict[str, Bars] = {}

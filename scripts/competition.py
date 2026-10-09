@@ -133,11 +133,17 @@ async def snapshot() -> int:
                 f"{v.name} {[n.symbol for n in v.names]}" for k, v in books.items() if k.startswith(month)))
         current = {k: v for k, v in books.items() if k.startswith(month)}
         symbols = tuple({n.symbol for v in current.values() for n in v.names})
-        bars, _ = await fetch_many(symbols, client, range_="3mo")
+        bars, _ = await fetch_many(symbols, client, range_="3mo", ttl_seconds=FRESH_S)
         for k, v in current.items():
             books[k] = c.advance(v, {s: ohlc(bars[s]) for s in bars})
         save_paper(books)
     return 0
+
+
+#: Prices for the paper books (ghosts, momentum, S&P) may be at most this old.
+#: Run at 13:30 AK, after the close, so a morning cache is refetched with the
+#: day's close -- otherwise they lag the live books by a day (2026-10-09).
+FRESH_S = 3600
 
 
 def with_start(snaps: list[c.Snapshot]) -> list[c.Snapshot]:
@@ -214,7 +220,8 @@ async def standings() -> int:
     snaps, books = load_snaps(), load_paper()
     async with httpx.AsyncClient(timeout=120) as client:
         symbols = tuple({n.symbol for v in books.values() for n in v.names})
-        bars, _ = await fetch_many(symbols, client, range_="6mo") if symbols else ({}, ())
+        bars, _ = (await fetch_many(symbols, client, range_="6mo", ttl_seconds=FRESH_S)
+                   if symbols else ({}, ()))
     last_close: dict[str, dict[str, float]] = defaultdict(dict)
     for v in books.values():
         for n in v.names:
