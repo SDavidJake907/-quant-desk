@@ -31,7 +31,9 @@ $tasks = @(
     "stock-scanner-journal",
     "stock-scanner-weekly",
     "stock-scanner-monday",
-    "stock-scanner-weekahead"
+    "stock-scanner-weekahead",
+    "stock-scanner-extsync",
+    "stock-scanner-gemma-sunday"
 )
 
 # Retired 2026-10-06 (WORKLIST §37). Unregistered on every run so a machine
@@ -266,3 +268,19 @@ $momSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLi
 $momAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_momentum.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-momentum" -Trigger $momTrigger -Action $momAction -Settings $momSettings -Description "Momentum paper book: monthly tranche rebuild, market-on-close (11:40 AK weekdays)" -Force | Out-Null
 Write-Output "registered stock-scanner-momentum 11:40 AK weekdays, acts once a month"
+
+# --- extended hours (WORKLIST §59) ---------------------------------------------
+# Hourly 12:35-04:35 AK: the picks sync in after-hours, overnight (from Sunday
+# 16:00 AK) and premarket, as limit orders; stops armed by protect.py at the open.
+# Gemma decides once more on Sunday 16:45 AK, in the overnight session.
+$exTrigger = New-ScheduledTaskTrigger -Daily -At 12:35PM
+$exTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 12:35PM -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Hours 16)).Repetition
+$exSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 20) -MultipleInstances IgnoreNew
+$exAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_extsync.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-extsync" -Trigger $exTrigger -Action $exAction -Settings $exSettings -Description "Extended-hours picks sync, hourly 12:35-04:35 AK" -Force | Out-Null
+Write-Output "registered stock-scanner-extsync  hourly 12:35-04:35 AK"
+$gsTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 4:45PM
+$gsSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$gsAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_gemma.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-gemma-sunday" -Trigger $gsTrigger -Action $gsAction -Settings $gsSettings -Description "Gemma's Sunday-evening decision (16:45 AK)" -Force | Out-Null
+Write-Output "registered stock-scanner-gemma-sunday  Sundays 16:45 AK"

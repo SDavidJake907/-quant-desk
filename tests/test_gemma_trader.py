@@ -141,3 +141,10 @@ def test_unknown_or_missing_choices_fall_back_to_the_defaults():
 def test_prompt_says_news_and_calendar_lines_are_context_not_swap_signals():
     text = gt.prompt(FACTS, held={}, max_positions=5)
     assert "in the news" in text and "in the price" in text and "not as a" in text
+
+
+def test_prompt_states_the_session_outside_regular_hours():
+    # WORKLIST §59: on Sunday evening her orders are limits with no stop until the open.
+    text = gt.prompt(FACTS, held={}, max_positions=5, session="overnight")
+    assert "overnight" in text and "limit orders" in text and "9:30" in text
+    assert "Session" not in gt.prompt(FACTS, held={}, max_positions=5)    # regular: unchanged

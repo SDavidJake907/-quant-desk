@@ -88,3 +88,15 @@ def test_competition_prices_can_be_forced_fresh(monkeypatch):
     monkeypatch.setattr(fb, "fetch_payload", fake_payload)
     asyncio.run(fb.fetch_many(("AAA",), None, range_="3mo", ttl_seconds=3600))
     assert seen == {"AAA": 3600}
+
+
+def test_each_quarter_moves_25_points_from_loser_to_winner_within_75_25():
+    # Operator, 2026-10-09: from 2027-01-01 start 50/50; at the end of each quarter
+    # the loser gives 25% of the capital to the winner; floor 25%. (WORKLIST §60)
+    from scanner.ops import competition as c
+    P, G = c.PICKS, c.GEMMA
+    assert c.split_after([]) == (50.0, 50.0)
+    assert c.split_after([G]) == (25.0, 75.0)
+    assert c.split_after([G, G]) == (25.0, 75.0)          # floor: never below 25
+    assert c.split_after([G, P]) == (50.0, 50.0)          # a comeback is one quarter away
+    assert c.split_after([P, P, G, None]) == (50.0, 50.0) # an undecided quarter moves nothing

@@ -63,7 +63,10 @@ CHARTER = (
     "the same rules, and your scoreboard shows both books every morning. It is "
     "scored month by month (win or lose), then by quarter; the season ends Dec 31 "
     "and its winner gets 10 more points of the account for the next season, taken "
-    "from the other book. A random 'ghost' book is also scored each month: beating "
+    "from the other book. Both books now run 50/50 of the capital; from 2027, at the end "
+    "of each quarter the loser gives 25% of the capital to the winner (never past 75/25: the "
+    "loser always keeps a book); this quarter is the trial run. A random 'ghost' book "
+    "is also scored each month: beating "
     "it shows your picking, not your list, did the work."
 )
 
@@ -116,6 +119,14 @@ MENU_RULES = "\n".join((
 ))
 
 
+#: Outside regular hours (WORKLIST §59): what a decision means right now.
+SESSION_NOTE = (
+    "Session: {session} (outside regular hours). Your buys and sells go out now as "
+    "limit orders in thin trading; no stop can be placed until the 9:30 ET open, when "
+    "your stop and target are attached. Weigh that: a new buy tonight has no stop "
+    "until the open.\n")
+
+
 class Decision(Frozen):
     keep: tuple[str, ...]
     plans: tuple[Plan, ...] = ()
@@ -160,7 +171,7 @@ def schema(allowed: Iterable[str], max_positions: int,
 
 def prompt(facts: Mapping[str, str], *, held: Mapping[str, str], max_positions: int,
            scoreboard: str = "", sleeve: str = "its share",
-           menu: Menu | None = None, menu_text: str = "") -> str:
+           menu: Menu | None = None, menu_text: str = "", session: str = "regular") -> str:
     book = "\n".join(f"- {s}: {status}" for s, status in held.items()) or "- (no positions)"
     score = scoreboard or "No scoreboard yet: this is the start of your record."
     blocks = "\n\n".join(f"[{s}]\n{text}" for s, text in facts.items())
@@ -168,6 +179,7 @@ def prompt(facts: Mapping[str, str], *, held: Mapping[str, str], max_positions: 
         CHARTER.format(sleeve=sleeve, n=max_positions), "",
         RULES.format(n=max_positions),
         MENU_RULES.format(menu_text=menu_text) if menu is not None else "",
+        SESSION_NOTE.format(session=session) if session != "regular" else "",
         f"Your scoreboard: {score}", "",
         "Your book now:", book, "",
         "The list:", "", blocks, "",

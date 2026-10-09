@@ -422,7 +422,9 @@ class TradingPolicy(Frozen):
     #: buy its $900-1,700 names in whole shares, and picks keep 20%).
     #: 60% from 2026-10-07 evening, when momentum stopped trading and its 40%
     #: was split Gemma +20 / picks + manual +20 (operator's choice).
-    gemma_allocation_pct: float = 60.0
+    #: 50.0 from 2026-10-09 (operator: "both of us starting with 50/50"): Gemma
+    #: 50%, picks + manual 50%. The quarterly 25% transfers start 2027 (§60).
+    gemma_allocation_pct: float = 50.0
     gemma_max_positions: int = 5
     #: Risk per Gemma trade, as % of ITS sleeve. 2.0 from 2026-10-07 (operator:
     #: "push Gemma to max out profit"): at 1% with ~10% stops its five positions
@@ -452,6 +454,14 @@ class TradingPolicy(Frozen):
     #: its stocks each item touches -- dates and headlines, never its own earlier
     #: read of them. Context, labelled as such; not a tested edge.
     gemma_sees_brief: bool = True
+    #: EXTENDED HOURS (WORKLIST §59, operator 2026-10-09: both books, every
+    #: session -- premarket, after-hours, and overnight from Sunday 8 PM ET).
+    #: Outside regular hours orders are plain limit orders (Alpaca accepts no
+    #: stops then); the stop is armed by protect.py at the open.
+    extended_hours_trading: bool = True
+    #: An extended-hours sell is a limit this far under the live price, so it
+    #: fills in a thin market without becoming a market order.
+    extended_sell_offset_pct: float = 0.5
 
     # --- momentum engine sleeve ---------------------------------------------
     #: Share of equity the momentum book is sized against. 50% on 2026-10-06,

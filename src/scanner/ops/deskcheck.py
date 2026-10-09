@@ -22,6 +22,8 @@ from scanner.ops.runlog import header_time
 EXPECTED_RUNS: dict[str, int] = {
     "tradingagents": 1, "scan": 14, "flatten": 4, "momentum": 1, "gemma": 1,
     "data": 1, "outcomes": 1, "weekahead": 1,
+    # Extended-hours sync (§59), by the 13:45 check: 00:35-04:35 and 12:35, 13:35.
+    "extsync": 7,
 }
 #: Case-SENSITIVE: this codebase shouts its failures ("FAILED", "NOT FLAT",
 #: "FAILING OPEN"); lowercase "0 failed run(s)" is a routine count, not an alarm.

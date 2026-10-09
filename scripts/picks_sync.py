@@ -30,7 +30,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.config import settings
-from scanner.execution import bookorders, manual, ownership, picks
+from scanner.execution import bookorders, manual, ownership, picks, sessions
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.guards import RiskLimits, check_account
 from scanner.execution.ownership import PICKS
@@ -60,7 +60,12 @@ async def main(submit: bool) -> int:
         open_orders = await broker._get("/v2/orders", status="open", nested="true")
         owner_map = ownership.owners(await broker._get(
             "/v2/orders", status="all", limit=500, nested="true"))
-        market_open = await broker.market_open()
+        # Extended hours (WORKLIST §59): outside regular hours the orders go as
+        # limit orders and protect.py arms the stops at the open.
+        session = await sessions.current(broker)
+        market_open = session == sessions.REGULAR
+        tradable = session == sessions.REGULAR or (
+            session in sessions.EXTENDED and POLICY.extended_hours_trading)
 
         held = {p["symbol"] for p in positions}
         pending = {o["symbol"] for o in open_orders if o.get("side") == "buy"}
@@ -70,11 +75,11 @@ async def main(submit: bool) -> int:
         plan = picks.plan(listed, owner_map, held, pending - stale_syms)
         for symbol, why in plan.skipped:
             print(f"  {DIM}{symbol:<6} skipped -- {why}{RESET}")
-        print(f"  plan: buy {list(plan.buys) or 'nothing'}; sell {list(plan.sells) or 'nothing'}"
+        print(f"  [{session}] plan: buy {list(plan.buys) or 'nothing'}; sell {list(plan.sells) or 'nothing'}"
               + (f"; re-send stale {sorted(stale_syms)}" if stale_syms else ""))
 
-        if not market_open:
-            print(f"  {DIM}market closed -- nothing sent; the first run after the open acts{RESET}")
+        if not tradable:
+            print(f"  {DIM}market closed -- nothing sent; the first run in a session acts{RESET}")
             return 0
         if not submit:
             print(f"  {YELLOW}preview -- re-run with --submit{RESET}")
@@ -91,7 +96,8 @@ async def main(submit: bool) -> int:
         # 2. sells: cancel that symbol's legs, then close once the shares are free
         for symbol in plan.sells:
             ok = await bookorders.sell(broker, symbol, open_orders, strategy=PICKS,
-                                       reason="removed from the list", policy=POLICY)
+                                       reason="removed from the list", policy=POLICY,
+                                       session=session, client=client)
             print(f"  {GREEN if ok else RED}{'sold' if ok else 'SELL FAILED'}{RESET} {symbol}")
 
         # 3. buys
@@ -119,7 +125,7 @@ async def main(submit: bool) -> int:
                 continue
             result = await bookorders.buy_with_stop(
                 broker, client, symbol, strategy=PICKS, sleeve=sleeve, room=room,
-                cap_pct=cap, policy=POLICY, reason="on the picks list")
+                cap_pct=cap, policy=POLICY, reason="on the picks list", session=session)
             if not result.ok:
                 print(f"  {YELLOW}{symbol:<6} not bought -- {result.message}{RESET}")
                 continue

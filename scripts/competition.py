@@ -211,6 +211,9 @@ def standings_text(snaps, books, last_close) -> str:
                 "snapshots; until then the lead is mostly noise.")
     lines += ["", f"## Season {results[0].month[:4] if results else ''}", "",
               f"You {season[c.PICKS]:+.2f}%, Gemma {season[c.GEMMA]:+.2f}% (sum of monthly returns). "
+              f"Both books run 50/50 now; from {c.STAKES_START:%b %d %Y}, at each quarter's end the "
+              f"loser gives {c.QUARTER_TRANSFER_PCT:.0f}% of the capital to the winner (never past "
+              f"75/25). Q4 2026 is the trial quarter.",
               f"Season ends Dec 31; the winner gets +{c.REWARD_POINTS:.0f} points of the account "
               "for next season, taken from the other book.", "", how_sure, ""]
     return "\n".join(lines)

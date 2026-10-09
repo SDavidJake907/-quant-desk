@@ -165,6 +165,10 @@ async def main(use_llm: bool) -> int:
     sched_md = [f"{s.day:%a %m/%d} {s.time}: {s.details}" for s in sched]
     md = wa.render_md(today, evts, brief["flags"], posts_md, sched_md, impacts,
                       [h for h in market if h not in linked][:15], results=results)
+    mom_day, mom_picks, _ = opinions.momentum_picks()
+    md += (f"\n## The momentum rule's picks (a helper for both books)\n\n"
+           f"Formed {mom_day}: {', '.join(mom_picks) or 'none'}. Strongest 12-1 momentum, "
+           f"rebuilt monthly; the one tested signal on this desk. Information, not orders.\n")
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     path = REPORT_DIR / f"{today.isoformat()}.md"
     path.write_text(md, encoding="utf-8")

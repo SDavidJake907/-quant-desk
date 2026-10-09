@@ -55,6 +55,14 @@ def _closed_trades() -> None:
 
 
 async def _momentum() -> None:
+    from scanner.execution.policy import TradingPolicy
+    if not TradingPolicy().momentum_trades:
+        # A helper since 2026-10-07 (its picks inform both books); its old paper
+        # book counted cash but not its paper positions and showed a fake loss
+        # (-25.79%). Its rule is still scored, correctly, in the competition.
+        print(f"\n{BOLD}momentum{RESET}: a helper for both books (not a book); "
+              f"its rule is scored in the competition standings")
+        return
     print(f"\n{BOLD}momentum paper book{RESET}")
     book = state.load(PAPER_STATE)
     if book is None or not PAPER_RECORD.exists():

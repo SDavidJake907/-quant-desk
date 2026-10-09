@@ -29,6 +29,30 @@ from scanner.models import Frozen
 PICKS, GEMMA = "picks", "gemma"
 GHOST_PICKS, GHOST_GEMMA, MOMENTUM, SPX = "ghost_picks", "ghost_gemma", "momentum_rule", "sp500"
 REWARD_POINTS = 10.0
+#: THE STAKES (operator, 2026-10-09; WORKLIST §60). Months give points; a
+#: quarter goes to the most points (tie: higher total return). From 2027-01-01
+#: the two books (already EVEN at 50/50 since 2026-10-09) start the stakes year at
+#: 50/50, and at the end of each quarter the loser gives
+#: 25% of the capital to the winner, never past 75/25 (the loser keeps a book, and
+#: a comeback is one quarter away). Q4 2026 is the trial quarter: its winner takes
+#: the existing +10 points.
+QUARTER_TRANSFER_PCT = 25.0
+CAPITAL_FLOOR_PCT = 25.0
+STAKES_START = date(2027, 1, 1)
+STAKES_START_SPLIT = 50.0
+
+
+def split_after(quarter_winners: Sequence[str | None],
+                start_picks_pct: float = STAKES_START_SPLIT) -> tuple[float, float]:
+    """(picks %, Gemma %) after these quarters, in order. None = undecided quarter."""
+    picks = start_picks_pct
+    for w in quarter_winners:
+        if w == PICKS:
+            picks += QUARTER_TRANSFER_PCT
+        elif w == GEMMA:
+            picks -= QUARTER_TRANSFER_PCT
+        picks = min(100.0 - CAPITAL_FLOOR_PCT, max(CAPITAL_FLOOR_PCT, picks))
+    return picks, 100.0 - picks
 
 
 class Snapshot(Frozen):

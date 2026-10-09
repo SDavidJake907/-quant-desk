@@ -37,7 +37,7 @@ from scanner.advisor import market_context as mc
 from scanner.advisor import opinions
 from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
-from scanner.execution import bookorders, ownership, picks, scorecard
+from scanner.execution import bookorders, ownership, picks, scorecard, sessions
 from scanner.execution.alpaca import Alpaca
 from scanner.execution.guards import RiskLimits, check_account
 from scanner.execution.ownership import GEMMA
@@ -254,9 +254,14 @@ async def main(submit: bool) -> int:
         open_orders = await broker._get("/v2/orders", status="open", nested="true")
         owner_map = ownership.owners(await broker._get(
             "/v2/orders", status="all", limit=500, nested="true"))
-        market_open = await broker.market_open()
+        # Extended hours (WORKLIST §59): outside regular hours the orders go as
+        # limit orders and protect.py arms the stops at the open.
+        session = await sessions.current(broker)
+        market_open = session == sessions.REGULAR
+        tradable = session == sessions.REGULAR or (
+            session in sessions.EXTENDED and POLICY.extended_hours_trading)
 
-        if submit and market_open:
+        if submit and tradable:
             for order in picks.stale_entries(open_orders, datetime.now(timezone.utc),
                                              minutes=POLICY.picks_stale_entry_minutes,
                                              strategy=GEMMA):
@@ -320,7 +325,7 @@ async def main(submit: bool) -> int:
             print(f"  {YELLOW}scoreboard unavailable: {exc}{RESET}")
         text = gt.prompt(facts, held=held_status, max_positions=POLICY.gemma_max_positions,
                          scoreboard=score, sleeve=f"${sleeve_dollars:,.0f}",
-                         menu=MENU, menu_text=MENU_TEXT)
+                         menu=MENU, menu_text=MENU_TEXT, session=session)
         text = text.replace("The list:", f"Market: {trend}.\n\nThe list:", 1)
         try:
             answer = await chat_json(text, gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU),
@@ -342,7 +347,7 @@ async def main(submit: bool) -> int:
             # The whole menu, so the names Gemma PASSED OVER can be graded
             # against the ones it chose (ops/selection.py, WORKLIST §47).
             "menu": sorted(facts),
-            "submitted": submit and market_open}), POLICY)
+            "submitted": submit and tradable, "session": session}), POLICY)
 
         print(f"\n  {BOLD}Gemma holds{RESET} {list(decision.keep) or 'nothing'}")
         plans = {pl.symbol: pl for pl in decision.plans}
@@ -356,7 +361,7 @@ async def main(submit: bool) -> int:
             print(f"  {DIM}journal: {decision.journal}{RESET}")
         print(f"  plan: buy {list(buys) or 'nothing'}; sell {list(sells) or 'nothing'}")
 
-        if not market_open:
+        if not tradable:
             print(f"  {DIM}market closed -- nothing sent{RESET}")
             return 0
         if not submit:
@@ -365,7 +370,8 @@ async def main(submit: bool) -> int:
 
         for s in sells:
             ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA,
-                                       reason="Gemma dropped it", policy=POLICY)
+                                       reason="Gemma dropped it", policy=POLICY,
+                                       session=session, client=client)
             print(f"  {GREEN if ok else RED}{'sold' if ok else 'SELL FAILED'}{RESET} {s}")
         if kill_switch_active(settings.kill_switch_path):
             print(f"  {RED}kill switch active -- no buys{RESET}")
@@ -395,7 +401,7 @@ async def main(submit: bool) -> int:
                        f"{reasons.get(s, '')}",
                 risk_pct=POLICY.gemma_menu_value("size", pl.size),
                 atr_multiple=POLICY.gemma_menu_value("stop", pl.stop),
-                reward_risk=POLICY.gemma_menu_value("target", pl.target))
+                reward_risk=POLICY.gemma_menu_value("target", pl.target), session=session)
             if not result.ok:
                 print(f"  {YELLOW}{s:<6} not bought -- {result.message}{RESET}")
                 continue

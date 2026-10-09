@@ -14,13 +14,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from scanner.config import settings
-from scanner.execution import manual, picks
+import asyncio
+
+from scanner.execution import extended, manual, picks
 from scanner.execution.alpaca import BrokerError, round_tick
 from scanner.execution.audit import append_event
 from scanner.execution.flatten_run import close_when_released
 from scanner.execution.ownership import prefix_for
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.provenance import build_id
+from scanner.execution.sessions import REGULAR
 from scanner.execution.sizing import Sizing, size_position
 from scanner.features.bars import fetch_bars
 from scanner.features.intraday import fetch_intraday, max_range
@@ -59,12 +62,18 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
                         room: float, cap_pct: float, policy: TradingPolicy,
                         reason: str, risk_pct: float | None = None,
                         atr_multiple: float | None = None,
-                        reward_risk: float = 0.0) -> Bought:
+                        reward_risk: float = 0.0, session: str = REGULAR) -> Bought:
     """Price, size, send and log one bracket buy. Never raises on a broker or
     pricing failure; the refusal is logged and returned. `atr_multiple` and
     `reward_risk` are Gemma's menu choices; left out, the picks defaults."""
     try:
         last, atr = await price_and_atr(symbol, client)
+        if session != REGULAR:
+            # Outside regular hours: today's extended-session price, fresh or nothing.
+            live = await extended.price(symbol, client, session)
+            if live is None:
+                raise ValueError(f"no fresh {session} price")
+            last = live
         limit, stop, _ = picks.levels(
             last=last, atr_pct=atr,
             atr_multiple=policy.picks_stop_atr_multiple if atr_multiple is None else atr_multiple,
@@ -81,9 +90,15 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
         log(f"{strategy}_refused", symbol, sizing.limited_by, policy)
         return Bought(symbol=symbol, ok=False, message=sizing.limited_by)
     now = datetime.now().astimezone()
-    payload = manual.bracket(symbol, sizing.shares, limit=limit, stop=stop,
-                             target=target, at=now)
-    payload["client_order_id"] = f"{prefix_for(strategy)}{symbol}-{int(now.timestamp())}"
+    coid = f"{prefix_for(strategy)}{symbol}-{int(now.timestamp())}"
+    if session == REGULAR:
+        payload = manual.bracket(symbol, sizing.shares, limit=limit, stop=stop,
+                                 target=target, at=now)
+        payload["client_order_id"] = coid
+    else:
+        # No stop legs exist outside regular hours: the stop and target ride in
+        # the logged intent and protect.py arms them at the open (WORKLIST §59).
+        payload = extended.limit_payload(symbol, sizing.shares, "buy", limit, coid)
     intent = TradeIntent(
         symbol=symbol, action="buy", strategy=strategy, trigger_at=now,
         entry_price=limit, stop_price=stop, target_price=target,
@@ -102,22 +117,57 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
     return Bought(symbol=symbol, ok=True, sizing=sizing,
                   message=(f"{sizing.shares} sh limit {limit:,.2f} stop {stop:,.2f} "
                            f"({(limit - stop) / limit * 100:.1f}% below), "
-                           f"risk {sizing.risk_dollars:,.0f}, limited by {sizing.limited_by}"))
+                           f"risk {sizing.risk_dollars:,.0f}, limited by {sizing.limited_by}"
+                           + ("" if session == REGULAR
+                              else f" [{session}: stop arms at the open]")))
 
 
 async def sell(broker, symbol: str, open_orders, *, strategy: str, reason: str,
-               policy: TradingPolicy) -> bool:
+               policy: TradingPolicy, session: str = REGULAR, client=None) -> bool:
     """Cancel the symbol's working orders (its bracket legs), then close the
-    position once the shares are released. Logged either way."""
+    position once the shares are released. Logged either way. Outside regular
+    hours the close is a limit order a little under the live price (market
+    orders are not accepted then)."""
     for order in open_orders:
         if order.get("symbol") == symbol:
             try:
                 await broker.cancel_order(str(order["id"]))
             except BrokerError:
                 pass
+    if session != REGULAR:
+        return await _sell_extended(broker, symbol, strategy=strategy, reason=reason,
+                                    policy=policy, session=session, client=client)
     failed = await close_when_released(broker, (symbol,))
     ok = symbol not in failed
     log(f"{strategy}_exit", symbol,
         reason + ("; closed at market" if ok else f"; CLOSE FAILED: {failed.get(symbol)}"),
         policy)
     return ok
+
+
+async def _sell_extended(broker, symbol: str, *, strategy: str, reason: str,
+                         policy: TradingPolicy, session: str, client) -> bool:
+    live = await extended.price(symbol, client, session) if client is not None else None
+    qty = 0
+    for _ in range(10):                              # wait for cancelled legs to release
+        held = {p["symbol"]: p for p in await broker._get("/v2/positions")}
+        if symbol not in held:
+            log(f"{strategy}_exit", symbol, reason + "; already closed", policy)
+            return True
+        qty = int(float(held[symbol].get("qty_available") or 0))
+        if qty > 0:
+            break
+        await asyncio.sleep(2)
+    if live is None or qty < 1:
+        why = "no fresh price" if live is None else "shares not released"
+        log(f"{strategy}_exit", symbol, f"{reason}; {session} CLOSE FAILED: {why}", policy)
+        return False
+    limit = live * (1 - policy.extended_sell_offset_pct / 100)
+    coid = f"{prefix_for(strategy)}{symbol}-x{int(datetime.now().timestamp())}"
+    try:
+        await broker.submit(extended.limit_payload(symbol, qty, "sell", limit, coid))
+    except BrokerError as exc:
+        log(f"{strategy}_exit", symbol, f"{reason}; {session} CLOSE FAILED: {exc}", policy)
+        return False
+    log(f"{strategy}_exit", symbol, f"{reason}; {session} limit sell {qty} sh at {limit:,.2f}", policy)
+    return True
