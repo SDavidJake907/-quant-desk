@@ -1,7 +1,7 @@
 # Evaluation window — FROZEN
 
-    window               33  (window 32 closed 2026-10-08: Gemma reads the 03:00 daily brief)
-    policy fingerprint   f235ab909864  (gemma_sees_brief; before it 466533d96ea9)
+    window               34  (window 33 closed 2026-10-09: extended hours, 50/50, quarterly stakes)
+    policy fingerprint   1c5ed20750e6  (extended hours, Gemma 50%; before it f235ab909864)
     code build           4b77fab  — the last commit that can change behaviour
     what trades          1. PICKS via scripts/picks_sync.py (`pck-` ids): watchlists/picks.txt kept in
                             sync every 30 min, 2.5-ATR safety stop, no target, sector cap off
@@ -1222,3 +1222,4 @@ research.
 | 2026-10-08 | **window 32 CLOSED; window 33 declared at `f235ab909864` / `4b77fab`** -- the operator asked for the news to tie into Gemma (WORKLIST §52): a 03:00 daily brief (US market-moving releases, FOMC, earnings, the President's posts/schedule, 48h headlines, and Gemma's quote-grounded links from headlines to the desk's stocks) goes into Gemma's 05:45 facts as dated facts, with a rule that news is context, not a reason to swap. Also fixed: the economic calendar had shown yesterday's releases as today's in Gemma's market line since it was added (Nasdaq answers date=D with D-1). Picks unchanged; competition scoring unaffected | 11 open |
 | 2026-10-08 | window 33 amended before its first decision (same fingerprint `f235ab909864`): the brief's calendar widened (WORKLIST §54) -- more market-wide releases, sector releases, options expiry/holidays, bellwether earnings, each held stock's earnings across 4 weeks. Also TradingAgents lightened and its grade made independent (§53); Gemma does not see it | 11 open |
 | 2026-10-09 | window 33, same fingerprint `f235ab909864`: the brief's calendar gained foreign central banks, big IPOs and sourced big-money dates (WORKLIST §58) at the operator's request; competition scoring fixed to price the paper books fresh (they had lagged a day) | 11 open |
+| 2026-10-09 | **window 33 CLOSED; window 34 declared at `1c5ed20750e6`** -- extended-hours trading for both books (WORKLIST §59: limit orders, stops armed at the open, hourly sync 12:35-04:35 AK, Gemma Sunday 16:45 AK); capital 50/50 (Gemma 60 -> 50); the stakes fixed (§60: quarterly 25% transfers from 2027, Q4 2026 trial); momentum a helper for both; competition paper books priced fresh. Picks paused for the weekend except PLTR, ABBV, XOM | 6 open |

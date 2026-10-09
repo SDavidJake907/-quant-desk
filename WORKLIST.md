@@ -994,6 +994,52 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 60. The stakes, 50/50, momentum as a helper for both (2026-10-09)
+
+Operator's decisions, fixed before November so nobody wins by changing rules:
+- Monthly points (higher return); quarters to the most points (tie: higher
+  return). From 2027-01-01 the books start 50/50 and at each quarter's end the
+  loser gives 25% of the capital to the winner, floor 25% (75/25 at most).
+  Q4 2026 is the trial quarter (+10 points). `competition.split_after`.
+- Capital 50/50 NOW: gemma_allocation_pct 60 -> 50 (picks + manual 50).
+- Gemma proposed a 1% monthly premium, a leader VETO over the other book, and a
+  "drawdown equalizer" (double stake after a 15% month). Not adopted: a veto
+  breaks the two independent books; the double stake rewards luck. She accepted
+  the operator's stakes as fair.
+- Momentum: a helper for BOTH books -- its top 10 in the shared brief and marked
+  on Gemma's menu. The scorecard's "momentum paper book -25.79%" counted cash
+  but not paper positions (wound down 10-07); replaced by a helper note. The
+  rule's competition score (paper, fresh prices) is unaffected.
+- Fixed the same day: the 13:30 scoring priced the ghosts, momentum and S&P on
+  bars cached that morning (a day behind the live books); now 1-hour max age.
+- [ ] Per-trade review in the Friday report and month-end verdict: every closed
+      trade (entry, exit, days, how it closed, $, R) and per-book win rate,
+      average win/loss, expectancy, exits by type. Offered; scoring stays on
+      return (fair across capital sizes), trade stats explain why.
+
+## 59. Extended hours, both books (2026-10-09)
+
+Operator: trade the full 24/5 window -- premarket, after-hours, overnight from
+Sunday 8 PM ET -- for both books. Alpaca's rules (docs, 24/5 Trading): limit
+orders only, time_in_force day/gtc, extended_hours true; no stop or bracket legs.
+- `execution/sessions.py`: regular / pre / after / overnight / closed from the
+  clock and the broker's calendar (Friday night and Saturday are closed).
+- `execution/extended.py`: plain limit payloads; prices from Yahoo pre/post (1m)
+  or Alpaca's overnight feed -- this plan refuses recent SIP and BOATS, and IEX
+  shows only the regular close after hours. Stale (> 15 min; 45 overnight) =
+  refused.
+- `bookorders`: buy +0.30% / sell -0.5% limits outside regular hours; the stop is
+  logged with the intent and protect.py arms it at the 05:33 open.
+- picks_sync and gemma_trade act in any session (`extended_hours_trading`);
+  Gemma's prompt states the session. Tasks: stock-scanner-extsync hourly
+  12:35-04:35 AK; stock-scanner-gemma-sunday 16:45 AK. Desk check expects 7
+  extsync runs by 13:45.
+- First live run 2026-10-09 14:35 AK: [after] session detected, nothing to do.
+- Weekend picks pause (`picks_pause.py --keep-best N`): Friday 11:25 AK kept
+  PLTR, ABBV, XOM (3 vs Gemma's 3); restore Mon 05:20 AK.
+- [ ] Watch the first overnight cycle (Sun 16:35 sync, 16:45 Gemma, Mon 05:33
+      stops armed).
+
 ## 58. Big money movers in the calendar (2026-10-09)
 
 Operator: fill the calendar for the month -- where else does big money move?

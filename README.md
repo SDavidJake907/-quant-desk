@@ -36,15 +36,18 @@ recorded in `WORKLIST.md` (most recently Kronos, §43) so nobody tests them twic
 
 ```
                      who picks             who trades                 exits
-PICKS     (pck-)     you: watchlists/      system, every 30 min       safety stop, or you remove
-          40% of     picks.txt             in market hours            the name from the list
-          equity (shared with one-off manual trades, 12 slots)
-GEMMA     (gem-)     Gemma: up to 5        system, 05:45 AK weekdays  safety stop, or Gemma drops
-          60% of     names from core.txt,  from Gemma's choice        the name the next morning
-          equity     gemma.txt and the momentum rule's picks
+PICKS     (pck-)     you: watchlists/      system: every 30 min in    safety stop, or you remove
+          50% of     picks.txt             market hours, hourly in    the name from the list
+          equity (shared with one-off     extended hours (24/5)
+          manual trades, 12 slots)
+GEMMA     (gem-)     Gemma: up to 5        system: 05:45 AK weekdays  safety stop, or Gemma drops
+          50% of     names from core.txt,  and Sunday 16:45 AK        the name at her next decision
+          equity     gemma.txt and the     (overnight session)
+                     momentum rule's picks; her own stop/target/size from a menu
 MANUAL    (man-)     you                   you: manual_trade.py       stop or target (bracket)
-MOMENTUM  helper     the rule: top 10 by   nobody -- a paper record   (Gemma's benchmark; its picks
-          no money   12-1 momentum         kept by the monthly dry run are options on Gemma's menu)
+MOMENTUM  helper     the rule: top 10 by   nobody -- a paper record   (a helper for BOTH books: its
+          no money   12-1 momentum         kept by the monthly dry run picks are in the shared brief
+                                                                      and marked on Gemma's menu)
 SWEEP     (smc-)     paused                paused                     its own rules, if ever resumed
 ```
 
@@ -61,7 +64,10 @@ You against Gemma, scored by `scripts/competition.py` (rules in
 |---|---|
 | Month | Each book's change in total P/L over its average money invested. The higher wins the month. |
 | Quarter | More months won; a tie goes to the higher quarterly return. |
-| Season | The calendar year (season 1: 2026-10-07 .. 12-31). The winner gets **+10 points of the account** next season, taken from the other book. |
+| Capital | **50/50 since 2026-10-09** (Gemma 50%, picks + manual 50%). |
+| Season 1 | 2026-10-07 .. 12-31, the **trial quarter**. Its winner gets **+10 points of the account**, taken from the other book. |
+| Stakes from 2027 | The books start the year 50/50. **At the end of each quarter the loser gives 25% of the capital to the winner**, never past 75/25: the loser always keeps a book, and a comeback is one quarter away (WORKLIST §60). |
+| No vetoes | Each side picks its own stocks from its own list; only the daily brief is shared. Your picks are reserved, so Gemma cannot buy them; names you take from her list leave her menu, so they are flagged first. |
 | Ghosts | Each month a random 8 from the 150 most-traded S&P 500 stocks ("ghost-you") and a random 5 from Gemma's menu ("ghost-Gemma"), same stops, on paper. Beating your ghost shows the picking, not the list, did the work. |
 | Also scored | The momentum rule's top 10 and the S&P 500. |
 | How sure | After 10 trading days: the probability that one of you is really the better trader, from the daily returns resampled. |
@@ -71,10 +77,23 @@ Gemma is told all of this: its charter names the competition, the season and
 the reward, and its morning scoreboard shows both books, the S&P 500, the
 momentum rule and its own selection record.
 
+### Extended hours (24/5, WORKLIST §59)
+
+Both books trade outside regular hours: premarket (00:00-05:30 AK), after-hours
+(12:00-16:00) and overnight (Sunday 16:00 AK to Friday 00:00). Alpaca accepts only
+**limit orders, no stops** then, so: buys go at the live price +0.30%, sells 0.5%
+under it; a price older than 15 minutes (45 overnight) is refused, never guessed
+(Yahoo pre/post-market and Alpaca's overnight feed -- this data plan has no live
+SIP); the stop is logged with the order and **protect.py attaches it at the
+05:33 AK open**, or sells if the price has already gone through it. Gemma is told
+the session whenever she decides outside regular hours. Switch:
+`extended_hours_trading`. Weekend picks pause: `scripts/picks_pause.py`.
+
 ### One trading day (Alaska time; New York is +4 hours)
 
 ```
-03:30  RATINGS     TradingAgents rates ~46 names (shadow: graded, not shown to Gemma)
+03:30  RATINGS     TradingAgents rates up to 12 names, each about once a week (shadow)
+03:00  BRIEF       calendar, news, the President, which stocks each item touches (Gemma reads it)
 05:30  ── market opens ──────────────────────────────────────────────────────────────
 05:33  SAFETY PASS every 30 min until 12:03:
          1 protect.py         any position without a live stop gets one back
@@ -89,6 +108,9 @@ momentum rule and its own selection record.
                    snapshot + standings -> selection grades
 13:45  JOURNAL     desk officer: code checks every task ran and every stop is live; Gemma writes it up
 14:00+ RESEARCH    news archive, extended hours, auctions
+12:35-04:35 EXTENDED  picks sync hourly in after-hours, overnight and premarket (limit orders;
+                   the stop is armed by protect.py at the 05:33 open)
+SUN 16:45 GEMMA    her weekend decision, in the overnight session
 FRI 07:00 WEEKLY   the weekly review: every position, both books, the standings, next week's calendar
 ```
 
