@@ -2,14 +2,10 @@
 # Add a name: bought on the next run. Remove a name: sold on the next run.
 # One ticker per line, '#' starts a comment. Commit every edit. Stocks only.
 # 2026-10-06: the operator's 1-month leaders. MSTR left out (bitcoin proxy).
-AMD
-MRVL
-AMAT
-PLTR
 # 2026-10-08: added from the morning global scan (one-year momentum, near highs,
 # no earnings within 3 weeks); XOM and ABBV spread the book beyond chips.
-NVDA
-XOM
-ABBV
-ZETA
 # 2026-10-08: ARM, INTC, META, TSM removed (operator): replaced by the four above.
+# 2026-10-09: PAUSED for the weekend (picks_pause.py); kept the 3 best: PLTR, ABBV, XOM; names saved in picks.paused.txt, restored Monday
+PLTR
+ABBV
+XOM
