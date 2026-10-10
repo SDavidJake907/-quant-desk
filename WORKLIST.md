@@ -994,6 +994,19 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 61. Market dashboard in the daily brief (2026-10-09)
+
+Operator: keep track of the whole market -- S&P 500, Nasdaq, everything -- for a
+full view. The operator's copy of the 03:00 brief now opens with a dashboard:
+US indexes (incl. Russell 2000 and the equal-weight S&P: is the average stock
+rising or only the giants?), the overnight world (S&P/Nasdaq futures, Nikkei,
+Hang Seng, DAX, FTSE), VIX, the 10-year, oil, gold, the dollar (UUP; Yahoo did
+not return DX-Y.NYB), and the 11 sectors + semiconductors sorted by the month.
+1-day, 5-day, 1-month, trend vs the 20-day average. Gemma's inputs unchanged.
+Not adopted from the same request: the ICT Asia/London/NY session model -- it is
+the sweep idea measured at +0.000R (§22, the sweep scanner), and it belongs to
+24-hour markets (futures, forex) this desk does not trade.
+
 ## 60. The stakes, 50/50, momentum as a helper for both (2026-10-09)
 
 Operator's decisions, fixed before November so nobody wins by changing rules:
