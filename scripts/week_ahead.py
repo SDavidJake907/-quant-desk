@@ -31,6 +31,7 @@ from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
 from scanner.execution import ownership, picks
 from scanner.execution.alpaca import Alpaca
+from scanner.features.bars import fetch_many
 from scanner.llm.ollama import LLMError, chat_json
 from scanner.ops import week_ahead as wa
 from scanner.sources import calendar as cal
@@ -165,6 +166,14 @@ async def main(use_llm: bool) -> int:
     sched_md = [f"{s.day:%a %m/%d} {s.time}: {s.details}" for s in sched]
     md = wa.render_md(today, evts, brief["flags"], posts_md, sched_md, impacts,
                       [h for h in market if h not in linked][:15], results=results)
+    # The market dashboard at the top of the operator's copy (WORKLIST §61).
+    dash_syms = tuple(sym for _, members in wa.DASHBOARD for sym, _ in members)
+    async with httpx.AsyncClient(timeout=60) as client:
+        dash_bars, _ = await fetch_many(dash_syms, client, range_="3mo", ttl_seconds=3600)
+    dash = wa.dashboard_md(wa.DASHBOARD, {k: list(v.closes) for k, v in dash_bars.items()})
+    md = md.replace("## Watch: your positions",
+                    "## The market (closes up to the last session)\n\n" + dash
+                    + "\n## Watch: your positions", 1)
     mom_day, mom_picks, _ = opinions.momentum_picks()
     md += (f"\n## The momentum rule's picks (a helper for both books)\n\n"
            f"Formed {mom_day}: {', '.join(mom_picks) or 'none'}. Strongest 12-1 momentum, "

@@ -260,3 +260,51 @@ def render_md(day: date, evts: Sequence[Event], flag_lines: Sequence[str],
         lines.append("- no headline linked to the desk's stocks")
     lines += ["", "## Other headlines", ""] + [f"- {h}" for h in unlinked]
     return "\n".join(lines) + "\n"
+
+
+# --- the market dashboard (WORKLIST §61): the operator's view of the whole tape.
+# In the operator's copy of the brief only; Gemma's inputs are unchanged.
+DASHBOARD: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    ("US indexes", (("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq Composite"), ("^DJI", "Dow Jones"),
+                    ("^RUT", "Russell 2000 (small caps)"),
+                    ("RSP", "S&P 500 equal weight (the average stock)"))),
+    ("Overnight world", (("ES=F", "S&P 500 futures"), ("NQ=F", "Nasdaq 100 futures"),
+                         ("^N225", "Nikkei (Japan)"), ("^HSI", "Hang Seng (Hong Kong)"),
+                         ("^GDAXI", "DAX (Germany)"), ("^FTSE", "FTSE (London)"))),
+    ("Fear, rates, commodities", (("^VIX", "VIX (fear)"), ("^TNX", "10-year yield"),
+                                  ("CL=F", "Crude oil"), ("GC=F", "Gold"),
+                                  ("UUP", "US dollar (UUP)"))),
+    ("Sectors", (("XLK", "Technology"), ("SMH", "Semiconductors"), ("XLC", "Communication"),
+                 ("XLY", "Consumer Discretionary"), ("XLF", "Financials"), ("XLV", "Health Care"),
+                 ("XLI", "Industrials"), ("XLE", "Energy"), ("XLB", "Materials"),
+                 ("XLRE", "Real Estate"), ("XLU", "Utilities"), ("XLP", "Consumer Staples"))),
+)
+SORTED_GROUPS = ("Sectors",)
+
+
+def _chg(cl: Sequence[float], back: int) -> float | None:
+    return (cl[-1] / cl[-back - 1] - 1) * 100 if len(cl) > back and cl[-back - 1] else None
+
+
+def dashboard_md(groups, closes: Mapping[str, Sequence[float]]) -> str:
+    """One table per group: 1-day, 5-day, 1-month change and the trend
+    (above or below its 20-day average). Sectors sorted by the month."""
+    fmt = lambda x: "-" if x is None else f"{x:+.2f}%"
+    out = []
+    for title, members in groups:
+        rows = []
+        for sym, name in members:
+            cl = [c for c in closes.get(sym, ()) if c]
+            if len(cl) < 2:
+                continue
+            avg20 = sum(cl[-20:]) / len(cl[-20:])
+            rows.append((name, _chg(cl, 1), _chg(cl, 5), _chg(cl, 21),
+                         "up" if cl[-1] >= avg20 else "down"))
+        if title in SORTED_GROUPS:
+            rows.sort(key=lambda r: -(r[3] if r[3] is not None else -1e9))
+        if rows:
+            out += [f"**{title}**", "", "| | 1 day | 5 days | 1 month | trend |",
+                    "|---|---|---|---|---|"]
+            out += [f"| {n} | {fmt(a)} | {fmt(b)} | {fmt(c)} | {t} |" for n, a, b, c, t in rows]
+            out.append("")
+    return "\n".join(out)

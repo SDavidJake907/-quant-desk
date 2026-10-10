@@ -263,3 +263,22 @@ def test_fixed_sector_events_reach_their_sector():
                                     ("Information Technology",)),))
     assert wa.stock_lines("AMD", evts, (), sector="Information Technology") == \
         ["calendar: Tue 11/17 Microsoft Ignite (Nov 17-20) (Information Technology)"]
+
+
+# --- market dashboard (§61) -------------------------------------------------
+
+def test_dashboard_rows_show_changes_and_sort_sectors_by_month():
+    closes = {"^GSPC": [100.0] * 20 + [101.0, 102.0], "XLE": [50.0] * 21 + [55.0],
+              "XLK": [50.0] * 21 + [45.0]}
+    groups = (("US indexes", (("^GSPC", "S&P 500"),)),
+              ("Sectors", (("XLK", "Technology"), ("XLE", "Energy"))))
+    md = wa.dashboard_md(groups, closes)
+    assert "| S&P 500 | +0.99% |" in md
+    assert md.index("Energy") < md.index("Technology")      # sectors: best month first
+    assert "| Energy | +10.00% | +10.00% | +10.00% |" in md
+
+
+def test_dashboard_skips_missing_symbols():
+    md = wa.dashboard_md((("US indexes", (("^GSPC", "S&P 500"), ("^XYZ", "Missing"))),),
+                         {"^GSPC": [100.0] * 25})
+    assert "S&P 500" in md and "Missing" not in md
