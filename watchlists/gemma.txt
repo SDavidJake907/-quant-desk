@@ -1,10 +1,12 @@
 # GEMMA'S LIST -- extra names Gemma's book may choose from, on top of watchlists/core.txt
-# (minus anything picks or momentum claim). WORKLIST §42. Commit every edit. Stocks only.
-# 2026-10-07: up to two per sector from the 150 most-traded S&P 500 names, strongest
-# 12-1 momentum first, positive momentum only; none from picks, momentum or core.
+# and the momentum rule's picks (minus anything another book holds). WORKLIST §42.
+# 2026-10-12: scripts/screen_gemma_list.py (rolling) -- names stay while still
+# S&P 500, >= $20, positive 12-1 momentum and in the 300 most traded;
+# new ones from the 150 most traded, up to 2 per sector by 12-1 momentum;
+# none from picks, core or the momentum rule. Commit every edit. Stocks only.
 # Communication Services
-WBD
 GOOGL
+GOOG
 # Consumer Discretionary
 ROST
 GM
@@ -15,17 +17,20 @@ KO
 VLO
 MPC
 # Financials
+BNY
 C
 MS
 # Health Care
 MRK
+CAH
 BMY
 # Industrials
 FIX
+FDX
 VRT
 # Information Technology
-COHR
 TER
+COHR
 # Materials
 FCX
 NEM
@@ -33,4 +38,5 @@ NEM
 WELL
 EQIX
 # Utilities
+AEP
 NEE
