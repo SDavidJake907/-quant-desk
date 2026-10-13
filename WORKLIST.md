@@ -994,6 +994,37 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 62. The post-verdict list -- build from Nov 1, after the first monthly verdict (2026-10-13)
+
+Quiet until Oct 31 (no new features or rule changes). Then, in this order --
+measurement first, because it observes and grades without changing a trade:
+
+1. [ ] **Correlation and concentration across BOTH books**, every evening:
+       pairwise correlation of the held names (60-day daily returns), portfolio
+       volatility sqrt(w'Sigma w), sector share, and "effective number of
+       independent bets". This week's picks were 6 of 8 in chips moving together.
+2. [ ] **MAE / MFE per closed trade** (worst and best excursion in R over the
+       actual holding window, gaps noted) for both books -- to grade Gemma's
+       stop/target menu choices and the picks' 2.5 ATR / no-target rule.
+3. [ ] **Per-trade review** in the Friday report and month-end verdict (§60).
+4. [ ] **Ranked shortlist** at the top of Gemma's brief: her menu sorted by the
+       tested signal (12-1 momentum, uptrend, no earnings within 2 weeks).
+5. [ ] Bellwethers ORCL and MU in the calendar.
+6. [ ] TradingAgents re-rates OPEN positions daily (others weekly); show the
+       ratings beside each held name in the operator's brief. Offered 10-10.
+7. [ ] Tail risk monitor: daily drawdown and historical CVaR (95%) per book,
+       plus gap exposure (held names with earnings or sector events next week).
+8. [ ] Beta-adjusted alpha per book (regression on the S&P 500) -- once there
+       are ~40+ trading days, else the fit is noise.
+9. [ ] Congressional-trades test (disclosure date entry vs the S&P), rules first.
+10. [ ] Decide on survivorship-free data (Norgate): it biases every backtest here.
+Already done since the list was started: the overnight world-markets table
+(in the market dashboard, §61).
+From the outside proposal (10-13) already built: selection uplift (§47
+selection grade), bootstrap "probability better" (§46). Tested and not to be
+re-run without new data: volatility-adjusted momentum (low-vol went the wrong
+way, survivorship; the vol-scaled crash guard failed, §31-33).
+
 ## 61. Market dashboard in the daily brief (2026-10-09)
 
 Operator: keep track of the whole market -- S&P 500, Nasdaq, everything -- for a
