@@ -994,6 +994,17 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 63. The operator's watch list -- SPCX (2026-10-14)
+
+Operator: keep a close eye on SpaceX. It listed on Nasdaq 2026-06-12 as SPCX
+(IPO $135; $151.14 on 10-14, -28.5% from its $211 high, 4.5% daily ATR, $14.5B a
+day; earnings Tue 11/03). `watchlists/watch.txt` (operator-only): a "Watching" row
+in the brief's dashboard, its headlines, its earnings date, and dated events of
+kind "watch" (`week_ahead.WATCH_EVENTS`: SPCX lockup tranches ~11/09 and the
+180-day end ~12/08, per IPO trackers -- dates vary by source). Never traded from
+the watch list; not in Gemma's market line. SPCX has < 12 months of history, so
+no momentum screen can rank it yet.
+
 ## 62. The post-verdict list -- build from Nov 1, after the first monthly verdict (2026-10-13)
 
 Quiet until Oct 31 (no new features or rule changes). Then, in this order --

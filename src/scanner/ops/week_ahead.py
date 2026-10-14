@@ -49,6 +49,14 @@ FIXED_EVENTS: tuple[tuple[date, str, str], ...] = (
     (date(2026, 12, 11), "political", "Government funding runs out (continuing resolution ends; "
                                       "shutdown risk from 12/12)"),
 )
+#: The operator's watch list (watchlists/watch.txt, WORKLIST §63): dated events
+#: for watched names, kind "watch" -- shown in the operator's calendar only.
+#: SPCX lockups as reported by IPO trackers 2026-10-14 (dates vary by source).
+WATCH_EVENTS: tuple[tuple[date, str, str], ...] = (
+    (date(2026, 11, 9), "watch", "SPCX: largest lockup tranche unlocks (~28% of locked shares)"),
+    (date(2026, 12, 8), "watch", "SPCX: 180-day IPO lockup ends (remaining locked shares)"),
+)
+
 #: Dated events that move ONE part of the market (WORKLIST §58). OPEC's 4 Oct 2026
 #: statement: "The next meeting will be held on 1 November 2026" (a Sunday, so the
 #: first session after it); conference dates from the organisers.

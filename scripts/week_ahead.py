@@ -42,6 +42,7 @@ from scanner.sources.market_calendar import parse_sessions
 BRIEF_DIR = Path("data/brief")
 REPORT_DIR = Path("logs/week_ahead")
 LISTS = (Path("watchlists/core.txt"), Path("watchlists/gemma.txt"))
+WATCH = Path("watchlists/watch.txt")
 #: The calendar looks four weeks out (big tech reports late in the month);
 #: Gemma's market line and the flags look one week out.
 SESSIONS_AHEAD = 20
@@ -91,7 +92,8 @@ async def main(use_llm: bool) -> int:
         owner_map = ownership.owners(await broker._get("/v2/orders", status="all", limit=500,
                                                        nested="true"))
         held = {p["symbol"]: ownership.owner(p["symbol"], owner_map) or "?" for p in positions}
-        names = list(dict.fromkeys((*held, *picks.read_list()[0], *operator_names(LISTS[0]),
+        watch = tuple(operator_names(WATCH)) if WATCH.exists() else ()
+        names = list(dict.fromkeys((*held, *watch, *picks.read_list()[0], *operator_names(LISTS[0]),
                                     *operator_names(LISTS[1]), *opinions.momentum_picks()[1])))
         members = await composite.load_universe(client, (SP500, SP400))
         sector = {m.symbol: m.sector for m in members}
@@ -106,7 +108,8 @@ async def main(use_llm: bool) -> int:
                                             horizon=span)
         earnings = {s: e for s, e in found.items() if s in names}
         bells = {s: e for s, e in found.items() if s in wa.BELLWETHERS and s not in names}
-        fixed = list(wa.FIXED_EVENTS) + (wa.market_mechanics(today, days[-1]) if days else [])
+        fixed = (list(wa.FIXED_EVENTS) + list(wa.WATCH_EVENTS)
+                 + (wa.market_mechanics(today, days[-1]) if days else []))
         months = sorted({d.replace(day=1) for d in days}) if days else []
         fixed += [(d, "market", text) for d, text in await cal.big_ipos(client, months)]
         if sessions and days:
@@ -120,7 +123,7 @@ async def main(use_llm: bool) -> int:
         results = await cal.releases_on(client, on=last)
         posts = await president.posts(client)
         sched = await president.schedule(client, days={today, today + timedelta(days=1)})
-        market = await _headlines(client, (*MARKET_FEEDS, *held))
+        market = await _headlines(client, (*MARKET_FEEDS, *held, *watch))
 
         heads = {f"P{i}": p.text for i, p in enumerate(posts[:10], 1)}
         heads |= {f"H{i}": h for i, h in enumerate(market[:40], 1)}
@@ -167,10 +170,11 @@ async def main(use_llm: bool) -> int:
     md = wa.render_md(today, evts, brief["flags"], posts_md, sched_md, impacts,
                       [h for h in market if h not in linked][:15], results=results)
     # The market dashboard at the top of the operator's copy (WORKLIST §61).
-    dash_syms = tuple(sym for _, members in wa.DASHBOARD for sym, _ in members)
+    groups = wa.DASHBOARD + ((("Watching", tuple((s, s) for s in watch)),) if watch else ())
+    dash_syms = tuple(sym for _, members in groups for sym, _ in members)
     async with httpx.AsyncClient(timeout=60) as client:
         dash_bars, _ = await fetch_many(dash_syms, client, range_="3mo", ttl_seconds=3600)
-    dash = wa.dashboard_md(wa.DASHBOARD, {k: list(v.closes) for k, v in dash_bars.items()})
+    dash = wa.dashboard_md(groups, {k: list(v.closes) for k, v in dash_bars.items()})
     md = md.replace("## Watch: your positions",
                     "## The market (closes up to the last session)\n\n" + dash
                     + "\n## Watch: your positions", 1)

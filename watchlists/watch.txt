@@ -1,0 +1,4 @@
+# WATCH -- the operator's watch list (WORKLIST §63). Shown in the operator's copy of the
+# 03:00 daily brief only: a dashboard row, linked headlines, earnings and dated events.
+# Never traded from here; never shown to Gemma. One ticker per line.
+SPCX
