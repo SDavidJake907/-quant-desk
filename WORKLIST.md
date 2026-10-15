@@ -994,6 +994,26 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 64. Sell when the trend breaks, instead of waiting for the stop? -- NO (2026-10-14)
+
+Prompted by COHR (held by Gemma from $317.71 to her stop at $272.85, -$359, while
+the trend turned): "if the indicator says sell why hold it?"
+`scripts/trend_exit_test.py`: strong-momentum S&P 500 entries (12m > +40%, above
+the 50-day average), every 5th day, 5 years, 2.5 x ATR stop, max 60 sessions.
+
+```
+exit                           n      avg R    win   worst 5%   days   halves
+A stop only (live)           13077   +0.467   38%    -1.14     35.5   +0.61 / +0.33
+B stop or close < 20-day     13077   +0.099   35%    -1.02     11.0   +0.14 / +0.06
+C stop or close < 50-day     13077   +0.333   34%    -1.03     24.8   +0.50 / +0.17
+```
+
+A trend-break exit cut expectancy ~80% (20-day) and ~30% (50-day) for almost no
+tail protection: strong names dip under short averages and recover, and the exit
+sells the dips that become the big winners. Same family as divergence exits,
+TP ladders and trailing stops (all worse or flipping). Survivorship flatters all
+rows; the gap between them is large and consistent in both halves. Not adopted.
+
 ## 63. The operator's watch list -- SPCX (2026-10-14)
 
 Operator: keep a close eye on SpaceX. It listed on Nasdaq 2026-06-12 as SPCX
