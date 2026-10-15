@@ -5,11 +5,8 @@
 PLTR
 # 2026-10-08: added from the morning global scan (one-year momentum, near highs,
 # no earnings within 3 weeks); XOM and ABBV spread the book beyond chips.
-XOM
-ABBV
 # 2026-10-08: ARM, INTC, META, TSM removed (operator): replaced by the four above.
 # 2026-10-13: AMAT, AMD, NVDA, ZETA, MRVL removed (operator: sell the red positions).
 # 2026-10-13: added for the week (screen: S&P 500, 12-1 momentum, uptrend, near highs,
 # liquid, no earnings before Friday, not on Gemma's menu).
-COP
 # 2026-10-14: RVTY, KEYS, CRWD, HPE removed (operator: sell the red positions).
