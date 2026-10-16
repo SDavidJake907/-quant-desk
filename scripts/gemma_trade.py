@@ -39,7 +39,7 @@ from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
 from scanner.execution import bookorders, ownership, picks, scorecard, sessions
 from scanner.execution.alpaca import Alpaca
-from scanner.execution.guards import RiskLimits, check_account
+from scanner.execution.guards import RiskLimits, check_account, sector_concentration
 from scanner.execution.ownership import GEMMA
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.safety import kill_switch_active
@@ -275,6 +275,9 @@ async def main(submit: bool) -> int:
         mine = {p["symbol"]: p for p in positions
                 if ownership.owner(p["symbol"], owner_map) == GEMMA}
         taken = {p["symbol"] for p in positions if p["symbol"] not in mine}
+        # Sector map for concentration guard across the account.
+        universe = await composite.load_universe(client)
+        sector_of = {m.symbol: m.sector for m in universe}
         taken |= {o["symbol"] for o in open_orders
                   if ownership.strategy_of(o.get("client_order_id")) != GEMMA}
         # Reserved for other books even before they buy: the operator's picks
@@ -385,7 +388,24 @@ async def main(submit: bool) -> int:
         cap = 100.0 / POLICY.gemma_max_positions
         count = len([s for s in mine if s not in sells])
         reasons = dict(decision.reasons)
+        # Sector concentration across the account: count all positions per sector
+        # (not just Gemma's) so the cap applies account-wide.
+        held_sectors: dict[str, int] = {}
+        for p in positions:
+            sym = str(p.get("symbol") or "")
+            sec = sector_of.get(sym, "")
+            if sec:
+                held_sectors[sec] = held_sectors.get(sec, 0) + 1
+
         for s in buys:
+            sector_gate = sector_concentration(
+                {p.get("symbol") for p in positions}, sector_of, s,
+                POLICY.max_per_sector,
+            )
+            if not sector_gate:
+                print(f"  {RED}{s:<6} not bought -- {sector_gate.reason}{RESET}")
+                bookorders.log("gemma_refused", s, sector_gate.reason, POLICY)
+                continue
             gate = check_account(account.equity, float(raw.get("last_equity") or account.equity),
                                  count, limits, market_open=True,
                                  account_status=account.status, account_blocked=account.blocked)

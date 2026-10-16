@@ -270,7 +270,7 @@ async def main(
     trend_context: bool = False, rsi_context: bool = False,
     macd_context: bool = False, news_gate: bool = True,
     skip_open: bool = False, skip_weekdays: tuple[str, ...] = (),
-    policy: TradingPolicy | None = None,
+    policy: TradingPolicy | None = None, live: bool = False,
 ) -> None:
     policy = policy or TradingPolicy()
     decisions: list[Decision] = []
@@ -322,13 +322,14 @@ async def main(
         print(f"{DIM}! continuity check skipped: {type(exc).__name__}{RESET}")
 
     # PRE-FLIGHT. Model environment and broker reachability are checked before
-    # any bar is fetched or order considered. For paper trading problems are
-    # reported loudly but the scan continues (fail open). A future live path
-    # should call preflight.run(client, live=True) and hard-block here.
+    # any bar is fetched or order considered. Paper mode reports problems
+    # loudly but continues (fail open). Live mode hard-blocks: a dead model,
+    # missing model environment, non-paper endpoint, or no session-start equity
+    # means no orders can go out.
     pf_report = None
     try:
         async with httpx.AsyncClient() as pf_client:
-            pf_report = await preflight.run(pf_client, live=False)
+            pf_report = await preflight.run(pf_client, live=live)
         print(f"{DIM}{preflight.banner(pf_report)}{RESET}")
         if pf_report.blocked:
             print(f"{RED}pre-flight blocked: {pf_report.reason}{RESET}")
@@ -338,6 +339,12 @@ async def main(
     except Exception as exc:                          # noqa: BLE001
         # Pre-flight must never stop a scan.
         print(f"{DIM}! pre-flight check skipped: {type(exc).__name__}{RESET}")
+
+    if live and pf_report is not None and pf_report.blocked:
+        print(f"{RED}{BOLD}LIVE MODE BLOCKED — pre-flight failed.{RESET}")
+        print(f"{RED}    {pf_report.reason}{RESET}")
+        print(f"{RED}    No orders will be sent. Fix the problems above and re-run.{RESET}")
+        return
 
     # AUTO KILL SWITCH. Before scanning, check whether conditions warrant
     # halting new entries: consecutive rejections, model environment down, or
@@ -1078,6 +1085,10 @@ if __name__ == "__main__":
     mode.add_argument("--dry-run", action="store_true", help="scan only (default)")
     mode.add_argument("--submit-paper", action="store_true",
                       help="explicitly submit bracket orders to Alpaca paper")
+    mode.add_argument("--live", action="store_true",
+                      help="LIVE MODE: hard-blocks on pre-flight failure "
+                           "(model env, paper endpoint, session equity). "
+                           "Extended-hours entries are refused.")
     p.add_argument("--show", type=int, default=10)
     p.add_argument("--trend-context", action="store_true")
     p.add_argument("--rsi-context", action="store_true")
@@ -1099,7 +1110,8 @@ if __name__ == "__main__":
             max_position_pct=a.max_position_pct,
             risk_pct=a.risk_pct,
         ),
-        not a.submit_paper, a.show, a.trend_context, a.rsi_context, a.macd_context,
+        not a.submit_paper and not a.live, a.show,
+        a.trend_context, a.rsi_context, a.macd_context,
         a.news_gate, a.skip_open, tuple(a.skip_weekday),
         TradingPolicy(
             interval_minutes=a.minutes, swing_k=a.k,
@@ -1112,4 +1124,5 @@ if __name__ == "__main__":
             swing_allocation_pct=a.swing_allocation,
             swing_cap=a.swing_cap,
         ),
+        live=a.live,
     ))
