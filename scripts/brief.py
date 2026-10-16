@@ -120,8 +120,8 @@ async def brief(symbol: str, client, policy, universe, bench, ex_div, equity):
     # ---- calendar risk ---------------------------------------------------
     print(f"\n  {BOLD}CALENDAR{RESET}")
     try:
-        found = await event_calendar.upcoming_earnings((symbol,), client)
-        report = found.get(symbol) if isinstance(found, dict) else found
+        found, _failed = await event_calendar.upcoming_earnings(frozenset({symbol}), client)
+        report = found.get(symbol)
         if report is None:
             _row("earnings", "none in window")
         else:

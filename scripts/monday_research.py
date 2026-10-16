@@ -89,7 +89,7 @@ async def main(write: bool) -> int:
             extra, _ = await fetch_many(missing, client, range_="2y")
             bars.update(extra)
         try:
-            earnings = await cal.upcoming_earnings(frozenset(mine), client, horizon=10)
+            earnings, _failed = await cal.upcoming_earnings(frozenset(mine), client, horizon=10)
         except Exception:                                          # noqa: BLE001
             earnings = {}
     leaders, rebounds, by_sector = [], [], defaultdict(list)

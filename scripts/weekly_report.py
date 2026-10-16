@@ -69,7 +69,7 @@ async def gather():
         bars, _ = await fetch_many(symbols, c, range_="6mo") if symbols else ({}, ())
         spx = await fetch_bars("^GSPC", c, range_="6mo")
         try:
-            earnings = await cal.upcoming_earnings(frozenset(symbols), c, horizon=10)
+            earnings, _failed = await cal.upcoming_earnings(frozenset(symbols), c, horizon=10)
         except Exception:                                  # noqa: BLE001
             earnings = {}
         events = {}
