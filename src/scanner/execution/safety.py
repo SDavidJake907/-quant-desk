@@ -9,6 +9,8 @@ actionable instead of asking an LLM to decide whether protection exists.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -139,6 +141,88 @@ def kill_switch_active(path: str | Path) -> bool:
     return Path(path).exists()
 
 
+def activate_kill_switch(path: str | Path, reason: str) -> None:
+    """Create the kill switch file with a reason, so every scheduled task sees it.
+
+    The file's first line is the reason; subsequent lines are additional
+    context. A human must remove it deliberately — nothing in this codebase
+    removes it automatically, which is the point: an automated halt needs a
+    human to decide the conditions have passed.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).isoformat()
+    target.write_text(
+        f"ACTIVATED {stamp}\nREASON: {reason}\n",
+        encoding="utf-8",
+    )
+
+
+#: Consecutive rejected orders before the kill switch is auto-activated.
+MAX_CONSECUTIVE_REJECTIONS = 5
+
+
+def rejection_count_path(kill_switch_path: str | Path) -> Path:
+    """Sidecar file that tracks consecutive broker rejections."""
+    return Path(str(kill_switch_path) + ".rejections")
+
+
+def read_consecutive_rejections(kill_switch_path: str | Path) -> int:
+    """How many orders have been rejected in a row."""
+    p = rejection_count_path(kill_switch_path)
+    if not p.exists():
+        return 0
+    try:
+        return int(p.read_text(encoding="utf-8").strip() or "0")
+    except (ValueError, OSError):
+        return 0
+
+
+def record_rejection(kill_switch_path: str | Path) -> int:
+    """Increment the consecutive-rejection counter and return the new total."""
+    count = read_consecutive_rejections(kill_switch_path) + 1
+    rejection_count_path(kill_switch_path).write_text(
+        str(count), encoding="utf-8"
+    )
+    return count
+
+
+def reset_rejections(kill_switch_path: str | Path) -> None:
+    """Clear the consecutive-rejection counter after a successful order."""
+    p = rejection_count_path(kill_switch_path)
+    if p.exists():
+        p.unlink()
+
+
+def should_auto_activate(
+    kill_switch_path: str | Path,
+    *,
+    consecutive_rejections: int | None = None,
+    model_env_complete: bool = True,
+    broker_reachable: bool = True,
+) -> tuple[bool, str]:
+    """Decide whether the kill switch should be auto-activated.
+
+    Returns (should_activate, reason). Conditions:
+      - MAX_CONSECUTIVE_REJECTIONS broker rejections in a row
+      - model environment incomplete (Ollama down or model missing)
+      - broker unreachable
+    """
+    if consecutive_rejections is None:
+        consecutive_rejections = read_consecutive_rejections(kill_switch_path)
+
+    if consecutive_rejections >= MAX_CONSECUTIVE_REJECTIONS:
+        return True, (
+            f"{consecutive_rejections} consecutive order rejections — "
+            f"suspending new entries"
+        )
+    if not model_env_complete:
+        return True, "model environment incomplete — dedup/news gate degraded"
+    if not broker_reachable:
+        return True, "broker unreachable — cannot confirm fills or stops"
+    return False, ""
+
+
 def format_report(report: SafetyReport) -> str:
     if report.healthy:
         return "SAFETY OK"
@@ -146,3 +230,43 @@ def format_report(report: SafetyReport) -> str:
         f"{f.severity.upper()} {f.code}{(' [' + f.symbol + ']') if f.symbol else ''}: {f.message}"
         for f in report.findings
     )
+
+
+# --- session start equity -----------------------------------------------------
+
+SESSION_EQUITY_PATH = Path("data/session_equity.json")
+
+
+def _today_iso() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def capture_session_equity(equity: float) -> None:
+    """Store today's starting equity so the daily-loss guard can measure
+    from a real baseline instead of the current (possibly already-drawn-down)
+    equity.
+
+    Idempotent: re-capturing the same day overwrites with the latest value.
+    """
+    data = {}
+    if SESSION_EQUITY_PATH.exists():
+        try:
+            data = json.loads(SESSION_EQUITY_PATH.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            data = {}
+    data[_today_iso()] = equity
+    SESSION_EQUITY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_EQUITY_PATH.write_text(
+        json.dumps(data, indent=1), encoding="utf-8"
+    )
+
+
+def load_session_equity() -> float | None:
+    """Today's captured starting equity, or None if not yet captured."""
+    if not SESSION_EQUITY_PATH.exists():
+        return None
+    try:
+        data = json.loads(SESSION_EQUITY_PATH.read_text(encoding="utf-8"))
+        return float(data.get(_today_iso(), 0)) or None
+    except (ValueError, OSError, TypeError):
+        return None

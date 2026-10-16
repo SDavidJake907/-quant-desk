@@ -37,7 +37,9 @@ from scanner.config import settings
 from scanner.execution.alpaca import Alpaca, BrokerError, bracket_payload
 from scanner.execution.audit import append_event
 from scanner.execution import continuity
-from scanner.execution.guards import RiskLimits, check_account, check_symbol, late_signal
+from scanner.execution.guards import (
+    RiskLimits, check_account, check_symbol, late_signal, sector_concentration,
+)
 from scanner.execution.policy import CONFIRM, SCAN, TRADE, WATCH, Decision, TradingPolicy, rejections
 from scanner.execution.provenance import build_id
 from scanner.execution.funnel import Funnel
@@ -50,6 +52,8 @@ from scanner.execution.safety import kill_switch_active
 from scanner.execution import sleeve
 from scanner.execution.sizing import size_position
 from scanner.execution import watchlist
+from scanner.execution import preflight
+from scanner.execution import safety
 from scanner.features import intraday_context
 from scanner.features.intraday import (
     EXCHANGE_TZ, drop_incomplete, fetch_intraday, max_range, session_slot,
@@ -317,6 +321,41 @@ async def main(
         # Diagnostics must never stop a scan.
         print(f"{DIM}! continuity check skipped: {type(exc).__name__}{RESET}")
 
+    # PRE-FLIGHT. Model environment and broker reachability are checked before
+    # any bar is fetched or order considered. For paper trading problems are
+    # reported loudly but the scan continues (fail open). A future live path
+    # should call preflight.run(client, live=True) and hard-block here.
+    pf_report = None
+    try:
+        async with httpx.AsyncClient() as pf_client:
+            pf_report = await preflight.run(pf_client, live=False)
+        print(f"{DIM}{preflight.banner(pf_report)}{RESET}")
+        if pf_report.blocked:
+            print(f"{RED}pre-flight blocked: {pf_report.reason}{RESET}")
+        if not pf_report.model.complete:
+            print(f"{YELLOW}model environment incomplete — news gate and dedup "
+                  f"may be degraded{RESET}")
+    except Exception as exc:                          # noqa: BLE001
+        # Pre-flight must never stop a scan.
+        print(f"{DIM}! pre-flight check skipped: {type(exc).__name__}{RESET}")
+
+    # AUTO KILL SWITCH. Before scanning, check whether conditions warrant
+    # halting new entries: consecutive rejections, model environment down, or
+    # broker unreachable. If activated, the scan still runs (evaluate only)
+    # but sends no orders — same as the daily-loss guard.
+    model_complete = pf_report.model.complete if pf_report else False
+    auto_activate, auto_reason = safety.should_auto_activate(
+        settings.kill_switch_path,
+        model_env_complete=model_complete,
+        broker_reachable=True,  # cannot know until we connect; checked below
+    )
+    if auto_activate:
+        safety.activate_kill_switch(settings.kill_switch_path, auto_reason)
+        print(f"{RED}{BOLD}*** KILL SWITCH AUTO-ACTIVATED ***{RESET}")
+        print(f"{RED}    {auto_reason}{RESET}")
+        print(f"{YELLOW}    evaluating only, no orders will be sent{RESET}\n")
+        dry_run = True
+
     async with httpx.AsyncClient() as client:
         broker = None
         if not dry_run:
@@ -327,6 +366,12 @@ async def main(
                 settings.alpaca_key_id, settings.alpaca_secret_key, client
             )
             account = await broker.account()
+            # Capture session start equity for the daily-loss guard when
+            # SCANNER_SESSION_START_EQUITY is not set, so a drawdown that
+            # happened before this process started can be detected.
+            if settings.session_start_equity <= 0:
+                safety.capture_session_equity(account.equity)
+                print(f"{DIM}session start equity captured: {account.equity:,.2f}{RESET}")
             open_market = await broker.market_open()
             held = await broker.held_symbols()
             # GTC brackets keep the stop alive overnight, and an unfilled
@@ -379,8 +424,16 @@ async def main(
                       f"exceed the swing sleeve ({sleeves.swing_equity:,.0f}) — "
                       f"no new entries until they close{RESET}")
 
+            # Session start equity baseline for the daily-loss guard:
+            # explicit env var > captured session equity > current equity.
+            session_start = (
+                settings.session_start_equity
+                if settings.session_start_equity > 0
+                else safety.load_session_equity()
+                or account.equity
+            )
             gate = check_account(
-                account.equity, settings.session_start_equity or account.equity,
+                account.equity, session_start,
                 len(held), limits, market_open=open_market,
                 account_status=account.status, account_blocked=account.blocked,
             )
@@ -434,8 +487,16 @@ async def main(
 
         ex_dividends = {}
         if policy.block_ex_dividend_erosion:
-            ex_dividends = dividends.by_symbol(await dividends.fetch_announcements(
-                client, settings.alpaca_key_id, settings.alpaca_secret_key))
+            try:
+                ex_dividends = dividends.by_symbol(await dividends.fetch_announcements(
+                    client, settings.alpaca_key_id, settings.alpaca_secret_key))
+            except Exception as exc:  # noqa: BLE001
+                # A dividends outage must not kill a scan: an empty calendar
+                # means "unknown, not clear", so no position is wrongly
+                # refused or wrongly admitted.
+                print(f"{YELLOW}! ex-dividend calendar unavailable: "
+                      f"{type(exc).__name__} — treating as unknown{RESET}")
+                ex_dividends = {}
             print(f"{DIM}ex-dividend calendar: {len(ex_dividends)} names with a "
                   f"declared ex-date ahead{RESET}")
 
@@ -573,6 +634,14 @@ async def main(
                     or is_stale_session(bars, setup.trigger_index,
                                         session=session_today)
                 ):
+                    funnel.dropped_as_overnight()
+                    continue
+                # The trigger bar is from today's date but the session is
+                # already over (after 16:00 ET): its close was never
+                # tradeable at decision time, so refuse it even though
+                # is_stale_session sees today's date.
+                bar_at = bars.times[setup.trigger_index]
+                if bar_at.date() == session_today and bar_at.hour >= 16:
                     funnel.dropped_as_overnight()
                     continue
                 # Shadow-log the RSI gate WITHOUT filtering on it. It
@@ -755,7 +824,7 @@ async def main(
         # executed when it shipped, because every scan that day found zero
         # candidates.
         try:
-            _record_slate(candidates[:show], ranks, llm_rank, llm_order,
+            _record_slate(candidates, ranks, llm_rank, llm_order,
                           volumes_by_symbol, sector_of, policy)
         except Exception as exc:                      # noqa: BLE001
             print(f"  {YELLOW}! slate not recorded: "
@@ -880,6 +949,18 @@ async def main(
                         print(f"         {DIM}{headline[:96]}{RESET}")
                     continue
 
+            # SECTOR CONCENTRATION. max_per_sector caps how many positions one
+            # sector may hold across the account. Ten of the 18 core names are
+            # chips/AI hardware; eight open at once is one bet with 8% at risk,
+            # not eight bets. 0 disables.
+            sector_gate = sector_concentration(
+                held, sector_of, setup.symbol, policy.max_per_sector
+            )
+            if not sector_gate:
+                print(f"  {RED}{setup.symbol:<6} SKIPPED — {sector_gate.reason}{RESET}")
+                record(CONFIRM, setup.symbol, sector_gate.reason)
+                continue
+
             payload = bracket_payload(setup, sizing, at,
                                       entry_offset_pct=policy.entry_limit_offset_pct)
             intent = TradeIntent(
@@ -932,6 +1013,7 @@ async def main(
             try:
                 order = await broker.submit(payload)
                 sent += 1
+                safety.reset_rejections(settings.kill_switch_path)
                 append_event(settings.audit_log_path, AuditEvent(
                     event="order_submitted", at=datetime.now().astimezone(),
                     symbol=setup.symbol, intent=intent,
@@ -941,13 +1023,15 @@ async def main(
                 ))
                 print(f"         {GREEN}submitted{RESET} {DIM}id {order.get('id', '?')}{RESET}")
             except BrokerError as exc:
+                rej = safety.record_rejection(settings.kill_switch_path)
                 append_event(settings.audit_log_path, AuditEvent(
                     event="order_rejected", at=datetime.now().astimezone(),
                     symbol=setup.symbol, intent=intent,
                     request_id=broker.last_request_id, reason=str(exc),
                     stage=TRADE, policy=policy.fingerprint, build=build_id(),
                 ))
-                print(f"         {RED}not submitted: {exc}{RESET}")
+                print(f"         {RED}not submitted: {exc}{RESET}"
+                      f" {DIM}({rej} consecutive rejection(s)){RESET}")
 
         if not dry_run:
             print(f"\n{BOLD}{sent} order(s) sent to the paper account.{RESET}")

@@ -7,7 +7,9 @@ unattended account, so they are tested as refusals: the question is never
 
 from __future__ import annotations
 
-from scanner.execution.guards import RiskLimits, check_account, check_symbol
+from scanner.execution.guards import (
+    RiskLimits, check_account, check_symbol, sector_concentration,
+)
 
 LIMITS = RiskLimits(max_positions=3, max_daily_loss_pct=3.0, min_equity=1_000.0)
 
@@ -87,3 +89,37 @@ def test_an_untouched_symbol_is_allowed():
 def test_verdicts_are_usable_as_booleans():
     assert bool(check_symbol("MU", frozenset(), frozenset())) is True
     assert bool(check_symbol("MU", frozenset({"MU"}), frozenset())) is False
+
+
+# ---- sector concentration --------------------------------------------------
+
+SECTORS = {"NVDA": "Technology", "MSFT": "Technology", "AAPL": "Technology",
+           "KO": "Consumer Staples", "PEP": "Consumer Staples",
+           "JPM": "Financials", "BAC": "Financials"}
+
+
+def test_sector_concentration_disabled_allows_everything():
+    assert sector_concentration({"NVDA"}, SECTORS, "MSFT", 0)
+    assert sector_concentration({"NVDA", "MSFT", "AAPL"}, SECTORS, "KO", 0)
+
+
+def test_sector_concentration_unknown_sector_is_allowed():
+    assert sector_concentration({"NVDA"}, SECTORS, "UNKNOWN", 3)
+
+
+def test_sector_concentration_under_limit_is_allowed():
+    assert sector_concentration({"NVDA"}, SECTORS, "MSFT", 3)
+    assert sector_concentration({"NVDA", "MSFT"}, SECTORS, "AAPL", 3)
+
+
+def test_sector_concentration_at_limit_is_refused():
+    # Technology already has 3 positions; adding a 4th Tech symbol is refused.
+    verdict = sector_concentration(
+        {"NVDA", "MSFT", "AAPL"}, SECTORS, "NVDA", 3)
+    assert not verdict
+    assert "sector cap" in verdict.reason
+
+
+def test_sector_concentration_other_sector_still_allowed():
+    # Technology is full (3), but Consumer Staples is not — KO is allowed.
+    assert sector_concentration({"NVDA", "MSFT", "AAPL"}, SECTORS, "KO", 3)

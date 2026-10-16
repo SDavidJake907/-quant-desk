@@ -11,6 +11,8 @@ ask for.
 
 from __future__ import annotations
 
+from typing import Iterable, Mapping
+
 from scanner.models import Frozen
 
 
@@ -129,4 +131,30 @@ def late_signal(entry: float, latest_close: float | None, max_pct: float) -> Ver
         return Verdict(allowed=False,
                        reason=f"late signal: last close {drift:.2f}% below the entry "
                               f"(limit {max_pct:.2f}%) -- would fill beside the stop")
+    return ALLOWED
+
+
+def sector_concentration(
+    held_symbols: Iterable[str],
+    sector_of: dict[str, str],
+    candidate_symbol: str,
+    max_per_sector: int,
+) -> Verdict:
+    """Refuse a candidate if its sector already has max_per_sector positions.
+
+    `max_per_sector <= 0` disables the check. A symbol whose sector is unknown
+    is allowed through — an unknown sector is not a reason to block a trade,
+    only a reason the cap can't be enforced for it.
+    """
+    if max_per_sector <= 0:
+        return ALLOWED
+    candidate_sector = sector_of.get(candidate_symbol, "")
+    if not candidate_sector:
+        return ALLOWED
+    count = sum(1 for s in held_symbols if sector_of.get(s) == candidate_sector)
+    if count >= max_per_sector:
+        return Verdict(
+            allowed=False,
+            reason=f"sector cap: {count} open in {candidate_sector} (limit {max_per_sector})",
+        )
     return ALLOWED

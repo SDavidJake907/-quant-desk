@@ -22,6 +22,7 @@ $tasks = @(
     "stock-scanner-data",
     "stock-scanner-flatten",
     "stock-scanner-outcomes",
+    "stock-scanner-reconcile",
     "stock-scanner-news",
     "stock-scanner-extended",
     "stock-scanner-extras",
@@ -147,6 +148,16 @@ $outSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLi
 $outAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_outcomes.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-outcomes" -Trigger $outTrigger -Action $outAction -Settings $outSettings -Description "Append realized outcomes to the audit log" -Force | Out-Null
 Write-Output "registered stock-scanner-outcomes 13:30 AK daily"
+
+# --- reconciliation verification --------------------------------------------
+# Verifies audit-log intents match broker state: lost orders, untracked
+# orders, slippage beyond threshold, untracked positions. Read-only, places
+# no order, cannot influence a decision.
+$recTrigger = New-ScheduledTaskTrigger -Daily -At 2:00PM
+$recSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$recAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_reconcile.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-reconcile" -Trigger $recTrigger -Action $recAction -Settings $recSettings -Description "Reconcile audit-log intents to broker state; report lost/untracked orders and slippage (14:00 AK daily)" -Force | Out-Null
+Write-Output "registered stock-scanner-reconcile 14:00 AK daily"
 
 # --- news archive -----------------------------------------------------------
 # The one thing a weekend can gather. The scanner runs seven days a week and on

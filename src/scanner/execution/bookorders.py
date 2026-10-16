@@ -104,6 +104,8 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
         entry_price=limit, stop_price=stop, target_price=target,
         shares=sizing.shares, risk_dollars=sizing.risk_dollars,
         position_dollars=sizing.position_dollars,
+        # limit > entry > stop (offset_pct >= 0, and sizing guarantees
+        # stop < entry), so the denominator is strictly positive.
         reward_risk=round((target - limit) / (limit - stop), 3),
         paper=True, client_order_id=payload["client_order_id"], llm_concern=reason[:300])
     log("trade_intent", symbol, reason, policy, intent=intent)
