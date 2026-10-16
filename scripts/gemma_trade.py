@@ -47,6 +47,7 @@ from scanner.execution.scorecard import read_rows
 from scanner.features.bars import fetch_bars, fetch_many
 from scanner.momentum import state as mstate
 from scanner.features.intraday_context import atr_pct
+from scanner.features.math_signals import build_signals
 from scanner.features.technicals import compute, relative_strength
 from scanner.features.market_snapshot import fetch_snapshot, summary_text
 from scanner.llm.ollama import LLMError, chat_json
@@ -149,6 +150,39 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
                  f"3m {_ret(b.closes, 63)} | 12m {_ret(b.closes, 252)} | 12-1 momentum {mom}"
                  + (f" ({rs:+.0f} pts vs the S&P 500)" if rs is not None else "")
                  + f" | daily ATR {atr_text}"]
+        # Math signals: percentage-based context for Gemma's decision
+        try:
+            current_close = float(b.closes[-1])
+            recent_closes = list(b.closes[-20:])
+            recent_high = max(recent_closes)
+            recent_low = min(recent_closes)
+            sma_20 = f.sma20 if f.sma20 else current_close
+            # Daily returns for correlation math
+            stock_returns = [(b.closes[i] - b.closes[i - 1]) / b.closes[i - 1]
+                             for i in range(1, len(b.closes))]
+            avg_vol_20d = sum(b.volumes[-20:]) / 20 if len(b.volumes) >= 20 else 0.0
+            math_signals = build_signals(
+                current_price=current_close,
+                entry_price=current_close,  # no entry price for new buys; position_pct = 0
+                sma_20=sma_20,
+                recent_high=recent_high,
+                recent_low=recent_low,
+                current_atr_pct=atr if atr else 0.0,
+                atr_history=[],  # no stored ATR history yet
+                win_probability=0.5,
+                avg_win_pct=0.0,
+                loss_probability=0.5,
+                avg_loss_pct=0.0,
+                stock_returns=stock_returns,
+                portfolio_returns=[],  # no portfolio return history yet
+                current_volume=float(b.volumes[-1]) if b.volumes else 0.0,
+                avg_volume_20d=avg_vol_20d,
+            )
+            for sig in math_signals:
+                lines.append(f"math: {sig.name} = {sig.value_pct:+.1f}% "
+                             f"(conf {sig.confidence:.0%}) - {sig.explanation}")
+        except Exception:  # noqa: BLE001
+            pass  # math signals are context, never a blocker
         report = earnings.get(s)
         lines.append(f"earnings: {report.label}" if report else "earnings: none in the next 7 days")
         # TradingAgents runs as a SHADOW (2026-10-07): Gemma asked not to see it
