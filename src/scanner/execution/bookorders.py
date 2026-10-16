@@ -12,6 +12,7 @@ protect.py reads to re-arm a lost stop and what the scorecard grades.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Optional
 
 from scanner.config import settings
 import asyncio
@@ -28,7 +29,7 @@ from scanner.execution.provenance import build_id
 from scanner.execution.sessions import REGULAR
 from scanner.execution.sizing import Sizing, size_position
 from scanner.features.bars import fetch_bars
-from scanner.features.intraday import fetch_intraday, max_range
+from scanner.features.intraday import IntradayBars, fetch_intraday, max_range
 from scanner.features.intraday_context import atr_pct
 from scanner.models import AuditEvent, Frozen, TargetTier, TradeIntent
 
@@ -56,11 +57,11 @@ def target_price(*, limit: float, stop: float, reward_risk: float,
     return round_tick(limit * ceiling)
 
 
-async def price_and_atr(symbol: str, client) -> tuple[float, float]:
+async def price_and_atr(symbol: str, client) -> tuple[float, float, Optional[IntradayBars]]:
     intraday = await fetch_intraday(symbol, client, minutes=30, range_=max_range(30))
     daily = await fetch_bars(symbol, client, range_="6mo")
     last = float(intraday.closes[-1]) if intraday.closes else float(daily.closes[-1])
-    return last, atr_pct(daily) or 0.0
+    return last, atr_pct(daily) or 0.0, intraday
 
 
 async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: float,
@@ -80,7 +81,7 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
     The remaining shares ride to the final target or the stop.
     """
     try:
-        last, atr = await price_and_atr(symbol, client)
+        last, atr, bars = await price_and_atr(symbol, client)
         if session != REGULAR:
             # Outside regular hours: today's extended-session price, fresh or nothing.
             live = await extended.price(symbol, client, session)
@@ -90,7 +91,14 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
         limit, stop, _ = picks.levels(
             last=last, atr_pct=atr,
             atr_multiple=policy.picks_stop_atr_multiple if atr_multiple is None else atr_multiple,
-            offset_pct=policy.entry_limit_offset_pct, ceiling=policy.picks_target_ceiling)
+            offset_pct=policy.entry_limit_offset_pct, ceiling=policy.picks_target_ceiling,
+            bars=bars,
+            stop_use_structure=policy.stop_use_structure,
+            stop_regime_adjust=policy.stop_regime_adjust,
+            stop_trail_pct=policy.stop_trail_pct,
+            stop_trail_lookback=policy.stop_trail_lookback,
+            atr_history=None,  # Could pass recent ATR history here for regime detection
+        )
         # reward_risk is None when the picks list calls without specifying
         # (picks always uses picks_target_ceiling as its ceiling target).
         # reward_risk == 0.0 means Gemma explicitly chose "none" (ride it).

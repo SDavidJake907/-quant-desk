@@ -452,6 +452,33 @@ class TradingPolicy(Frozen):
         ("none", 0.0), ("2R", 2.0), ("3R", 3.0), ("5R", 5.0))
     gemma_size_risk_menu: tuple[tuple[str, float], ...] = (
         ("small", 1.0), ("normal", 2.0), ("large", 3.0))
+    #: STOP LOSS CONFIGURATION (new: replaces pure ATR stops with smarter exits)
+    #: ATR-only stops don't account for market structure, don't trail, and don't
+    #: adjust for volatility regime. These fields add smarter exit logic.
+    #:
+    #: stop_use_structure: If True, use recent swing lows as stop reference when
+    #:   they're below the ATR stop but not too far below entry. Prevents getting
+    #: stopped out by noise above a meaningful support level.
+    #:
+    #: stop_regime_adjust: If True, widen stops in high-vol regimes (top quartile
+    #: of recent ATR%) and tighten in low-vol regimes (bottom quartile).
+    #:
+    #: stop_trail_pct: ATR multiple for chandelier trailing stop. 0 = disabled.
+    #:   When price rises, stop trails at (highest_high - trail_pct * ATR).
+    #:   Only trails if above entry (locks in profits on winners).
+    #:
+    #: stop_trail_lookback: Bars to look back for chandelier highest-high.
+    #:
+    #: stop_tier_config: Multi-tier stop config. Tuple of
+    #:   (target_pct_above_entry, pct_to_sell, stop_pct_below_entry).
+    #:   Example: ((0.02, 0.50, -0.01), (0.04, 0.25, 0.00), (0.06, 0.25, 0.02))
+    #:   = sell 50% at +2% (stop to -1%), sell 25% at +4% (stop to breakeven),
+    #:       sell 25% at +6% (stop to +2%).
+    stop_use_structure: bool = False
+    stop_regime_adjust: bool = False
+    stop_trail_pct: float = 0.0
+    stop_trail_lookback: int = 22
+    stop_tier_config: tuple[tuple[float, float, float], ...] = ()
     #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
     #: (it wants its record to be its own judgement); TradingAgents keeps running
     #: as a graded shadow the operator still sees (second_opinion.py, weekly report).

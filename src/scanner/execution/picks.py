@@ -31,10 +31,12 @@ import re
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from scanner.execution.alpaca import round_tick
 from scanner.execution.ownership import PICKS, UNKNOWN, owner, prefix_for, strategy_of
+from scanner.execution.stops import build_stop_plan
+from scanner.features.intraday import IntradayBars
 from scanner.models import Frozen
 
 LIST_PATH = Path("watchlists/picks.txt")
@@ -85,18 +87,42 @@ def plan(listed: Iterable[str], owner_map: Mapping[str, str],
 
 
 def levels(*, last: float, atr_pct: float, atr_multiple: float, offset_pct: float,
-           ceiling: float) -> tuple[float, float, float]:
+           ceiling: float, bars: Optional[IntradayBars] = None,
+           stop_use_structure: bool = False,
+           stop_regime_adjust: bool = False,
+           stop_trail_pct: float = 0.0,
+           stop_trail_lookback: int = 22,
+           atr_history: Optional[list[float]] = None) -> tuple[float, float, float]:
     """(limit, stop, target). Limit carries the scanner's measured +0.30%
-    cushion; the stop sits `atr_multiple` daily ATRs under the limit."""
+    cushion; the stop sits `atr_multiple` daily ATRs under the entry.
+
+    When `bars` and stop configuration are provided, the stop is computed
+    using `stops.build_stop_plan()` which can apply structure-aware stops
+    (recent swing lows), volatility-regime adjustment, and trailing stops.
+    Otherwise, falls back to the pure ATR stop.
+    """
     if last <= 0 or atr_pct <= 0:
         raise ValueError("need a positive price and ATR to place a stop")
     limit = round_tick(last * (1 + offset_pct / 100))
-    stop = round_tick(limit * (1 - atr_multiple * atr_pct / 100))
+    atr_stop = round_tick(limit * (1 - atr_multiple * atr_pct / 100))
+    if atr_stop <= 0:
+        raise ValueError(f"stop {atr_stop} would be at or below zero")
+
+    stop = atr_stop
+    if bars is not None and (stop_use_structure or stop_regime_adjust or stop_trail_pct > 0):
+        plan = build_stop_plan(
+            bars, limit, atr_pct, atr_multiple,
+            use_structure=stop_use_structure,
+            regime_adjust=stop_regime_adjust,
+            atr_history=atr_history,
+            trail_pct=stop_trail_pct if stop_trail_pct > 0 else None,
+            trail_lookback=stop_trail_lookback,
+        )
+        stop = plan.stop_price
+
     if stop <= 0:
         raise ValueError(f"stop {stop} would be at or below zero")
     return limit, stop, round_tick(limit * ceiling)
-
-
 def client_order_id(symbol: str, at: datetime) -> str:
     return f"{prefix_for(PICKS)}{symbol}-{int(at.timestamp())}"
 

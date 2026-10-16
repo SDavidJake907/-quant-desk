@@ -21,7 +21,7 @@ from scanner.screens.smc import Setup
 
 async def _fake_price_and_atr(symbol, client):
     """Return a fake last price and ATR for testing."""
-    return 100.0, 2.0  # last=100, atr_pct=2.0
+    return 100.0, 2.0, None  # last=100, atr_pct=2.0, bars=None (no stop structure)
 
 
 def _monkeypatch_price(monkeypatch):
