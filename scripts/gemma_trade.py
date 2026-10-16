@@ -485,8 +485,14 @@ async def main(submit: bool) -> int:
                 reason=f"Gemma [{pl.stop} stop, target {pl.target}, {pl.size}]: "
                        f"{reasons.get(s, '')}",
                 risk_pct=POLICY.gemma_menu_value("size", pl.size),
-                atr_multiple=POLICY.gemma_menu_value("stop", pl.stop),
-                reward_risk=POLICY.gemma_menu_value("target", pl.target), session=session)
+                atr_multiple=POLICY.gemma_menu_value("stop", pl.stop)
+                if pl.stop in ("tight", "normal", "wide") else None,
+                reward_risk=POLICY.gemma_menu_value("target", pl.target)
+                if pl.target in ("none", "2R", "3R", "5R") else None,
+                stop_menu_choice=pl.stop,
+                target_menu_choice=pl.target,
+                size_menu_choice=pl.size,
+                session=session)
             if not result.ok:
                 print(f"  {YELLOW}{s:<6} not bought -- {result.message}{RESET}")
                 continue

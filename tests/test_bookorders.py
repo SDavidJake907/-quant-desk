@@ -166,3 +166,159 @@ def test_target_tier_validation():
     """pct_of_shares must be between 0 and 1."""
     tier = TargetTier(target_price=110.0, pct_of_shares=0.5, label="1R")
     assert 0.0 <= tier.pct_of_shares <= 1.0
+
+
+# ---- Gemma's math-based menu options ----
+
+def test_gemma_stop_menu_swing_low(fake_broker, monkeypatch):
+    """Gemma choosing 'swing_low' stop uses structure-based stop."""
+    import asyncio
+
+    _monkeypatch_price(monkeypatch)
+
+    setup = _setup()
+
+    async def run():
+        return await bookorders.buy_with_stop(
+            fake_broker, None, "TEST", strategy="smc", sleeve=40_000,
+            room=40_000, cap_pct=12.5, policy=TradingPolicy(),
+            reason="test", stop_menu_choice="swing_low")
+
+    res = asyncio.run(run())
+    assert res.ok
+    assert len(fake_broker.submitted) == 1  # bracket order
+    order = fake_broker.submitted[0]
+    assert order["order_class"] == "bracket"
+
+
+def test_gemma_stop_menu_vol_adjusted(fake_broker, monkeypatch):
+    """Gemma choosing 'vol_adjusted' stop uses volatility-adjusted stop."""
+    import asyncio
+
+    _monkeypatch_price(monkeypatch)
+
+    setup = _setup()
+
+    async def run():
+        return await bookorders.buy_with_stop(
+            fake_broker, None, "TEST", strategy="smc", sleeve=40_000,
+            room=40_000, cap_pct=12.5, policy=TradingPolicy(),
+            reason="test", stop_menu_choice="vol_adjusted")
+
+    res = asyncio.run(run())
+    assert res.ok
+    assert len(fake_broker.submitted) == 1
+
+
+def test_gemma_stop_menu_trailing(fake_broker, monkeypatch):
+    """Gemma choosing 'trailing' stop uses chandelier trailing stop."""
+    import asyncio
+
+    _monkeypatch_price(monkeypatch)
+
+    setup = _setup()
+
+    async def run():
+        return await bookorders.buy_with_stop(
+            fake_broker, None, "TEST", strategy="smc", sleeve=40_000,
+            room=40_000, cap_pct=12.5, policy=TradingPolicy(),
+            reason="test", stop_menu_choice="trailing")
+
+    res = asyncio.run(run())
+    assert res.ok
+    assert len(fake_broker.submitted) == 1
+
+
+def test_gemma_target_menu_swing_high(fake_broker, monkeypatch):
+    """Gemma choosing 'swing_high' target uses swing high as target."""
+    import asyncio
+
+    _monkeypatch_price(monkeypatch)
+
+    setup = _setup()
+
+    async def run():
+        return await bookorders.buy_with_stop(
+            fake_broker, None, "TEST", strategy="smc", sleeve=40_000,
+            room=40_000, cap_pct=12.5, policy=TradingPolicy(),
+            reason="test", target_menu_choice="swing_high")
+
+    res = asyncio.run(run())
+    assert res.ok
+    assert len(fake_broker.submitted) == 1
+
+
+def test_gemma_target_menu_value_area(fake_broker, monkeypatch):
+    """Gemma choosing 'value_area' target uses volume profile VAH."""
+    import asyncio
+
+    _monkeypatch_price(monkeypatch)
+
+    setup = _setup()
+
+    async def run():
+        return await bookorders.buy_with_stop(
+            fake_broker, None, "TEST", strategy="smc", sleeve=40_000,
+            room=40_000, cap_pct=12.5, policy=TradingPolicy(),
+            reason="test", target_menu_choice="value_area")
+
+    res = asyncio.run(run())
+    assert res.ok
+    assert len(fake_broker.submitted) == 1
+
+
+def test_gemma_target_menu_fib_1618(fake_broker, monkeypatch):
+    """Gemma choosing 'fib_1.618' target uses Fibonacci extension."""
+    import asyncio
+
+    _monkeypatch_price(monkeypatch)
+
+    setup = _setup()
+
+    async def run():
+        return await bookorders.buy_with_stop(
+            fake_broker, None, "TEST", strategy="smc", sleeve=40_000,
+            room=40_000, cap_pct=12.5, policy=TradingPolicy(),
+            reason="test", target_menu_choice="fib_1.618")
+
+    res = asyncio.run(run())
+    assert res.ok
+    assert len(fake_broker.submitted) == 1
+
+
+def test_gemma_size_menu_kelly_half(fake_broker, monkeypatch):
+    """Gemma choosing 'kelly_half' size uses half Kelly risk."""
+    import asyncio
+
+    _monkeypatch_price(monkeypatch)
+
+    setup = _setup()
+
+    async def run():
+        return await bookorders.buy_with_stop(
+            fake_broker, None, "TEST", strategy="smc", sleeve=40_000,
+            room=40_000, cap_pct=12.5, policy=TradingPolicy(),
+            reason="test", size_menu_choice="kelly_half")
+
+    res = asyncio.run(run())
+    assert res.ok
+    assert len(fake_broker.submitted) == 1
+
+
+def test_gemma_size_menu_vol_adjusted(fake_broker, monkeypatch):
+    """Gemma choosing 'vol_adjusted' size uses volatility-adjusted size."""
+    import asyncio
+
+    _monkeypatch_price(monkeypatch)
+
+    setup = _setup()
+
+    async def run():
+        return await bookorders.buy_with_stop(
+            fake_broker, None, "TEST", strategy="smc", sleeve=40_000,
+            room=40_000, cap_pct=12.5, policy=TradingPolicy(),
+            reason="test", size_menu_choice="vol_adjusted")
+
+    res = asyncio.run(run())
+    assert res.ok
+    assert len(fake_broker.submitted) == 1

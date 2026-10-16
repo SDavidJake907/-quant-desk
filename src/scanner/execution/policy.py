@@ -452,6 +452,40 @@ class TradingPolicy(Frozen):
         ("none", 0.0), ("2R", 2.0), ("3R", 3.0), ("5R", 5.0))
     gemma_size_risk_menu: tuple[tuple[str, float], ...] = (
         ("small", 1.0), ("normal", 2.0), ("large", 3.0))
+    #: GEMMA'S MATH-BASED MENU OPTIONS (new: phase 2)
+    #: These give Gemma mathematical alternatives to fixed ATR multiples and
+    #: R:R multiples. When Gemma selects a math-based option, the system
+    #: calculates the actual price using scanner.execution.stops.build_stop_plan()
+    #: or the math_signals module.
+    #:
+    #: Stop menu extensions (in addition to ATR multiples):
+    #:   swing_low   - stop at recent swing low (structure-based)
+    #:   vol_adjusted - ATR stop adjusted for volatility regime
+    #:   trailing     - trailing stop based on highest high since entry
+    #:
+    #: Target menu extensions (in addition to R:R multiples):
+    #:   swing_high   - target at recent swing high
+    #:   value_area   - target at volume profile value area high
+    #:   fib_1.618    - Fibonacci 1.618 extension target
+    #:
+    #: Size menu extensions (in addition to risk percentages):
+    #:   kelly_half   - half Kelly criterion size
+    #:   vol_adjusted - size inversely proportional to volatility
+    gemma_stop_menu_math: tuple[tuple[str, str], ...] = (
+        ("swing_low", "swing_low"),
+        ("vol_adjusted", "vol_adjusted"),
+        ("trailing", "trailing"),
+    )
+    gemma_target_menu_math: tuple[tuple[str, str], ...] = (
+        ("swing_high", "swing_high"),
+        ("value_area", "value_area"),
+        ("fib_1.618", "fib_1.618"),
+    )
+    gemma_size_menu_math: tuple[tuple[str, str], ...] = (
+        ("kelly_half", "kelly_half"),
+        ("vol_adjusted", "vol_adjusted"),
+    )
+    #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
     #: STOP LOSS CONFIGURATION (new: replaces pure ATR stops with smarter exits)
     #: ATR-only stops don't account for market structure, don't trail, and don't
     #: adjust for volatility regime. These fields add smarter exit logic.
