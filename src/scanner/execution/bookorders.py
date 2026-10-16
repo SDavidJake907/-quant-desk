@@ -44,10 +44,13 @@ def log(event: str, symbol: str, reason: str, policy: TradingPolicy, **kw) -> No
         stage="trade", policy=policy.fingerprint, build=build_id(), **kw))
 
 
-def target_price(*, limit: float, stop: float, reward_risk: float, ceiling: float) -> float:
-    """`reward_risk` x the risk above the entry; 0 means no target (the ceiling)."""
+def target_price(*, limit: float, stop: float, reward_risk: float,
+                 ceiling: float | None = None) -> float | None:
+    """`reward_risk` x the risk above the entry; 0 means no target at all."""
     if reward_risk > 0:
         return round_tick(limit + reward_risk * (limit - stop))
+    if ceiling is None:
+        return None   # Gemma chose "none": ride it, no ceiling target
     return round_tick(limit * ceiling)
 
 
@@ -78,8 +81,9 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
             last=last, atr_pct=atr,
             atr_multiple=policy.picks_stop_atr_multiple if atr_multiple is None else atr_multiple,
             offset_pct=policy.entry_limit_offset_pct, ceiling=policy.picks_target_ceiling)
+        target_ceiling = None if reward_risk == 0 else policy.picks_target_ceiling
         target = target_price(limit=limit, stop=stop, reward_risk=reward_risk,
-                              ceiling=policy.picks_target_ceiling)
+                              ceiling=target_ceiling)
     except Exception as exc:                               # noqa: BLE001
         log(f"{strategy}_refused", symbol, f"cannot price: {exc}", policy)
         return Bought(symbol=symbol, ok=False, message=f"cannot price: {exc}")
@@ -91,9 +95,21 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
         return Bought(symbol=symbol, ok=False, message=sizing.limited_by)
     now = datetime.now().astimezone()
     coid = f"{prefix_for(strategy)}{symbol}-{int(now.timestamp())}"
+    # Gemma may choose target "none" (reward_risk == 0): ride it, no ceiling
+    # target. The bracket still needs a take_profit leg, so use a ceiling so
+    # high it is effectively never hit — she decides when to sell. Record the
+    # true choice (0.0 target, 0.0 R:R) in the audit intent.
+    if reward_risk > 0:
+        order_target = target
+        intent_target = target
+        intent_rr = round((target - limit) / (limit - stop), 3)
+    else:
+        order_target = limit * 1000.0   # effectively no target
+        intent_target = 0.0
+        intent_rr = 0.0
     if session == REGULAR:
         payload = manual.bracket(symbol, sizing.shares, limit=limit, stop=stop,
-                                 target=target, at=now)
+                                 target=order_target, at=now)
         payload["client_order_id"] = coid
     else:
         # No stop legs exist outside regular hours: the stop and target ride in
@@ -101,12 +117,12 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
         payload = extended.limit_payload(symbol, sizing.shares, "buy", limit, coid)
     intent = TradeIntent(
         symbol=symbol, action="buy", strategy=strategy, trigger_at=now,
-        entry_price=limit, stop_price=stop, target_price=target,
+        entry_price=limit, stop_price=stop, target_price=intent_target,
         shares=sizing.shares, risk_dollars=sizing.risk_dollars,
         position_dollars=sizing.position_dollars,
         # limit > entry > stop (offset_pct >= 0, and sizing guarantees
         # stop < entry), so the denominator is strictly positive.
-        reward_risk=round((target - limit) / (limit - stop), 3),
+        reward_risk=intent_rr,
         paper=True, client_order_id=payload["client_order_id"], llm_concern=reason[:300])
     log("trade_intent", symbol, reason, policy, intent=intent)
     try:
