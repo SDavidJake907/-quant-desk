@@ -38,6 +38,7 @@ from scanner.sources import calendar as cal
 from scanner.sources import composite, president, yahoo_rss
 from scanner.sources.index_history import SP400, SP500
 from scanner.sources.market_calendar import parse_sessions
+from scanner.advisor import val_calendar
 
 BRIEF_DIR = Path("data/brief")
 REPORT_DIR = Path("logs/week_ahead")
@@ -113,6 +114,13 @@ async def main(use_llm: bool) -> int:
         bells = {s: e for s, e in found.items() if s in wa.BELLWETHERS and s not in names}
         fixed = (list(wa.FIXED_EVENTS) + list(wa.WATCH_EVENTS)
                  + (wa.market_mechanics(today, days[-1]) if days else []))
+        # VAL-CALENDAR 2026 fixed economic events (FOMC, CPI, PPI, PCE,
+        # Employment, ISM PMI, market holidays) as additional fixed events.
+        # Nasdaq API data queried at runtime takes precedence; VAL calendar
+        # provides fallback and cross-check.
+        val_events = val_calendar.all_val_events()
+        existing = {(d, k) for d, k, _ in fixed}
+        fixed += [e for e in val_events if (e[0], e[1]) not in existing]
         months = sorted({d.replace(day=1) for d in days}) if days else []
         fixed += [(d, "market", text) for d, text in await cal.big_ipos(client, months)]
         if sessions and days:
