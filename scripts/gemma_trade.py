@@ -71,6 +71,17 @@ def daily_brief(day: date) -> dict | None:
     return brief if brief.get("date") == day.isoformat() and brief.get("market_text") else None
 CORE = Path("watchlists/core.txt")
 GEMMA_LIST = Path("watchlists/gemma.txt")
+PORTFOLIO_REVIEW = BRIEF_DIR / "portfolio-review.json"
+
+
+def _portfolio_review_text() -> str:
+    """Gemma's read-only portfolio review, or empty string if unavailable."""
+    try:
+        data = json.loads(PORTFOLIO_REVIEW.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    text = str(data.get("summary_text", "")).strip()
+    return text if text else ""
 
 
 def _ret(closes, back: int) -> str:
@@ -318,6 +329,13 @@ async def main(submit: bool) -> int:
                     facts[s] += "\n" + "\n".join(lines)
         elif POLICY.gemma_sees_brief:
             print(f"  {YELLOW}no daily brief for today -- deciding without it{RESET}")
+        # Gemma's portfolio review: read-only snapshot of the whole account
+        # (open positions, by-book stats, refusals, sector exposure,
+        # TradingAgents on holdings). Advisory only -- nothing in it blocks,
+        # sizes, or closes a trade.
+        portfolio_review = _portfolio_review_text()
+        if portfolio_review:
+            trend += ". " + portfolio_review
         held_status ={s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
                        for s, p in mine.items()}
         sleeve_dollars = account.equity * POLICY.gemma_allocation_pct / 100

@@ -29,6 +29,7 @@ $tasks = @(
     "stock-scanner-advisor-pre",
     "stock-scanner-momentum",
     "stock-scanner-gemma",
+    "stock-scanner-gemma-portfolio",
     "stock-scanner-journal",
     "stock-scanner-weekly",
     "stock-scanner-monday",
@@ -229,6 +230,16 @@ $gemSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLi
 $gemAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_gemma.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-gemma" -Trigger $gemTrigger -Action $gemAction -Settings $gemSettings -Description "Gemma's book: morning decision on core.txt names, real paper orders on a 10% sleeve (05:45 AK weekdays)" -Force | Out-Null
 Write-Output "registered stock-scanner-gemma   05:45 AK weekdays"
+
+# --- Gemma's portfolio review ------------------------------------------------
+# 03:00 AK daily, half an hour before Gemma's 05:45 decision. Read-only:
+REM writes data/brief/portfolio-review.json which Gemma reads as part of her
+REM facts block. Advisory only — nothing in it blocks, sizes, or closes a trade.
+$portTrigger = New-ScheduledTaskTrigger -Daily -At 3:00AM
+$portSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
+$portAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_gemma_portfolio_review.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-gemma-portfolio" -Trigger $portTrigger -Action $portAction -Settings $portSettings -Description "Gemma's portfolio review: open positions, by-book stats, sector exposure, refusals, TA ratings on holdings (03:00 AK daily)" -Force | Out-Null
+Write-Output "registered stock-scanner-gemma-portfolio  03:00 AK daily"
 
 # --- the desk officer's evening journal (WORKLIST §42) -----------------------
 # 13:45 AK weekdays, after outcomes (13:30). Code checks every task ran and
