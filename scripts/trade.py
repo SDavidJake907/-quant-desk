@@ -797,8 +797,11 @@ async def main(
         # earnings, so the calendar is not consulted (window 16 runs at 0).
         if news_gate and candidates and policy.block_earnings_within_days:
             wanted = frozenset(setup.symbol for setup, _, _ in rankable)
-            earnings = await event_calendar.upcoming_earnings(
+            earnings, failed = await event_calendar.upcoming_earnings(
                 wanted, client, horizon=policy.block_earnings_within_days)
+            if failed:
+                print(f"  {RED}! earnings calendar failed for {len(failed)} "
+                      f"day(s): {', '.join(str(d) for d in failed)}{RESET}")
             if earnings:
                 print(f"  {YELLOW}earnings inside the holding period: "
                       f"{', '.join(f'{s} {e.label}' for s, e in sorted(earnings.items()))}{RESET}")

@@ -48,6 +48,11 @@ DEFAULT_HORIZON = 7
 #: showed YESTERDAY's releases as today's (Gemma's market line, the weekly
 #: report). Ask for the next day.
 ECONOMIC_DATE_OFFSET = timedelta(days=1)
+#: Nasdaq's earnings calendar behaves the same way as its economic calendar:
+#: `date=D` returns D-1's reports. Checked 2026-10-15: date=10-15 returned
+#: 10-14's after-hours earnings (ALLY, PRGO). Query for D+1 to get D's
+#: earnings. If this is ever wrong, set to timedelta(0) and update this note.
+EARNINGS_DATE_OFFSET = timedelta(days=1)
 #: Only US releases: the feed carries German and Chinese CPI under the same names.
 US = "United States"
 
@@ -139,27 +144,35 @@ async def upcoming_earnings(
     *,
     horizon: int = DEFAULT_HORIZON,
     today: date | None = None,
-) -> dict[str, Earnings]:
+) -> tuple[dict[str, Earnings], tuple[date, ...]]:
     """Which of `symbols` report within `horizon` days.
 
-    A day that fails to load is skipped, and the caller is told how many days
-    were actually read so it can tell "nothing scheduled" from "did not look".
+    Returns `(found, failed_days)`. `failed_days` lists session days whose
+    calendar page could not be read — the caller can tell "nothing scheduled"
+    from "did not look".
+
+    Nasdaq's earnings calendar answers `date=D` with D-1's reports (same
+    behavior as its economic calendar). Query `D+1` to get `D`'s earnings,
+    then store with the correct `on=D` date.
     """
     start = today or date.today()
     found: dict[str, Earnings] = {}
+    failed: list[date] = []
     for day in _session_days(start, horizon):
+        query_day = day + EARNINGS_DATE_OFFSET
         try:
             response = await client.get(
-                EARNINGS_URL, params={"date": day.isoformat()},
+                EARNINGS_URL, params={"date": query_day.isoformat()},
                 headers=HEADERS, timeout=15.0,
             )
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError):
+            failed.append(day)
             continue
         for symbol, event in parse_earnings(payload, day, symbols).items():
             found.setdefault(symbol, event)
-    return found
+    return found, tuple(failed)
 
 
 def is_market_moving(event_name: str) -> bool:

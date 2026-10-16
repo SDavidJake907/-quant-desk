@@ -104,8 +104,11 @@ async def main(use_llm: bool) -> int:
         for d in days:
             econ[d], sector_econ[d] = await cal.scheduled_events(client, on=d)
         span = (days[-1] - today).days + 1 if days else 28
-        found = await cal.upcoming_earnings(frozenset(names) | frozenset(wa.BELLWETHERS), client,
-                                            horizon=span)
+        found, failed = await cal.upcoming_earnings(frozenset(names) | frozenset(wa.BELLWETHERS), client,
+                                                    horizon=span)
+        if failed:
+            print(f"  ! earnings calendar failed for {len(failed)} day(s): "
+                  f"{', '.join(str(d) for d in failed)}")
         earnings = {s: e for s, e in found.items() if s in names}
         bells = {s: e for s, e in found.items() if s in wa.BELLWETHERS and s not in names}
         fixed = (list(wa.FIXED_EVENTS) + list(wa.WATCH_EVENTS)

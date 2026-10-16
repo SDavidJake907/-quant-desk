@@ -8,13 +8,21 @@ through earnings because an API was down is worse than not checking at all.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
+from unittest.mock import patch
+
+import httpx
+import pytest
 
 from scanner.sources.calendar import (
+    EARNINGS_DATE_OFFSET,
     Earnings,
+    ECONOMIC_DATE_OFFSET,
     _session_days,
+    economic_query_date,
     is_market_moving,
     parse_earnings,
+    upcoming_earnings,
 )
 
 WANTED = frozenset({"LITE", "AMD"})
@@ -133,3 +141,105 @@ def test_regional_fed_surveys_and_pce_sub_series_are_dropped():
              "PCE Price index", "PCE price index", "Core PCE Prices", "GDP", "GDP Price Index"]
     payload = {"data": {"rows": [{"country": "United States", "eventName": n} for n in names]}}
     assert parse_economic(payload) == ("PCE Price index", "GDP")
+
+
+# ---- upcoming_earnings: offset and failure tracking ----
+
+class _FakeResponse:
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise Exception(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._payload
+
+
+class _FakeClient:
+    """Captures query dates and returns canned earnings payloads."""
+
+    def __init__(self, payloads_by_date: dict[date, dict], fail_dates: set[date] = None):
+        self.payloads_by_date = payloads_by_date
+        self.fail_dates = fail_dates or set()
+        self.queried_dates: list[date] = []
+
+    async def get(self, url, *, params=None, headers=None, timeout=None):
+        q = params.get("date") if params else None
+        qd = date.fromisoformat(q) if q else None
+        self.queried_dates.append(qd)
+        if qd in self.fail_dates:
+            raise httpx.HTTPError("boom")
+        return _FakeResponse(self.payloads_by_date.get(qd, {"data": {"rows": []}}))
+
+
+def _earnings_payload(symbols: list[tuple[str, str]]) -> dict:
+    """symbols: [(symbol, time), ...]"""
+    return {"data": {"rows": [{"symbol": s, "time": t} for s, t in symbols]}}
+
+
+async def test_upcoming_earnings_applies_offset():
+    """Queries Nasdaq for D+1 to get D's earnings (D-1 offset like economic calendar)."""
+    target = date(2026, 10, 15)
+    client = _FakeClient({target + EARNINGS_DATE_OFFSET: _earnings_payload([("NVDA", "after-hours")])})
+    found, failed = await upcoming_earnings(frozenset({"NVDA"}), client, horizon=1, today=target)
+    assert failed == ()
+    assert target + EARNINGS_DATE_OFFSET in client.queried_dates
+    assert "NVDA" in found
+    assert found["NVDA"].on == target  # stored with correct date, not query date
+    assert found["NVDA"].when == "after-close"  # normalized by parse_earnings
+
+
+async def test_upcoming_earnings_tracks_failed_days():
+    """Days that fail to load are reported separately from days with no earnings."""
+    target = date(2026, 10, 15)
+    client = _FakeClient({}, fail_dates={target + EARNINGS_DATE_OFFSET})
+    found, failed = await upcoming_earnings(frozenset({"NVDA"}), client, horizon=1, today=target)
+    assert found == {}
+    assert failed == (target,)
+
+
+async def test_upcoming_earnings_earliest_date_wins():
+    """If a symbol reports on two days, the earliest is kept."""
+    d1 = date(2026, 10, 15)
+    d2 = date(2026, 10, 16)
+    client = _FakeClient({
+        d1 + EARNINGS_DATE_OFFSET: _earnings_payload([("NVDA", "after-hours")]),
+        d2 + EARNINGS_DATE_OFFSET: _earnings_payload([("NVDA", "pre-mkt")]),
+    })
+    found, failed = await upcoming_earnings(frozenset({"NVDA"}), client, horizon=2, today=d1)
+    assert failed == ()
+    assert found["NVDA"].on == d1  # earliest wins
+    assert found["NVDA"].when == "after-close"  # normalized by parse_earnings
+
+
+async def test_upcoming_earnings_filters_to_wanted_symbols():
+    """Symbols not in `wanted` are ignored."""
+    target = date(2026, 10, 15)
+    client = _FakeClient({
+        target + EARNINGS_DATE_OFFSET: _earnings_payload([("NVDA", "after-hours"), ("ZZZZ", "pre-mkt")]),
+    })
+    found, failed = await upcoming_earnings(frozenset({"NVDA"}), client, horizon=1, today=target)
+    assert "NVDA" in found
+    assert "ZZZZ" not in found
+
+
+def test_economic_and_earnings_offsets_are_same():
+    """Both Nasdaq calendars share the D-1 offset behavior."""
+    assert EARNINGS_DATE_OFFSET == ECONOMIC_DATE_OFFSET == timedelta(days=1)
+
+
+async def test_upcoming_earnings_with_horizon_queries_each_session_day():
+    """With horizon=2, queries both session days (skipping weekends)."""
+    d1 = date(2026, 10, 15)  # Thursday
+    d2 = date(2026, 10, 16)  # Friday
+    client = _FakeClient({
+        d1 + EARNINGS_DATE_OFFSET: _earnings_payload([]),
+        d2 + EARNINGS_DATE_OFFSET: _earnings_payload([]),
+    })
+    found, failed = await upcoming_earnings(frozenset(), client, horizon=2, today=d1)
+    assert failed == ()
+    assert d1 + EARNINGS_DATE_OFFSET in client.queried_dates
+    assert d2 + EARNINGS_DATE_OFFSET in client.queried_dates
