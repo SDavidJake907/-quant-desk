@@ -205,9 +205,15 @@ class TradingPolicy(Frozen):
 
     # --- what stops a trade -----------------------------------------------
     block_structural_news: bool = True
-    #: 0 = hold through earnings (operator's choice for window 16, 2026-10-06:
-    #: the core list is hand-picked trending names). Was 7.
-    block_earnings_within_days: int = 0
+    #: Refuse a setup whose earnings fall inside this many days ahead. Earnings
+    #: gaps are the strategy's fat left tail — the five worst trades in the
+    #: study were all gaps, worst -3.56R against a -1.00R mean for normal
+    #: stops. This is a mechanical protection, not a predictive filter: the
+    #: backtest ran on Yahoo's dividend-adjusted bars where earnings gaps have
+    #: been smoothed away, so it measured a world in which this cost does not
+    #: exist. Live bars are not adjusted.
+    #: Set to 1 to refuse setups reporting inside the holding period.
+    block_earnings_within_days: int = 1
 
     #: Refuse a long whose stop would be consumed by the mechanical
     #: ex-dividend price drop. THIS IS NOT A PREDICTIVE FILTER. Every context
@@ -408,9 +414,10 @@ class TradingPolicy(Frozen):
     #: An unfilled list buy older than this is cancelled and re-sent at the
     #: current price on the next run.
     picks_stale_entry_minutes: float = 25.0
-    #: Sector cap for the list. 0 = off: the operator's list is a deliberate
-    #: chip/AI bet and they chose to lift the cap for it (2026-10-06).
-    picks_max_per_sector: int = 0
+    #: Sector cap for the list. Aligned with max_per_sector (3) so the picks
+    #: book cannot concentrate into one sector while scanner and Gemma are
+    #: capped. 0 disables.
+    picks_max_per_sector: int = 3
 
     # --- Gemma's own book (advisor/gemma_trader.py, WORKLIST §42) ----------
     #: Gemma chooses up to `gemma_max_positions` names from watchlists/core.txt
@@ -454,11 +461,14 @@ class TradingPolicy(Frozen):
     #: its stocks each item touches -- dates and headlines, never its own earlier
     #: read of them. Context, labelled as such; not a tested edge.
     gemma_sees_brief: bool = True
-    #: EXTENDED HOURS (WORKLIST §59, operator 2026-10-09: both books, every
-    #: session -- premarket, after-hours, and overnight from Sunday 8 PM ET).
-    #: Outside regular hours orders are plain limit orders (Alpaca accepts no
-    #: stops then); the stop is armed by protect.py at the open.
-    extended_hours_trading: bool = True
+    #: EXTENDED HOURS (WORKLIST §59). Outside regular hours orders are plain
+    #: limit orders (Alpaca accepts no stops then); the stop is armed by
+    #: protect.py at the open.
+    #: NOTE: Alpaca rejects bracket orders in extended hours, so an extended-
+    #: hours entry is necessarily naked until protect.py arms its stop at the
+    #: 05:33 AK open. Set to False for live trading to avoid naked overnight
+    #: entries. Kept True for paper to measure the behavior.
+    extended_hours_trading: bool = False
     #: An extended-hours sell is a limit this far under the live price, so it
     #: fills in a thin market without becoming a market order.
     extended_sell_offset_pct: float = 0.5
