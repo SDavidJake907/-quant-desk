@@ -28,6 +28,7 @@ from scanner.execution.audit import append_event
 from scanner.execution.portfolio_review import build_review, review_text
 from scanner.execution.provenance import build_id
 from scanner.execution.scorecard import read_rows
+from scanner.features.market_snapshot import fetch_snapshot, summary_text
 from scanner.models import AuditEvent
 
 BRIEF_DIR = Path("data/brief")
@@ -44,6 +45,7 @@ def _owner_map_from_orders(orders: list[dict]) -> dict[str, str]:
 async def main(show: bool) -> int:
     rows = read_rows(settings.audit_log_path)
 
+    snap = None
     async with httpx.AsyncClient(timeout=60) as client:
         broker = Alpaca(
             settings.alpaca_key_id, settings.alpaca_secret_key, client
@@ -63,6 +65,12 @@ async def main(show: bool) -> int:
         except BrokerError as exc:
             print(f"  ! account unreadable: {exc}")
             account = {"equity": 0.0, "buying_power": 0.0, "status": "UNKNOWN"}
+
+        # Live market snapshot for Gemma's morning context.
+        try:
+            snap = await fetch_snapshot(client)
+        except Exception:
+            pass  # snapshot is context, never a blocker
 
     owner_map = _owner_map_from_orders(
         await _all_orders(settings.alpaca_key_id, settings.alpaca_secret_key)
@@ -103,6 +111,25 @@ async def main(show: bool) -> int:
         "tradingagents_ratings": [t.model_dump(mode="json") for t in review.tradingagents_ratings],
         "summary_text": review.summary_text(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "market_snapshot": (
+            {
+                "quotes": [
+                    {
+                        "symbol": q.symbol,
+                        "name": q.name,
+                        "price": q.price,
+                        "change": q.change,
+                        "change_pct": q.change_pct,
+                        "previous_close": q.previous_close,
+                    }
+                    for q in snap.quotes
+                ],
+                "fetched_at": snap.fetched_at,
+                "summary": summary_text(snap),
+            }
+            if snap is not None
+            else None
+        ),
     }
     REVIEW_FILE.write_text(json.dumps(payload, indent=1), encoding="utf-8")
 

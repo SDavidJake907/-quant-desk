@@ -48,6 +48,7 @@ from scanner.features.bars import fetch_bars, fetch_many
 from scanner.momentum import state as mstate
 from scanner.features.intraday_context import atr_pct
 from scanner.features.technicals import compute, relative_strength
+from scanner.features.market_snapshot import fetch_snapshot, summary_text
 from scanner.llm.ollama import LLMError, chat_json
 from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
@@ -81,7 +82,9 @@ def _portfolio_review_text() -> str:
     except (OSError, ValueError):
         return ""
     text = str(data.get("summary_text", "")).strip()
-    return text if text else ""
+    snap = str(data.get("market_snapshot", {}).get("summary", "")).strip()
+    parts = [p for p in [text, snap] if p]
+    return " ".join(parts)
 
 
 def _ret(closes, back: int) -> str:
@@ -117,6 +120,16 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
         trend += ". (Context only: none of these was a tested edge on this desk.)"
     except Exception as exc:                             # noqa: BLE001
         trend += f". (market context unavailable: {type(exc).__name__})"
+
+    # Live market snapshot: futures, bond yields, VIX, commodities, dollar.
+    # Gemma sees today's tape when she decides what to buy — context only.
+    try:
+        snap = await fetch_snapshot(client)
+        snap_line = summary_text(snap)
+        if snap_line:
+            trend += f". Live tape: {snap_line}"
+    except Exception:                                    # noqa: BLE001
+        pass                                             # snapshot is context, never a blocker
     try:
         earnings = await event_calendar.upcoming_earnings(frozenset(symbols), client)
     except Exception:                                    # noqa: BLE001
