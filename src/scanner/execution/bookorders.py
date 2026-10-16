@@ -65,7 +65,8 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
                         room: float, cap_pct: float, policy: TradingPolicy,
                         reason: str, risk_pct: float | None = None,
                         atr_multiple: float | None = None,
-                        reward_risk: float = 0.0, session: str = REGULAR) -> Bought:
+                        reward_risk: float | None = None,
+                        session: str = REGULAR) -> Bought:
     """Price, size, send and log one bracket buy. Never raises on a broker or
     pricing failure; the refusal is logged and returned. `atr_multiple` and
     `reward_risk` are Gemma's menu choices; left out, the picks defaults."""
@@ -81,8 +82,17 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
             last=last, atr_pct=atr,
             atr_multiple=policy.picks_stop_atr_multiple if atr_multiple is None else atr_multiple,
             offset_pct=policy.entry_limit_offset_pct, ceiling=policy.picks_target_ceiling)
-        target_ceiling = None if reward_risk == 0 else policy.picks_target_ceiling
-        target = target_price(limit=limit, stop=stop, reward_risk=reward_risk,
+        # reward_risk is None when the picks list calls without specifying
+        # (picks always uses picks_target_ceiling as its ceiling target).
+        # reward_risk == 0.0 means Gemma explicitly chose "none" (ride it).
+        # reward_risk > 0 means Gemma chose 2R/3R/5R.
+        if reward_risk is None:
+            effective_rr = 0.0
+            target_ceiling = policy.picks_target_ceiling
+        else:
+            effective_rr = reward_risk
+            target_ceiling = None if effective_rr == 0.0 else policy.picks_target_ceiling
+        target = target_price(limit=limit, stop=stop, reward_risk=effective_rr,
                               ceiling=target_ceiling)
     except Exception as exc:                               # noqa: BLE001
         log(f"{strategy}_refused", symbol, f"cannot price: {exc}", policy)
@@ -99,12 +109,19 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
     # target. The bracket still needs a take_profit leg, so use a ceiling so
     # high it is effectively never hit — she decides when to sell. Record the
     # true choice (0.0 target, 0.0 R:R) in the audit intent.
-    if reward_risk > 0:
+    if effective_rr > 0:
+        # Gemma chose 2R/3R/5R: target is limit + R:R * risk
         order_target = target
         intent_target = target
         intent_rr = round((target - limit) / (limit - stop), 3)
+    elif target_ceiling is not None:
+        # Picks list: ceiling target (2.0x entry), reward_risk not specified
+        order_target = target  # which is limit * ceiling
+        intent_target = target
+        intent_rr = round((target - limit) / (limit - stop), 3)
     else:
-        order_target = limit * 1000.0   # effectively no target
+        # Gemma chose "none": effectively no target
+        order_target = limit * 1000.0
         intent_target = 0.0
         intent_rr = 0.0
     if session == REGULAR:
