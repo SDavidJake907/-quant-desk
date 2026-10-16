@@ -22,3 +22,22 @@ def _load(name: str, path: Path):
 
 
 _load("scripts_watchdog", _ROOT / "scripts" / "watchdog.py")
+
+
+class FakeBroker:
+    """Captures submitted orders without hitting Alpaca."""
+
+    def __init__(self):
+        self.submitted: list[dict] = []
+
+    async def submit(self, payload: dict) -> dict:
+        self.submitted.append(dict(payload))
+        return {"id": f"order-{len(self.submitted)}"}
+
+
+import pytest
+
+
+@pytest.fixture
+def fake_broker():
+    return FakeBroker()

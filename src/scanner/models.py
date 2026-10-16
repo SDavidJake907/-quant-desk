@@ -15,6 +15,19 @@ class Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class TargetTier(Frozen):
+    """One take-profit level: price and share fraction.
+
+    A setup can have multiple tiers (e.g., 50% at 1R, 25% at 2R, 25% at 3R).
+    When a tier's price is hit, that fraction of shares is sold and the rest
+    continues toward the next tier or the stop.
+    """
+
+    target_price: float
+    pct_of_shares: float  # 0.0 to 1.0 — share of total position to sell here
+    label: str  # e.g., "1R", "2R", "3R"
+
+
 class TradeIntent(Frozen):
     """The only shape allowed to cross from scanning into execution.
 
@@ -36,6 +49,11 @@ class TradeIntent(Frozen):
     paper: bool = True
     dry_run: bool = False
     client_order_id: str = ""
+    #: Take-profit ladder tiers. When non-empty, these override `target_price`
+    #: for order submission: each tier sells `pct_of_shares` at `target_price`.
+    #: `target_price` is kept as the ceiling / primary target for backward
+    #: compatibility with single-target books (picks, manual).
+    targets: tuple[TargetTier, ...] = ()
     #: Would the RSI 40-65 gate have passed? Recorded, never acted on —
     #: forward evidence for a filter chosen from nine candidates.
     rsi_gate_passed: bool | None = None

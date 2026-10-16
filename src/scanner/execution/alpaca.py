@@ -28,7 +28,7 @@ from typing import Any
 import httpx
 
 from scanner.execution.sizing import Sizing
-from scanner.models import Frozen
+from scanner.models import Frozen, TargetTier
 from scanner.screens.smc import Setup
 
 PAPER_HOST = "https://paper-api.alpaca.markets"
@@ -112,6 +112,87 @@ def bracket_payload(setup: Setup, sizing: Sizing, at: datetime,
         "take_profit": {"limit_price": f"{round_tick(setup.target_price):.2f}"},
         "stop_loss": {"stop_price": f"{round_tick(setup.stop_price):.2f}"},
         "client_order_id": client_order_id(setup, at),
+        "extended_hours": False,
+    }
+
+
+def take_profit_payload(
+    symbol: str,
+    shares: int,
+    target_price: float,
+    label: str,
+    at: datetime,
+    base_coid: str,
+) -> dict[str, Any]:
+    """One take-profit limit sell order for a tier of the position.
+
+    Each tier sells `shares` at `target_price`. Orders are GTC limit sells
+    with `reduce_only=true` so they never sell more than the remaining
+    position — if an earlier tier already filled, this one sells whatever is
+    left (up to its qty).
+
+    Used for take-profit ladders. Single-target setups still use
+    `bracket_payload` above.
+    """
+    return {
+        "symbol": symbol,
+        "qty": str(shares),
+        "side": "sell",
+        "type": "limit",
+        "limit_price": f"{round_tick(target_price):.2f}",
+        "time_in_force": "gtc",
+        "client_order_id": f"{base_coid}-tp{label}",
+        "reduce_only": True,
+        "extended_hours": False,
+    }
+
+
+def stop_payload(
+    symbol: str,
+    shares: int,
+    stop_price: float,
+    at: datetime,
+    base_coid: str,
+) -> dict[str, Any]:
+    """Protective stop sell order.
+
+    Defaults to full position size. Pass `shares` to protect only the
+    remaining shares after take-profit tiers have been filled.
+    """
+    return {
+        "symbol": symbol,
+        "qty": str(shares),
+        "side": "sell",
+        "type": "stop",
+        "stop_price": f"{round_tick(stop_price):.2f}",
+        "time_in_force": "gtc",
+        "client_order_id": f"{base_coid}-sl",
+        "reduce_only": True,
+        "extended_hours": False,
+    }
+
+
+def entry_payload(
+    symbol: str,
+    shares: int,
+    entry_price: float,
+    at: datetime,
+    client_order_id: str,
+    entry_offset_pct: float = 0.0,
+) -> dict[str, Any]:
+    """Plain limit entry order (no attached legs).
+
+    Used for multi-target setups where the bracket form can't carry multiple
+    take-profit legs. The stop and take-profit legs are submitted separately.
+    """
+    return {
+        "symbol": symbol,
+        "qty": str(shares),
+        "side": "buy",
+        "type": "limit",
+        "limit_price": f"{round_tick(entry_price * (1 + entry_offset_pct / 100)):.2f}",
+        "time_in_force": "gtc",
+        "client_order_id": client_order_id,
         "extended_hours": False,
     }
 

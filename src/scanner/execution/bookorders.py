@@ -17,7 +17,9 @@ from scanner.config import settings
 import asyncio
 
 from scanner.execution import extended, manual, picks
-from scanner.execution.alpaca import BrokerError, round_tick
+from scanner.execution.alpaca import (
+    BrokerError, entry_payload, round_tick, stop_payload, take_profit_payload,
+)
 from scanner.execution.audit import append_event
 from scanner.execution.flatten_run import close_when_released
 from scanner.execution.ownership import prefix_for
@@ -28,7 +30,7 @@ from scanner.execution.sizing import Sizing, size_position
 from scanner.features.bars import fetch_bars
 from scanner.features.intraday import fetch_intraday, max_range
 from scanner.features.intraday_context import atr_pct
-from scanner.models import AuditEvent, Frozen, TradeIntent
+from scanner.models import AuditEvent, Frozen, TargetTier, TradeIntent
 
 
 class Bought(Frozen):
@@ -66,10 +68,17 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
                         reason: str, risk_pct: float | None = None,
                         atr_multiple: float | None = None,
                         reward_risk: float | None = None,
+                        targets: tuple[TargetTier, ...] = (),
                         session: str = REGULAR) -> Bought:
     """Price, size, send and log one bracket buy. Never raises on a broker or
     pricing failure; the refusal is logged and returned. `atr_multiple` and
-    `reward_risk` are Gemma's menu choices; left out, the picks defaults."""
+    `reward_risk` are Gemma's menu choices; left out, the picks defaults.
+
+    When `targets` is non-empty (take-profit ladder), the order is submitted
+    as separate legs: entry limit + one limit sell per tier + one stop sell.
+    Each tier sells `pct_of_shares` of the position at its `target_price`.
+    The remaining shares ride to the final target or the stop.
+    """
     try:
         last, atr = await price_and_atr(symbol, client)
         if session != REGULAR:
@@ -105,50 +114,156 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
         return Bought(symbol=symbol, ok=False, message=sizing.limited_by)
     now = datetime.now().astimezone()
     coid = f"{prefix_for(strategy)}{symbol}-{int(now.timestamp())}"
-    # Gemma may choose target "none" (reward_risk == 0): ride it, no ceiling
-    # target. The bracket still needs a take_profit leg, so use a ceiling so
-    # high it is effectively never hit — she decides when to sell. Record the
-    # true choice (0.0 target, 0.0 R:R) in the audit intent.
-    if effective_rr > 0:
-        # Gemma chose 2R/3R/5R: target is limit + R:R * risk
+    intent_target = target  # default; overridden in each branch below
+    intent_rr = 0.0
+
+    if session != REGULAR:
+        # Outside regular hours: plain limit entry only. No stop or bracket
+        # legs are allowed (Alpaca rejects them). protect.py arms the stop at
+        # the 05:33 AK open (WORKLIST §59).
+        try:
+            payload = extended.limit_payload(symbol, sizing.shares, "buy",
+                                             limit, coid)
+            order = await broker.submit(payload)
+            order_id = str(order.get("id", ""))
+        except BrokerError as exc:
+            log("order_rejected", symbol, str(exc), policy,
+                intent=TradeIntent(symbol=symbol, action="buy",
+                                   strategy=strategy, trigger_at=now,
+                                   entry_price=limit, stop_price=stop,
+                                   target_price=target,
+                                   shares=sizing.shares,
+                                   risk_dollars=sizing.risk_dollars,
+                                   position_dollars=sizing.position_dollars,
+                                   reward_risk=0.0,
+                                   paper=True, client_order_id=coid,
+                                   targets=targets,
+                                   llm_concern=reason[:300]))
+            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
+    elif targets:
+        # Take-profit ladder: entry limit + per-tier limit sells + stop sell,
+        # all as separate orders. Each tier sells pct_of_shares at target_price.
+        # The stop protects whatever shares remain after all tiers fill.
+        intent_target = 0.0
+        intent_rr = 0.0
+        try:
+            # 1. Entry limit order (full shares)
+            entry_order = await broker.submit(entry_payload(
+                symbol, sizing.shares, limit, now, coid,
+                entry_offset_pct=policy.entry_limit_offset_pct))
+            order_id = str(entry_order.get("id", ""))
+
+            # 2. Take-profit limit sells for each tier
+            remaining_shares = sizing.shares
+            for tier in targets:
+                tier_shares = max(1, int(sizing.shares * tier.pct_of_shares))
+                remaining_shares -= tier_shares
+                await broker.submit(take_profit_payload(
+                    symbol, tier_shares, tier.target_price, tier.label, now, coid))
+
+            # 3. Stop loss for whatever remains after all tiers
+            stop_shares = max(1, remaining_shares)
+            await broker.submit(stop_payload(
+                symbol, stop_shares, stop, now, coid))
+        except BrokerError as exc:
+            log("order_rejected", symbol, str(exc), policy,
+                intent=TradeIntent(symbol=symbol, action="buy",
+                                   strategy=strategy, trigger_at=now,
+                                   entry_price=limit, stop_price=stop,
+                                   target_price=intent_target,
+                                   shares=sizing.shares,
+                                   risk_dollars=sizing.risk_dollars,
+                                   position_dollars=sizing.position_dollars,
+                                   reward_risk=intent_rr,
+                                   paper=True, client_order_id=coid,
+                                   targets=targets,
+                                   llm_concern=reason[:300]))
+            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
+    elif effective_rr > 0:
+        # Gemma chose 2R/3R/5R: single bracket order
         order_target = target
         intent_target = target
         intent_rr = round((target - limit) / (limit - stop), 3)
+        try:
+            payload = manual.bracket(symbol, sizing.shares, limit=limit,
+                                     stop=stop, target=order_target, at=now)
+            payload["client_order_id"] = coid
+            order = await broker.submit(payload)
+            order_id = str(order.get("id", ""))
+        except BrokerError as exc:
+            log("order_rejected", symbol, str(exc), policy,
+                intent=TradeIntent(symbol=symbol, action="buy",
+                                   strategy=strategy, trigger_at=now,
+                                   entry_price=limit, stop_price=stop,
+                                   target_price=intent_target,
+                                   shares=sizing.shares,
+                                   risk_dollars=sizing.risk_dollars,
+                                   position_dollars=sizing.position_dollars,
+                                   reward_risk=intent_rr,
+                                   paper=True, client_order_id=coid,
+                                   llm_concern=reason[:300]))
+            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
     elif target_ceiling is not None:
         # Picks list: ceiling target (2.0x entry), reward_risk not specified
         order_target = target  # which is limit * ceiling
         intent_target = target
         intent_rr = round((target - limit) / (limit - stop), 3)
+        try:
+            payload = manual.bracket(symbol, sizing.shares, limit=limit,
+                                     stop=stop, target=order_target, at=now)
+            payload["client_order_id"] = coid
+            order = await broker.submit(payload)
+            order_id = str(order.get("id", ""))
+        except BrokerError as exc:
+            log("order_rejected", symbol, str(exc), policy,
+                intent=TradeIntent(symbol=symbol, action="buy",
+                                   strategy=strategy, trigger_at=now,
+                                   entry_price=limit, stop_price=stop,
+                                   target_price=intent_target,
+                                   shares=sizing.shares,
+                                   risk_dollars=sizing.risk_dollars,
+                                   position_dollars=sizing.position_dollars,
+                                   reward_risk=intent_rr,
+                                   paper=True, client_order_id=coid,
+                                   llm_concern=reason[:300]))
+            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
     else:
-        # Gemma chose "none": effectively no target
+        # Gemma chose "none": effectively no target (ceiling at 1000x)
         order_target = limit * 1000.0
         intent_target = 0.0
         intent_rr = 0.0
-    if session == REGULAR:
-        payload = manual.bracket(symbol, sizing.shares, limit=limit, stop=stop,
-                                 target=order_target, at=now)
-        payload["client_order_id"] = coid
-    else:
-        # No stop legs exist outside regular hours: the stop and target ride in
-        # the logged intent and protect.py arms them at the open (WORKLIST §59).
-        payload = extended.limit_payload(symbol, sizing.shares, "buy", limit, coid)
+        try:
+            payload = manual.bracket(symbol, sizing.shares, limit=limit,
+                                     stop=stop, target=order_target, at=now)
+            payload["client_order_id"] = coid
+            order = await broker.submit(payload)
+            order_id = str(order.get("id", ""))
+        except BrokerError as exc:
+            log("order_rejected", symbol, str(exc), policy,
+                intent=TradeIntent(symbol=symbol, action="buy",
+                                   strategy=strategy, trigger_at=now,
+                                   entry_price=limit, stop_price=stop,
+                                   target_price=intent_target,
+                                   shares=sizing.shares,
+                                   risk_dollars=sizing.risk_dollars,
+                                   position_dollars=sizing.position_dollars,
+                                   reward_risk=intent_rr,
+                                   paper=True, client_order_id=coid,
+                                   llm_concern=reason[:300]))
+            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
+
     intent = TradeIntent(
         symbol=symbol, action="buy", strategy=strategy, trigger_at=now,
         entry_price=limit, stop_price=stop, target_price=intent_target,
         shares=sizing.shares, risk_dollars=sizing.risk_dollars,
         position_dollars=sizing.position_dollars,
-        # limit > entry > stop (offset_pct >= 0, and sizing guarantees
-        # stop < entry), so the denominator is strictly positive.
         reward_risk=intent_rr,
-        paper=True, client_order_id=payload["client_order_id"], llm_concern=reason[:300])
+        paper=True, client_order_id=payload.get("client_order_id", coid) if not targets else coid,
+        targets=targets,
+        llm_concern=reason[:300])
     log("trade_intent", symbol, reason, policy, intent=intent)
-    try:
-        order = await broker.submit(payload)
-    except BrokerError as exc:
-        log("order_rejected", symbol, str(exc), policy, intent=intent)
-        return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
     log("order_submitted", symbol, reason, policy, intent=intent,
-        order_id=str(order.get("id", "")))
+        order_id=order_id)
     return Bought(symbol=symbol, ok=True, sizing=sizing,
                   message=(f"{sizing.shares} sh limit {limit:,.2f} stop {stop:,.2f} "
                            f"({(limit - stop) / limit * 100:.1f}% below), "

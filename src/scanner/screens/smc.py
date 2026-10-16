@@ -42,7 +42,7 @@ from scanner.features.structure import (
     known_at,
     swings,
 )
-from scanner.models import Frozen
+from scanner.models import Frozen, TargetTier
 
 #: How close two swing lows must be to be holding the same resting stops.
 #: Ten basis points: wide enough that a few ticks of noise does not split one
@@ -86,6 +86,13 @@ class Setup(Frozen):
     stop_price: float
     target_price: float
 
+    #: Take-profit ladder tiers. When non-empty, each tier sells
+    #: `pct_of_shares` at `target_price` instead of a single target.
+    #: `target_price` is kept as the ceiling / primary target for single-target
+    #: mode (backward compatible). When `targets` is non-empty, orders are
+    #: submitted as separate legs: entry + per-tier sells + stop.
+    targets: tuple[TargetTier, ...] = ()
+
     #: How many roughly-equal swing lows the sweep cleared, counting the swept
     #: level itself. One is an isolated low; two or more is a liquidity pool.
     #: RECORDED, NEVER FILTERED ON -- it exists so the question can be settled
@@ -98,6 +105,9 @@ class Setup(Frozen):
 
     @property
     def reward(self) -> float:
+        # Primary target (first tier or target_price) for R:R calculation.
+        if self.targets:
+            return self.targets[0].target_price - self.entry_price
         return self.target_price - self.entry_price
 
     @property
