@@ -44,13 +44,17 @@ from scanner.execution.ownership import GEMMA
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.safety import kill_switch_active
 from scanner.execution.scorecard import read_rows
+from scanner.execution.session import crosses_session, is_stale_session
 from scanner.features.bars import fetch_bars, fetch_many
-from scanner.momentum import state as mstate
+from scanner.features.intraday import EXCHANGE_TZ, drop_incomplete, fetch_intraday, max_range, session_slot
 from scanner.features.intraday_context import atr_pct
-from scanner.features.math_signals import build_signals
+from scanner.momentum import state as mstate
+from scanner.execution.math_signals import build_signals
+from scanner.features.structure import DEFAULT_K
 from scanner.features.technicals import compute, relative_strength
 from scanner.features.market_snapshot import fetch_snapshot, summary_text
 from scanner.llm.ollama import LLMError, chat_json
+from scanner.screens.smc import is_live_setup, scan as smc_scan
 from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
 from scanner.sources.index_history import COMPOSITE_1500, SP500
@@ -132,7 +136,7 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
     except Exception:                                    # noqa: BLE001
         pass                                             # snapshot is context, never a blocker
     try:
-        earnings = await event_calendar.upcoming_earnings(frozenset(symbols), client)
+        earnings, _failed = await event_calendar.upcoming_earnings(frozenset(symbols), client)
     except Exception:                                    # noqa: BLE001
         earnings = {}
     rows = read_rows(settings.audit_log_path)
@@ -303,6 +307,64 @@ MENU_TEXT = "\n".join((
 ))
 
 
+async def scan_for_gemma(
+    client: httpx.AsyncClient,
+    policy: TradingPolicy,
+    universe_symbols: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Scan the S&P 500 for SMC setups that Gemma can choose from.
+
+    Returns symbols that have valid setups and are not already excluded.
+    """
+    range_ = max_range(policy.interval_minutes)
+    session_today = datetime.now(tz=EXCHANGE_TZ).date()
+
+    loaded = await asyncio.gather(
+        *(fetch_intraday(s, client, minutes=policy.interval_minutes, range_=range_)
+          for s in universe_symbols),
+        return_exceptions=True,
+    )
+
+    candidates: list[str] = []
+    for symbol, bars in zip(universe_symbols, loaded):
+        if isinstance(bars, Exception):
+            continue
+        bars = drop_incomplete(bars, minutes=policy.interval_minutes)
+        if not bars.closes:
+            continue
+        # Simple liquidity check: price >= $5 and dollar volume >= $20M
+        closes = bars.closes[-20:]
+        volumes = bars.volumes[-20:]
+        if not closes or not volumes:
+            continue
+        last_price = closes[-1]
+        dollar_vol = sum(v * c for v, c in zip(volumes, closes)) / len(closes)
+        if last_price < 5.0 or dollar_vol < 20_000_000:
+            continue
+        setups = smc_scan(
+            bars,
+            k=policy.swing_k,
+            min_reward_risk=policy.min_reward_risk,
+            min_risk_pct=policy.min_risk_pct,
+            require_value_sweep=policy.require_value_sweep,
+        )
+        for setup in setups:
+            age = len(bars) - 1 - setup.trigger_index
+            if age >= policy.fresh_bars:
+                continue
+            if not is_live_setup(bars, setup):
+                continue
+            if policy.block_overnight_entry and (
+                crosses_session(bars, setup.trigger_index)
+                or is_stale_session(bars, setup.trigger_index, session=session_today)
+            ):
+                continue
+            candidates.append(symbol)
+            break  # Only need one setup per symbol
+
+    return tuple(candidates)
+
+
 async def main(submit: bool) -> int:
     async with httpx.AsyncClient(timeout=120) as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
@@ -350,7 +412,17 @@ async def main(submit: bool) -> int:
         mom_day, mom_picks, _ = opinions.momentum_picks()
         extra = () if POLICY.momentum_trades else mom_picks
         universe = list(dict.fromkeys((*operator_names(CORE), *operator_names(GEMMA_LIST), *extra)))
+
+        # SCAN: Gemma scans the S&P 500 for setups she can choose from
+        scan_universe = tuple(m.symbol for m in await composite.load_universe(client, (SP500,)))
+        scan_candidates = await scan_for_gemma(client, POLICY, scan_universe)
+        if scan_candidates:
+            print(f"{BOLD}SCAN{RESET} {len(scan_candidates)} setup(s) found: {', '.join(scan_candidates)}")
+        else:
+            print(f"{DIM}No scan setups found{RESET}")
         allowed = [s for s in universe if s not in taken]
+        # Add scan candidates to the allowed list (they may overlap with watchlist)
+        allowed = list(dict.fromkeys([*allowed, *scan_candidates]))
         allowed += [s for s in mine if s not in allowed]
         print(f"{BOLD}Gemma's book{RESET}  sleeve {POLICY.gemma_allocation_pct:.0f}% "
               f"(${account.equity * POLICY.gemma_allocation_pct / 100:,.0f}), "
