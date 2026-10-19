@@ -27,6 +27,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from scanner.advisor import news_impact as ni
 from scanner.advisor import opinions
+from scanner.advisor import wall_street as ws
 from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
 from scanner.execution import ownership, picks
@@ -135,6 +136,16 @@ async def main(use_llm: bool) -> int:
         posts = await president.posts(client)
         sched = await president.schedule(client, days={today, today + timedelta(days=1)})
         market = await _headlines(client, (*MARKET_FEEDS, *held, *watch))
+        # Wall Street, hard news only (advisor/wall_street.py): ratings, deals,
+        # guidance, results, the Fed. Context for Gemma; never a blocker.
+        try:
+            street_items = await ws.fetch(client, settings.alpaca_key_id,
+                                          settings.alpaca_secret_key,
+                                          hours=ws.window_hours(datetime.now()))
+            street = ws.pick(street_items, universe, universe=sector)
+        except Exception as exc:                               # noqa: BLE001
+            print(f"  ! Wall Street news unavailable: {exc}")
+            street = []
 
         heads = {f"P{i}": p.text for i, p in enumerate(posts[:10], 1)}
         heads |= {f"H{i}": h for i, h in enumerate(market[:40], 1)}
@@ -157,10 +168,12 @@ async def main(use_llm: bool) -> int:
     near = [e for e in evts if e.day in set(days[:SESSIONS_FOR_GEMMA])]
     far_earnings = [e for e in evts if e.kind == "earnings" and e not in near]
     market_text = wa.market_text(near, president_lines=pres_lines, results=results,
-                                 headlines=wide + [h for h in market if h in linked and h not in wide])
+                                 headlines=wide + [h for h in market if h in linked and h not in wide],
+                                 wall_street=street)
     brief = {
         "date": today.isoformat(), "written_at": datetime.now(timezone.utc).isoformat(),
         "market_text": market_text,
+        "wall_street": street,
         # Its sector's dates and its news for the next week; its OWN earnings
         # for the whole window, so it knows when it would hold into a report.
         "stock_lines": {s: lines for s in universe
@@ -189,6 +202,10 @@ async def main(use_llm: bool) -> int:
     md = md.replace("## Watch: your positions",
                     "## The market (closes up to the last session)\n\n" + dash
                     + "\n## Watch: your positions", 1)
+    street_md = "\n".join(f"- {line}" for line in street) or "- nothing that qualified"
+    md = md.replace("## The President",
+                    "## Wall Street since the last session _(ratings, deals, guidance, results, "
+                    "the Fed; Gemma reads these)_\n\n" + street_md + "\n\n## The President", 1)
     mom_day, mom_picks, _ = opinions.momentum_picks()
     md += (f"\n## The momentum rule's picks (a helper for both books)\n\n"
            f"Formed {mom_day}: {', '.join(mom_picks) or 'none'}. Strongest 12-1 momentum, "

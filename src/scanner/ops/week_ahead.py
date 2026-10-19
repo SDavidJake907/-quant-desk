@@ -220,7 +220,7 @@ def result_line(r: Release) -> str:
 
 def market_text(evts: Iterable[Event], *, president_lines: Sequence[str],
                 headlines: Sequence[str], max_events: int = 8,
-                results: Sequence[Release] = ()) -> str:
+                results: Sequence[Release] = (), wall_street: Sequence[str] = ()) -> str:
     """One paragraph for Gemma's market line. Short on purpose."""
     wide = [e for e in evts if e.kind in MARKET_WIDE][:max_events]
     parts = []
@@ -235,6 +235,10 @@ def market_text(evts: Iterable[Event], *, president_lines: Sequence[str],
         parts.append("The President: " + " | ".join(p[:300] for p in president_lines[:3]))
     if headlines:
         parts.append("Top headlines: " + " | ".join(h[:160] for h in headlines[:6]))
+    if wall_street:
+        parts.append("Wall Street since the last session (ratings, deals, guidance, "
+                     "results, the Fed; what the Street did, not a forecast): "
+                     + " | ".join(wall_street[:8]))
     parts.append(CONTEXT_NOTE)
     return ". ".join(parts)
 
