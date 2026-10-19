@@ -81,6 +81,8 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 67–69 | Minervini VCP; O'Neil follow-through days; O'Neil distribution days -- the skills' own code, unchanged | 7506f2d | stocks 500+400 2015–26 & 500 1997–2016; ^GSPC 1997–2026 | VCP vs plain Stage-2 breakouts +0.21pp t 0.35 / -0.19pp; FTD 60d -0.78pp t -1.01, halves flip; 5+ distribution days -> next month BETTER (+0.87% vs +0.40%), fires 59% of months | fail (all) |
 
+| 70 | ML lab: gradient boosting on 27 price/volume features, both tails, in R (research_gpu/ml_lab.py) | RULES FIXED in the commit that adds this row, before the first real run | 500+400 2015-26 (holdout 2022-01 on); 500 1997-2016 | not yet run (synthetic check: planted signal found t +13.8, noise t -0.8) | PASS needs LIVE holdout RankIC t >= 3, top-bottom spread t >= 2, above momentum alone, CRASH RankIC > 0 |
+
 **Running total: ~101 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.

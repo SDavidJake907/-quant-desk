@@ -994,6 +994,10 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
+## 67. ML lab: "indicator + indicator = price", both tails -- RULES FIXED (2026-10-19)
+
+Operator: "past prices should show someting, like 1+1 =2 or indicator+indicator=price ... use the - part also ... like -R2". The strongest version of the idea not yet run here: one model over 27 price/volume features at once (combinations, not one indicator), walk-forward, scored on both tails and in R. Rules, features, model settings and the PASS bar are fixed in `research_gpu/ml_lab.py`'s docstring and TRIALS #70, committed before the first real run. Synthetic check first: a planted signal was found (RankIC t +13.8), pure noise was not (t -0.8).
+
 ## 66. "After 10:30 most stocks trend down" -- NO pattern (2026-10-19)
 
 Operator: "i notice everyday afrer 10:30am most of stocks start to trend down
