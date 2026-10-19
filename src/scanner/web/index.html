@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stock-scanner</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="wordmark">stock-scanner</span>
+    <span class="meta" id="meta-window"></span>
+  </div>
+  <div class="topbar-right">
+    <span class="meta" id="meta-market"></span>
+    <span class="meta" id="meta-updated"></span>
+  </div>
+</header>
+
+<div class="banner" id="kill-banner" hidden>
+  Kill switch is ON (STOP_TRADING exists) — no new entries until it is removed.
+</div>
+
+<main class="page">
+
+  <!-- scoreboard -->
+  <section class="panel score" aria-labelledby="score-title">
+    <div class="panel-head">
+      <h1 id="score-title">—</h1>
+      <span class="verdict" id="score-verdict"></span>
+    </div>
+
+    <div class="duel">
+      <div class="side" id="side-you">
+        <div class="side-name"><span class="key key-you"></span>You</div>
+        <div class="side-return" id="ret-you">—</div>
+        <div class="side-ghost" id="ghost-you"></div>
+      </div>
+      <div class="side" id="side-gemma">
+        <div class="side-name"><span class="key key-gemma"></span>Gemma</div>
+        <div class="side-return" id="ret-gemma">—</div>
+        <div class="side-ghost" id="ghost-gemma"></div>
+      </div>
+    </div>
+
+    <div class="odds" id="odds">
+      <div class="odds-label">
+        <span>Who is really the better trader</span>
+        <span class="muted" id="odds-note"></span>
+      </div>
+      <div class="odds-bar" id="odds-bar" role="img">
+        <div class="odds-you" id="odds-you"></div>
+        <div class="odds-gemma" id="odds-gemma"></div>
+      </div>
+      <div class="odds-ends">
+        <span id="odds-you-label"></span>
+        <span id="odds-gemma-label"></span>
+      </div>
+    </div>
+
+    <dl class="benchmarks" id="benchmarks"></dl>
+    <p class="fineprint" id="quarters"></p>
+  </section>
+
+  <!-- P/L chart -->
+  <section class="panel" aria-labelledby="chart-title">
+    <div class="panel-head">
+      <h2 id="chart-title">Total P/L by day</h2>
+      <div class="legend">
+        <span><span class="key key-you"></span>You</span>
+        <span><span class="key key-gemma"></span>Gemma</span>
+      </div>
+    </div>
+    <div class="chart-wrap" id="chart"></div>
+    <details class="table-toggle">
+      <summary>Show as table</summary>
+      <div id="chart-table"></div>
+    </details>
+  </section>
+
+  <!-- books -->
+  <div class="two-up">
+    <section class="panel" aria-labelledby="book-you-title">
+      <div class="panel-head">
+        <h2 id="book-you-title"><span class="key key-you"></span>Your book</h2>
+        <span class="muted" id="list-you"></span>
+      </div>
+      <div id="book-you"></div>
+    </section>
+    <section class="panel" aria-labelledby="book-gemma-title">
+      <div class="panel-head">
+        <h2 id="book-gemma-title"><span class="key key-gemma"></span>Gemma's book</h2>
+        <span class="muted" id="list-gemma"></span>
+      </div>
+      <div id="book-gemma"></div>
+    </section>
+  </div>
+  <section class="panel" id="book-other-panel" hidden>
+    <div class="panel-head"><h2>Other positions</h2>
+      <span class="muted">momentum, sweep or unattributed</span></div>
+    <div id="book-other"></div>
+  </section>
+
+  <!-- account + selection -->
+  <div class="two-up">
+    <section class="panel" aria-labelledby="acct-title">
+      <div class="panel-head"><h2 id="acct-title">Account</h2>
+        <span class="muted" id="acct-mode"></span></div>
+      <dl class="figures" id="account"></dl>
+    </section>
+    <section class="panel" aria-labelledby="sel-title">
+      <div class="panel-head"><h2 id="sel-title">Selection skill</h2>
+        <span class="muted">chosen vs passed over</span></div>
+      <div id="selection"></div>
+    </section>
+  </div>
+
+  <!-- activity + jobs -->
+  <div class="two-up wide-left">
+    <section class="panel" aria-labelledby="act-title">
+      <div class="panel-head"><h2 id="act-title">Recent activity</h2>
+        <span class="muted">orders, exits, refusals</span></div>
+      <div id="activity"></div>
+    </section>
+    <section class="panel" aria-labelledby="jobs-title">
+      <div class="panel-head"><h2 id="jobs-title">Scheduled jobs</h2>
+        <span class="muted">last log write</span></div>
+      <div id="jobs"></div>
+    </section>
+  </div>
+
+  <p class="footer">Read-only. Edit watchlists by hand and commit them; nothing on this page can trade.</p>
+</main>
+
+<div class="tooltip" id="tooltip" hidden></div>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

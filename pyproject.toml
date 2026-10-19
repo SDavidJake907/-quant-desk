@@ -9,6 +9,9 @@ dependencies = [
     "pydantic-settings>=2.3",
     "python-dateutil>=2.9",
     "defusedxml>=0.7",
+    # Read-only dashboard (src/scanner/web): GET endpoints only, 127.0.0.1
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
     # Windows ships no IANA tz database; zoneinfo needs this to resolve
     # "Asia/Tokyo", "Europe/London" etc.
     "tzdata>=2024.1 ; sys_platform == 'win32'",

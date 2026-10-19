@@ -1,0 +1,1 @@
+"""stock-scanner WebUI package."""
