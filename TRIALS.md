@@ -87,6 +87,8 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 72 | operator's price-level TP: resting limit sell at yesterday's high / the 5-day high, or at +$25/$50/$100 on a $3,500 position; rebuy at the close (research_gpu/price_level_tp.py) | RULES FIXED in the commit that adds this row, before the first run (759b9ab) | 501 S&P names, 15m bars 2024-09 to 2026-09 (~514 days); her 7 shown, not graded | PRIMARY prev_high -0.047%/day t -3.02, fills 50% of days, -11.8%/yr, both halves negative; high_5d -5.2%/yr t -2.85; $25 -15.4%/yr, $50 -9.3%, $100 -3.5%; her 7 negative on all 5 (-0.07 to -0.14%/day) | FAIL: a sell at the prior high gives up the days that run through it; tighter = worse |
 
+| 73 | operator's morning window: buy the 9:30 open, sell 10:30 ET, flat otherwise; secondary: buy the close, sell 10:30 next day (research_gpu/morning_window.py) | RULES FIXED in the commit that adds this row, before the first run | 501 S&P names, 15m bars 2024-09 to 2026-09; her 7 shown, not graded | pending | PRIMARY morning minus hold > 0 per day, t >= 2, both halves > 0; secondary needs abs t >= 3.3 |
+
 **Running total: ~104 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
