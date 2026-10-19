@@ -994,9 +994,19 @@ Structure that vanishes under every split is structure that is not there.
 
 ---
 
-## 67. ML lab: "indicator + indicator = price", both tails -- RULES FIXED (2026-10-19)
+## 67. ML lab: "indicator + indicator = price", both tails -- FAIL (2026-10-19)
 
 Operator: "past prices should show someting, like 1+1 =2 or indicator+indicator=price ... use the - part also ... like -R2". The strongest version of the idea not yet run here: one model over 27 price/volume features at once (combinations, not one indicator), walk-forward, scored on both tails and in R. Rules, features, model settings and the PASS bar are fixed in `research_gpu/ml_lab.py`'s docstring and TRIALS #70, committed before the first real run. Synthetic check first: a planted signal was found (RankIC t +13.8), pure noise was not (t -0.8).
+
+```
+                      RankIC        top-bottom/mo   bottom decile   <= -2R bottom/all
+LIVE dev 2019-21      +0.013 t0.89  +1.16% t1.93    -0.63%          10.6% / 9.7%
+LIVE HOLDOUT 2022-26  +0.000 t0.01  +0.30% t0.58    -0.00%           9.3% / 9.7%
+CRASH 2001-16         +0.021 t2.21  +0.90% t3.00    -0.46%           9.1% / 8.2%
+momentum alone, LIVE holdout: RankIC +0.026 t1.00
+```
+
+**FAIL.** On 2022-26, data the model never trained on, its ranking of 900 stocks had no relation to what they did next, in either tail: the stocks it called losers did exactly average, and were no more likely to fall 2R. 2001-16 shows a real but small signal (spread t 3.0), which is the published pattern: price anomalies weaken once known and traded. Reporting bug noticed after the run, left as run: the CRASH 'all' R average is blown up by a near-zero ATR; the deciles and the verdict do not use it. Run log: scratch ml_lab_run.txt.
 
 ## 66. "After 10:30 most stocks trend down" -- NO pattern (2026-10-19)
 
