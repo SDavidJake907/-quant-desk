@@ -25,6 +25,10 @@ from scanner.models import Frozen
 EFFECTS = ("helps", "hurts", "mixed", "unclear")
 MIN_QUOTE_CHARS = 8
 MAX_LINKS = 12
+#: A headline linked to more stocks than this is market news: its stocks are
+#: dropped so it shows once with the market, not in every stock's block
+#: (2026-10-19: one 'Black Monday?' headline sat in 19 blocks).
+MAX_LINK_SYMBOLS = 6
 
 
 class Impact(Frozen):
@@ -109,7 +113,9 @@ def validate(answer: Any, headlines: Mapping[str, str], symbols: Iterable[str],
         syms = tuple(dict.fromkeys(s for s in link.get("symbols") or () if s in known))
         secs = tuple(dict.fromkeys(s for s in link.get("sectors") or () if s in sects))
         effect = link.get("effect") if link.get("effect") in EFFECTS else "unclear"
-        if syms or secs:
+        wide = len(syms) > MAX_LINK_SYMBOLS
+        syms = () if wide else syms
+        if syms or secs or wide:
             out.append(Impact(headline=text, symbols=syms, sectors=secs, effect=effect,
                               why=str(link.get("why", ""))[:200], quote=str(link.get("quote", ""))))
     return tuple(out)

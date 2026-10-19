@@ -88,6 +88,21 @@ def test_impact_validation_needs_a_real_quote_and_known_names():
     assert out[0].symbols == ("XOM", "MPC") and out[0].headline == HEADLINES["H1"]
 
 
+def test_a_headline_linked_to_too_many_stocks_is_market_news():
+    # 2026-10-19: "No 'Black Monday'? ... Retail Stays Cautious" was linked to 19
+    # stocks and printed in each one's block, crowding out their own news.
+    many = tuple(f"S{i}" for i in range(ni.MAX_LINK_SYMBOLS + 1))
+    answer = {"links": [
+        {"headline": "H1", "symbols": list(many), "sectors": [], "effect": "helps",
+         "why": "market", "quote": "Oil jumps"},
+        {"headline": "H2", "symbols": list(many[:ni.MAX_LINK_SYMBOLS]), "sectors": [],
+         "effect": "hurts", "why": "AI", "quote": "OpenAI revenue miss"},
+    ]}
+    out = ni.validate(answer, HEADLINES, many, SECTORS)
+    assert out[0].symbols == () and out[0].headline == HEADLINES["H1"]
+    assert out[1].symbols == many[:ni.MAX_LINK_SYMBOLS]
+
+
 def test_impact_validation_never_raises_on_garbage():
     assert ni.validate(None, HEADLINES, UNIVERSE, SECTORS) == ()
     assert ni.validate({"links": "x"}, HEADLINES, UNIVERSE, SECTORS) == ()
