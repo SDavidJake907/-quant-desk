@@ -25,6 +25,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta, timezone
 
@@ -53,7 +54,7 @@ from scanner.ops import competition
 from scanner.ops import ghost_scanner
 from scanner.features.intraday_context import atr_pct
 from scanner.features.technicals import compute, relative_strength
-from scanner.llm.ollama import LLMError, chat_json
+from scanner.llm.ollama import LLMError, chat_json, chat_text
 from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
 from scanner.sources.index_history import COMPOSITE_1500, SP500
@@ -322,6 +323,22 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
     return text
 
 
+async def think_then_answer(text: str, answer_schema: dict, client,
+                            *, max_tokens: int = gt.THINK_TOKENS) -> tuple[dict, str]:
+    """She thinks in plain words first (capped), then answers with her notes in
+    front of her. A failed thinking pass never blocks the answer. (answer, notes)"""
+    notes = ""
+    if gt.THINKS:
+        started = time.monotonic()
+        try:
+            notes = await chat_text(gt.think_prompt(text), client, max_tokens=max_tokens)
+            print(f"  {DIM}thought for {time.monotonic() - started:.0f}s "
+                  f"({len(notes.split())} words){RESET}")
+        except LLMError as exc:
+            print(f"  {YELLOW}thinking failed ({exc}) -- answering without notes{RESET}")
+    return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
+
+
 async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
                          mom_picks: Sequence[str]) -> tuple[list[str], int]:
     """Round 1 (advisor/gemma_pool.py): the S&P 500 through the scanner's floor,
@@ -345,7 +362,8 @@ async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
               f"its 210-day average {sma:,.0f}")
     text = gp.prompt(rows, held=mine, market=market)
     try:
-        answer = await chat_json(text, gp.schema([r.symbol for r in rows]), client)
+        answer, _ = await think_then_answer(text, gp.schema([r.symbol for r in rows]),
+                                            client, max_tokens=gt.THINK_TOKENS // 2)
     except LLMError as exc:
         print(f"  {YELLOW}pool shortlist failed ({exc}) -- using the hand lists{RESET}")
         return [], len(rows)
@@ -470,8 +488,9 @@ async def main(submit: bool) -> int:
         text = text.replace("The list:", f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
                                   min_positions=least)
+        notes = ""
         try:
-            answer = await chat_json(text, answer_schema, client)
+            answer, notes = await think_then_answer(text, answer_schema, client)
         except LLMError as exc:
             answer = None
             # Upper case on purpose: the desk journal's error check looks for it.
@@ -490,7 +509,7 @@ async def main(submit: bool) -> int:
             # against the ones it chose (ops/selection.py, WORKLIST §47).
             "menu": sorted(facts),
             "submitted": submit and tradable, "session": session,
-            "pool_size": pool_size}), POLICY)
+            "pool_size": pool_size, "thinking": notes}), POLICY)
         save_question(text, answer_schema, facts, mine, decision.keep, submitted=submit and tradable,
                       session=session)
 

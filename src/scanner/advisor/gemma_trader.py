@@ -52,6 +52,41 @@ MIN_EVIDENCE_CHARS = 15
 #: isnt winning! push her to do more!" Below the average, no minimum.
 MIN_IN_UPTREND = 4
 
+#: She thinks before she answers (operator 2026-10-19: "give gemma time to
+#: think, maybe more tokens, not to much tho"): a plain-words pass capped at
+#: THINK_TOKENS, then the usual constrained answer with her notes appended.
+#: Off = straight to the answer, as before.
+THINKS = True
+THINK_TOKENS = 1500
+MAX_NOTES_CHARS = 6000
+
+THINK_ASK = (
+    "\n\n=== Before you answer: THINK IT THROUGH. Do not answer in the format yet. ===\n"
+    "Write your reasoning in plain words, as a trader's notes:\n"
+    "1. Each stock you hold: is its reason still intact? Any earnings or event "
+    "coming that could gap it?\n"
+    "2. The strongest new candidates: what in their own block makes the case, and "
+    "what argues against it?\n"
+    "3. The market today, and how much risk that justifies.\n"
+    "4. Your plan: which stocks, and for each new one which stop, target and size, and why.\n"
+    "Be concrete and brief: about 400 words."
+)
+
+
+def think_prompt(text: str) -> str:
+    """Step 1: the same briefing, asking for reasoning in plain words."""
+    return text + THINK_ASK
+
+
+def with_notes(text: str, notes: str) -> str:
+    """Step 2: the briefing plus her own notes. Empty notes change nothing."""
+    notes = (notes or "").strip()[:MAX_NOTES_CHARS]
+    if not notes:
+        return text
+    return (text + "\n\nYour own notes from thinking it over just now (use them; "
+            "the rules above still apply):\n" + notes)
+
+
 CHARTER = (
     "You are the desk's junior trader, running your own real paper book (about "
     "{sleeve} of capital, at most {n} stocks). Your goal is to earn a real seat: "

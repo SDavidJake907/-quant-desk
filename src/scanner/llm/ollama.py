@@ -97,6 +97,44 @@ async def chat_json(
         raise LLMError(f"model returned non-JSON despite schema: {exc}") from exc
 
 
+async def chat_text(
+    prompt: str,
+    client: httpx.AsyncClient,
+    *,
+    max_tokens: int,
+    model: str | None = None,
+    keep_alive: str | None = None,
+) -> str:
+    """Call the model for plain text, capped at `max_tokens` (Ollama's
+    num_predict). No schema: this is for reasoning the caller reads, not parses."""
+    payload = {
+        "model": model or settings.triage_model,
+        "stream": False,
+        "keep_alive": coerce_keep_alive(keep_alive or settings.llm_keep_alive),
+        "options": {
+            "temperature": settings.triage_temperature,
+            "num_ctx": settings.triage_num_ctx,
+            "num_predict": max_tokens,
+        },
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if settings.llm_think is not None:
+        payload = {**payload, "think": settings.llm_think}
+    try:
+        response = await client.post(
+            f"{settings.ollama_host}/api/chat",
+            json=payload,
+            timeout=settings.llm_timeout_s,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise LLMError(f"ollama request failed: {exc}") from exc
+    content = response.json().get("message", {}).get("content", "").strip()
+    if not content:
+        raise LLMError("model returned empty content")
+    return content
+
+
 async def embed(texts: list[str], client: httpx.AsyncClient) -> list[list[float]]:
     """Embed a batch of strings with the local embedding model."""
     if not texts:
