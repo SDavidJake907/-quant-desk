@@ -41,3 +41,17 @@ import pytest
 @pytest.fixture
 def fake_broker():
     return FakeBroker()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_audit_log(tmp_path, monkeypatch):
+    """Point the audit log at a temp file for every test.
+
+    `bookorders.buy_with_stop` logs to `settings.audit_log_path`; without this
+    the test suite appended fake `smc-TEST-*` orders to the real
+    logs/trading_audit.jsonl on every run (2026-10-15 onward).
+    """
+    from scanner.config import settings
+
+    monkeypatch.setattr(settings, "audit_log_path",
+                        str(tmp_path / "trading_audit.jsonl"))
