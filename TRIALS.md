@@ -83,9 +83,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 70 | ML lab: gradient boosting on 27 price/volume features, both tails, in R (research_gpu/ml_lab.py) | RULES FIXED in the commit that adds this row, before the first real run | 500+400 2015-26 (holdout 2022-01 on); 500 1997-2016 | LIVE holdout 2022-26 (56 mo): RankIC +0.0001 t +0.01; top-bottom +0.30%/mo t +0.58; bottom decile -0.00%/mo (no avoid list); <= -2R: bottom 9.3% vs all 9.7%; momentum alone RankIC +0.026. CRASH 2001-16: RankIC +0.021 t +2.21, spread +0.90%/mo t +3.00 -- a signal that existed and is gone | FAIL (3 of 4 checks) |
 
-| 71 | operator's give-back exit: once the book's day gain reaches A, sell all if it gives back X of it; rebuy at the close or next open (research_gpu/giveback_test.py) | RULES FIXED in the commit that adds this row, before the first run | 100 random 7-stock S&P books, 15m bars 2024-09 to 2026-09; her book shown, not graded | pending | PRIMARY G(1%, 50%, rebuy close): rule minus hold > 0 per day, t >= 2, both halves > 0; other 11 cells need abs t >= 3.3 |
+| 71 | operator's give-back exit: once the book's day gain reaches A, sell all if it gives back X of it; rebuy at the close or next open (research_gpu/giveback_test.py) | RULES FIXED in the commit that adds this row, before the first run (66ddd27) | 100 random 7-stock S&P books, 15m bars 2024-09 to 2026-09 (~478 days); her book (COHR MPC MU NVDA SNDK VLO WDC, 402 days) shown, not graded | PRIMARY -0.008%/day t -1.10 (fires 9% of days); 10 of 12 cells negative, A=0.5% loses 7-17%/yr (t -2.5 to -3.2); rebuy-next-open worse than rebuy-close in every cell (misses the overnight gap); only A=2% is ~0 (+0.001 to +0.004%/day, fires 1-3%); her book negative in all 12 cells (-0.04 to -0.23%/day) | FAIL: selling a give-back costs money; the afternoon recovers about as often as it fades |
 
-**Running total: ~102 trials. Passes that survive everything: 0.**
+**Running total: ~103 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
