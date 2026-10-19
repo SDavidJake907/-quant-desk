@@ -25,6 +25,7 @@ import argparse
 import asyncio
 import json
 import sys
+from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta, timezone
 
 import httpx
@@ -32,6 +33,7 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
 from scanner.advisor import opinions
@@ -320,6 +322,41 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
     return text
 
 
+async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
+                         mom_picks: Sequence[str]) -> tuple[list[str], int]:
+    """Round 1 (advisor/gemma_pool.py): the S&P 500 through the scanner's floor,
+    shortlisted by Gemma. (shortlist, pool size); an empty shortlist means fall back."""
+    mine = set(mine)
+    members = await composite.load_universe(client, (SP500,))
+    sectors = {m.symbol: m.sector for m in members}
+    names = tuple(s for s in sectors if s not in taken and s not in mine)
+    daily, _ = await fetch_many(names, client, range_="2y")
+    bars = {s: b for s, b in daily.items()
+            if b is not None and len(b.closes) >= 30 and gp.tradeable(
+                b.closes, b.highs, b.lows, b.volumes, min_price=POLICY.min_price,
+                min_range_pct=POLICY.min_range_pct, min_dollar_volume=POLICY.min_dollar_volume)}
+    momentum = {s: compute(b).momentum_12_1 for s, b in bars.items()}
+    rows = gp.rows_for(bars, sectors, momentum=momentum,
+                       atr={s: atr_pct(b) for s, b in bars.items()},
+                       momentum_rank={s: i for i, s in enumerate(mom_picks, 1)})
+    spx = await fetch_bars("^GSPC", client, range_="2y")
+    sma = sum(spx.closes[-210:]) / 210
+    market = (f"S&P 500 {spx.closes[-1]:,.0f} is {'ABOVE' if spx.closes[-1] > sma else 'BELOW'} "
+              f"its 210-day average {sma:,.0f}")
+    text = gp.prompt(rows, held=mine, market=market)
+    try:
+        answer = await chat_json(text, gp.schema([r.symbol for r in rows]), client)
+    except LLMError as exc:
+        print(f"  {YELLOW}pool shortlist failed ({exc}) -- using the hand lists{RESET}")
+        return [], len(rows)
+    picked = gp.validate(answer, [r.symbol for r in rows], held=mine)
+    print(f"  {BOLD}pool{RESET}: {len(rows)} tradeable S&P 500 stocks; she shortlisted "
+          f"{list(picked)}")
+    if isinstance(answer, dict) and answer.get("looking_for"):
+        print(f"  {DIM}looking for: {str(answer['looking_for'])[:300]}{RESET}")
+    return list(picked), len(rows)
+
+
 MENU = gt.Menu(stops=tuple(k for k, _ in POLICY.gemma_stop_atr_menu),
                targets=tuple(k for k, _ in POLICY.gemma_target_r_menu),
                sizes=tuple(k for k, _ in POLICY.gemma_size_risk_menu))
@@ -381,6 +418,19 @@ async def main(submit: bool) -> int:
         universe = list(dict.fromkeys((*operator_names(CORE), *operator_names(GEMMA_LIST), *extra)))
         allowed = [s for s in universe if s not in taken]
         allowed += [s for s in mine if s not in allowed]
+        # The stock pool (operator 2026-10-19): she looks at the whole S&P 500
+        # first and shortlists; round 2 is her shortlist plus her holdings. The
+        # hand lists above are the fallback if round 1 fails.
+        pool_size = 0
+        if gp.ENABLED:
+            try:
+                short, pool_size = await pool_shortlist(client, taken, mine, mom_picks)
+            except Exception as exc:                      # noqa: BLE001
+                short = []
+                print(f"  {YELLOW}pool unavailable ({type(exc).__name__}: {exc}) -- "
+                      f"using the hand lists{RESET}")
+            if short:
+                allowed = [*short, *(s for s in mine if s not in short)]
         print(f"{BOLD}Gemma's book{RESET}  sleeve {POLICY.gemma_allocation_pct:.0f}% "
               f"(${account.equity * POLICY.gemma_allocation_pct / 100:,.0f}), "
               f"up to {POLICY.gemma_max_positions} names")
@@ -439,7 +489,8 @@ async def main(submit: bool) -> int:
             # The whole menu, so the names Gemma PASSED OVER can be graded
             # against the ones it chose (ops/selection.py, WORKLIST §47).
             "menu": sorted(facts),
-            "submitted": submit and tradable, "session": session}), POLICY)
+            "submitted": submit and tradable, "session": session,
+            "pool_size": pool_size}), POLICY)
         save_question(text, answer_schema, facts, mine, decision.keep, submitted=submit and tradable,
                       session=session)
 
