@@ -84,7 +84,8 @@ def _ret(closes, back: int) -> str:
     return f"{(closes[-1] / closes[-back - 1] - 1) * 100:+.1f}%" if len(closes) > back else "n/a"
 
 
-async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
+async def facts_for(symbols, client) -> tuple[dict[str, str], str, bool]:
+    """(facts per stock, the market line, whether the S&P 500 is above its 210-day average)."""
     daily, _ = await fetch_many(tuple(symbols), client, range_="2y")
     spx = await fetch_bars("^GSPC", client, range_="2y")
     sma = sum(spx.closes[-210:]) / 210
@@ -163,7 +164,7 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
         except Exception:                                # noqa: BLE001
             lines.append("headlines: unavailable")
         out[s] = "\n".join(lines)
-    return out, trend
+    return out, trend, spx.closes[-1] > sma
 
 
 def save_question(text: str, schema: dict, facts: dict, held, keep, *,
@@ -388,7 +389,8 @@ async def main(submit: bool) -> int:
             print("  nothing on the list is free -- no decision today")
             return 0
 
-        facts, trend = await facts_for(allowed, client)
+        facts, trend, uptrend = await facts_for(allowed, client)
+        least = gt.MIN_IN_UPTREND if uptrend else 0
         if not POLICY.momentum_trades:
             for rank, s in enumerate(mom_picks, 1):
                 if s in facts:
@@ -414,11 +416,12 @@ async def main(submit: bool) -> int:
             print(f"  {YELLOW}scoreboard unavailable: {exc}{RESET}")
         text = gt.prompt(facts, held=held_status, max_positions=POLICY.gemma_max_positions,
                          scoreboard=score, sleeve=f"${sleeve_dollars:,.0f}",
-                         menu=MENU, menu_text=MENU_TEXT, session=session)
+                         menu=MENU, menu_text=MENU_TEXT, session=session, min_positions=least)
         text = text.replace("The list:", f"Market: {trend}.\n\nThe list:", 1)
+        answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
+                                  min_positions=least)
         try:
-            answer = await chat_json(text, gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU),
-                                     client)
+            answer = await chat_json(text, answer_schema, client)
         except LLMError as exc:
             answer = None
             # Upper case on purpose: the desk journal's error check looks for it.
@@ -437,8 +440,7 @@ async def main(submit: bool) -> int:
             # against the ones it chose (ops/selection.py, WORKLIST §47).
             "menu": sorted(facts),
             "submitted": submit and tradable, "session": session}), POLICY)
-        save_question(text, gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU),
-                      facts, mine, decision.keep, submitted=submit and tradable,
+        save_question(text, answer_schema, facts, mine, decision.keep, submitted=submit and tradable,
                       session=session)
 
         print(f"\n  {BOLD}Gemma holds{RESET} {list(decision.keep) or 'nothing'}")

@@ -46,6 +46,11 @@ from typing import Any
 from scanner.models import Frozen
 
 MIN_EVIDENCE_CHARS = 15
+#: In an uptrend (S&P 500 above its 210-day average) she must hold at least this
+#: many: the schema's minItems, so the answer cannot be mostly cash. She still
+#: chooses which. Operator 2026-10-19 after three mornings of 3 of 5: "holding 3
+#: isnt winning! push her to do more!" Below the average, no minimum.
+MIN_IN_UPTREND = 4
 
 CHARTER = (
     "You are the desk's junior trader, running your own real paper book (about "
@@ -146,9 +151,12 @@ class Decision(Frozen):
 
 
 def schema(allowed: Iterable[str], max_positions: int,
-           menu: Menu | None = None) -> dict[str, Any]:
+           menu: Menu | None = None, min_positions: int = 0) -> dict[str, Any]:
     """Grammar-constrained answer: symbols from the list, text only, and with a
-    menu, the stop/target/size NAMES it offers."""
+    menu, the stop/target/size NAMES it offers. `min_positions` > 0 requires at
+    least that many holdings (capped by the list and the limit)."""
+    allowed = list(allowed)
+    least = min(min_positions, len(allowed), max_positions)
     item: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -170,6 +178,7 @@ def schema(allowed: Iterable[str], max_positions: int,
         "properties": {
             "holdings": {
                 "type": "array", "maxItems": max_positions,
+                **({"minItems": least} if least > 0 else {}),
                 "items": item,
             },
             "journal": {"type": "string"},
@@ -180,13 +189,19 @@ def schema(allowed: Iterable[str], max_positions: int,
 
 def prompt(facts: Mapping[str, str], *, held: Mapping[str, str], max_positions: int,
            scoreboard: str = "", sleeve: str = "its share",
-           menu: Menu | None = None, menu_text: str = "", session: str = "regular") -> str:
-    book = "\n".join(f"- {s}: {status}" for s, status in held.items()) or "- (no positions)"
+           menu: Menu | None = None, menu_text: str = "", session: str = "regular",
+           min_positions: int = 0) -> str:
+    least = min(min_positions, max_positions)
+    floor = (f"- The market is in an UPTREND (the S&P 500 is above its 210-day average): "
+             f"hold at least {least} of your {max_positions} slots today. Cash in a rising "
+             f"market is how a book falls behind it. You choose which.\n"
+             if least > 0 else "")
+    book ="\n".join(f"- {s}: {status}" for s, status in held.items()) or "- (no positions)"
     score = scoreboard or "No scoreboard yet: this is the start of your record."
     blocks = "\n\n".join(f"[{s}]\n{text}" for s, text in facts.items())
     return "\n".join((
         CHARTER.format(sleeve=sleeve, n=max_positions), "",
-        RULES.format(n=max_positions),
+        RULES.format(n=max_positions) + floor,
         MENU_RULES.format(menu_text=menu_text) if menu is not None else "",
         SESSION_NOTE.format(session=session) if session != "regular" else "",
         f"Your scoreboard: {score}", "",

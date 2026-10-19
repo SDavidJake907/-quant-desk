@@ -110,6 +110,25 @@ def test_an_empty_slot_must_be_explained_but_never_forced():
     assert "for each empty slot, the best stock you passed over" in text
 
 
+def test_in_an_uptrend_the_schema_requires_the_minimum():
+    # Operator 2026-10-19: "holding 3 isnt winning! push her to do more!"
+    schema = gt.schema(("GS", "ANET", "NKE"), 5, min_positions=2)
+    assert schema["properties"]["holdings"]["minItems"] == 2
+    assert "minItems" not in gt.schema(("GS",), 5)["properties"]["holdings"]
+
+
+def test_the_minimum_never_exceeds_the_list_or_the_limit():
+    assert gt.schema(("GS",), 5, min_positions=4)["properties"]["holdings"]["minItems"] == 1
+    assert gt.schema(("GS", "ANET", "NKE"), 2, min_positions=4)[
+        "properties"]["holdings"]["minItems"] == 2
+
+
+def test_in_an_uptrend_the_prompt_says_she_must_hold_the_minimum():
+    text = gt.prompt(FACTS, held={}, max_positions=5, min_positions=4)
+    assert "hold at least 4 of your 5" in text and "You choose which" in text
+    assert "hold at least" not in gt.prompt(FACTS, held={}, max_positions=5)
+
+
 # --- the menu: Gemma chooses stop, target and size by NAME (WORKLIST §50) ---
 
 MENU = gt.Menu(stops=("tight", "normal", "wide"), targets=("none", "2R", "3R", "5R"),
