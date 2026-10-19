@@ -51,13 +51,30 @@ OPINION = re.compile(
     r"here'?s (why|how|what)|my top|best .*stocks|could (soar|double)|millionaire|"
     r"retire|dividend stocks|which .* better|\bvs\.? |watchlist|top \d+ |\d+ stocks|"
     r"this week in|top catalysts|and more\s*$|death cross|golden cross|pattern|index outlook|"
-    r"\b(crypto|bitcoin|BTC|ETH|ethereum|solana|XRP)\b)",
+    r"\b(crypto|bitcoin|BTC|ETH|ethereum|solana|XRP)\b|"
+    # personal-finance clickbait: hypothetical returns, "why", "history says"
+    r"could be worth|would be worth|invested (right now|today)|\$[\d,]+ investment|"
+    r"if i could|here is (why|what|how)|^why |game[- ]changer|history says|"
+    r"better .*stock|no[- ]brainer|billionaire|magnificent|for the next \d+ years|"
+    r"\b(one|two|three|four|five|\d+) (reasons?|things|ways)\b|worth buying|"
+    r"what'?s in the cards|what to expect|smartest|forever|"
+    r"\b\d+ (\w+ ){0,3}stocks\b|to watch\b|need to know|what (it|that)( actually)? means|"
+    r"the next \w+ stock|jim cramer|top \w+ investment|proved why|biggest hurdle|"
+    r"could go (in|by) \d{4}|time to be (bullish|bearish)|should know|"
+    r"(looks|still) (undervalued|overvalued|cheap)|"
+    r"\b(soar|skyrocket|explode)s?\b)",
     re.I)
+
+
+def is_opinion(headline: str) -> bool:
+    """Opinion, listicle, roundup, chart lore or crypto: not something the
+    Street did. Gemma's per-stock headlines and the brief's feed drop these."""
+    return bool(OPINION.search(headline))
 
 
 def kind_of(headline: str) -> str | None:
     """The first hard-news kind a headline matches, or None (opinion or other)."""
-    if OPINION.search(headline):
+    if is_opinion(headline):
         return None
     for name, pattern in KINDS:
         if pattern.search(headline):

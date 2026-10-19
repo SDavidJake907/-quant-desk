@@ -79,6 +79,9 @@ async def _headlines(client, symbols) -> list[str]:
             continue
         # Yahoo mixes in older articles: keep only what was published recently.
         fresh = [i for i in items if i.published_at and i.published_at >= cutoff]
+        # Opinion and listicles left out (2026-10-18): these headlines feed
+        # Gemma's news links and her market line.
+        fresh = [i for i in fresh if not ws.is_opinion(i.title)]
         for item in fresh[: (8 if s in MARKET_FEEDS else PER_HELD)]:
             if item.title.lower() not in seen:
                 seen.add(item.title.lower())

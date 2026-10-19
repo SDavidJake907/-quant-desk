@@ -35,6 +35,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
 from scanner.advisor import opinions
+from scanner.advisor import wall_street
 from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
 from scanner.execution import bookorders, ownership, picks, scorecard, sessions
@@ -46,6 +47,7 @@ from scanner.execution.safety import kill_switch_active
 from scanner.execution.scorecard import read_rows
 from scanner.features.bars import fetch_bars, fetch_many
 from scanner.momentum import state as mstate
+from scanner.ops import competition
 from scanner.features.intraday_context import atr_pct
 from scanner.features.technicals import compute, relative_strength
 from scanner.llm.ollama import LLMError, chat_json
@@ -59,6 +61,7 @@ BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN, RED, YELLOW = "\033[32m", "\033[31m", "\033[33m"
 POLICY = TradingPolicy()
 BRIEF_DIR = Path("data/brief")
+SNAPSHOTS = Path("data/competition/snapshots.jsonl")
 
 
 def daily_brief(day: date) -> dict | None:
@@ -147,7 +150,11 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
                          f"{ta['call']} on {ta['at']}" + (f": {why}" if why else ""))
         try:
             items = await yahoo_rss.fetch(s, client)
-            for item in items[:5]:
+            # Opinion and listicles left out (2026-10-18): a quoted headline is
+            # her evidence for a buy, so "What $5,000 Could Be Worth by 2028"
+            # must not be quotable. Same filter as the brief's Wall Street lines.
+            news = [i for i in items if not wall_street.is_opinion(i.title)]
+            for item in news[:5]:
                 lines.append(f"headline: {item.title}")
         except Exception:                                # noqa: BLE001
             lines.append("headlines: unavailable")
@@ -184,13 +191,19 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
         return (pl / cost * 100 if cost else 0.0), (done.trades if done else 0)
 
     mine, closed = on_invested(GEMMA)
-    theirs, _ = on_invested(ownership.PICKS)
     spx = await fetch_bars("^GSPC", client, range_="1y")
     since = [c for d, c in zip(spx.dates, spx.closes) if d.isoformat() >= start]
     spx_ret = (spx.closes[-1] / since[0] - 1) * 100 if since else 0.0
+    # The head-to-head comes from the competition's own snapshots, scored as
+    # the monthly verdict scores it. on_invested() divides by what a book holds
+    # NOW, so an empty picks book read +0.00% here (fixed 2026-10-18).
+    try:
+        snaps = competition.load_snapshots(SNAPSHOTS.read_text(encoding="utf-8"))
+        mtd = competition.month_to_date(snaps, competition.month_of(date.today()))
+    except (OSError, ValueError):
+        mtd = {}
     text = (f"since your first order on {start}: your book {mine:+.2f}% on money invested "
-            f"(closed trades {closed}); the operator's competing picks book {theirs:+.2f}%; "
-            f"S&P 500 {spx_ret:+.2f}%")
+            f"(closed trades {closed}); S&P 500 {spx_ret:+.2f}%")
     # The benchmark is the momentum RULE's dry-run record (momentum stopped
     # trading 2026-10-07): its holdings priced at today's closes, plus cash,
     # against the capital it started with -- the same tranche book the
@@ -207,6 +220,12 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
             start_value = sum(t.cash for t in book.tranches) + sum(
                 n * float(first["prices"].get(s, 0)) for s, n in held.items())
             text += f", momentum rule {(value / start_value - 1) * 100:+.2f}%"
+    if mtd:
+        def score(book: str) -> str:
+            return f"{mtd[book]:+.2f}%" if book in mtd else "not scored yet"
+        text += (f". This month so far, scored as the monthly verdict scores it (change in "
+                 f"P/L over average money invested): your book {score(GEMMA)}, the "
+                 f"operator's picks book {score(ownership.PICKS)}")
     recent = []
     for r in rows:
         if r.get("event") == "gemma_decision":

@@ -134,6 +134,43 @@ def book_return(snaps: Iterable[Snapshot], book: str, first: date, last: date) -
     return (s[-1].pl_total - s[0].pl_total) / (sum(invested) / len(invested)) * 100
 
 
+def month_to_date(snaps: Iterable[Snapshot], month: str) -> dict[str, float]:
+    """Each real book's return so far in `month`, scored exactly as the
+    standings score it (scripts/competition.py): every book anchored at P/L 0
+    the day before its first snapshot, then book_return from the last day
+    before the month (or its first day) to its latest. A book that holds
+    nothing still has a score -- its realised P/L over what it had invested --
+    which is what Gemma's scoreboard missed before 2026-10-18 (it showed +0.00%)."""
+    snaps = list(snaps)
+    anchored = list(snaps)
+    for book in (PICKS, GEMMA):
+        mine = sorted((s for s in snaps if s.book == book), key=lambda s: s.day)
+        if mine:
+            anchored.append(Snapshot(day=date.fromordinal(mine[0].day.toordinal() - 1),
+                                     book=book, pl_total=0.0, invested=mine[0].invested))
+    days = sorted({s.day for s in anchored if month_of(s.day) == month})
+    if not days:
+        return {}
+    before = [s.day for s in anchored if month_of(s.day) < month]
+    first = max(before) if before else days[0]
+    out = {}
+    for book in (PICKS, GEMMA):
+        r = book_return(anchored, book, first, days[-1])
+        if r is not None:
+            out[book] = r
+    return out
+
+
+def load_snapshots(text: str) -> list[Snapshot]:
+    """snapshots.jsonl text -> snapshots; a re-run on the same day replaces."""
+    last: dict[tuple, Snapshot] = {}
+    for line in text.splitlines():
+        if line.strip():
+            s = Snapshot.model_validate_json(line)
+            last[(s.day, s.book)] = s
+    return list(last.values())
+
+
 class MonthResult(Frozen):
     month: str
     scores: dict[str, float]

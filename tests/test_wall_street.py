@@ -75,3 +75,35 @@ def test_market_text_carries_wall_street_lines():
     assert "Wall Street since the last session" in text
     assert "Barclays Upgrades Micron" in text
     assert "Wall Street" not in wa.market_text([], president_lines=[], headlines=[])
+
+
+@pytest.mark.parametrize("headline", [
+    "If I Could Only Own 1 Artificial Intelligence (AI) Memory Stock for the Next 5 Years, It Wouldn't Be Micron.",
+    "Here Is What a $5,000 Investment in Micron Could Be Worth by 2028",
+    "Why Micron's Latest Long-Term Deals Are a Game-Changer for Investors",
+    "Micron Stock Is Down 24% From Its Peak. History Says $10,000 Invested Right Now Could Be Worth This Much",
+    "3 AI Stocks With Earnings Growth Over 33% To Watch",
+    "Palantir Slipped Into a Correction. Here's Where It Could Go by 2030",
+    "Western Digital (WDC) Dips More Than Broader Market: What You Should Know",
+])
+def test_clickbait_cannot_be_quoted_as_evidence(headline):
+    assert ws.is_opinion(headline)
+
+
+@pytest.mark.parametrize("headline", [
+    "Intel (INTC) Lands A Major Customer For Its 14A Foundry Process",
+    "Arm and AMD Fall 5% as Qualcomm Verdict Adds to Chip Selloff",
+    "Applied Materials (AMAT) Opened Its $5 Billion EPIC Center",
+    "Humana's CenterWell Expansion Gets a Boost From BlackRock's Capital",
+])
+def test_real_company_news_is_kept(headline):
+    assert not ws.is_opinion(headline)
+
+
+def test_market_text_leaves_out_opec_country_output():
+    from scanner.sources.calendar import Release
+    results = [Release(name="OPEC Crude oil Production Iraq (Barrel)", actual="4.10M",
+                       consensus="", previous="3.20M"),
+               Release(name="CPI (MoM)", actual="0.3%", consensus="0.2%", previous="0.4%")]
+    text = wa.market_text([], president_lines=[], headlines=[], results=results)
+    assert "CPI" in text and "OPEC" not in text

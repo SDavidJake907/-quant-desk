@@ -17,6 +17,7 @@ PURE.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, time, timedelta
 
@@ -84,6 +85,8 @@ MARKET_WIDE = ("econ", "fed", "political", "market")
 MAX_SECTOR_LINES = 3
 #: News lines per stock in Gemma's facts: enough to inform, not to crowd.
 MAX_NEWS_LINES = 3
+#: Releases that are not US data although the feed tags them "United States".
+FOREIGN_SERIES = re.compile(r"^OPEC\b", re.IGNORECASE)
 CONTEXT_NOTE = ("Headlines and scheduled events are usually already in the price within minutes: "
                 "use them for timing and risk (earnings, CPI, the Fed), not as a reason to swap.")
 
@@ -224,7 +227,9 @@ def market_text(evts: Iterable[Event], *, president_lines: Sequence[str],
     """One paragraph for Gemma's market line. Short on purpose."""
     wide = [e for e in evts if e.kind in MARKET_WIDE][:max_events]
     parts = []
-    came_in = [result_line(r) for r in results if r.actual]
+    # OPEC's per-country output arrives tagged "United States" by the feed and
+    # filled every slot of this line (2026-10-17: six of six); US data only.
+    came_in = [result_line(r) for r in results if r.actual and not FOREIGN_SERIES.search(r.name)]
     if came_in:
         parts.append("Last session's data, actual vs expected (a surprise is what moves "
                      "prices): " + "; ".join(came_in[:6]))
