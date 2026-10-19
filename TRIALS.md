@@ -85,6 +85,8 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 71 | operator's give-back exit: once the book's day gain reaches A, sell all if it gives back X of it; rebuy at the close or next open (research_gpu/giveback_test.py) | RULES FIXED in the commit that adds this row, before the first run (66ddd27) | 100 random 7-stock S&P books, 15m bars 2024-09 to 2026-09 (~478 days); her book (COHR MPC MU NVDA SNDK VLO WDC, 402 days) shown, not graded | PRIMARY -0.008%/day t -1.10 (fires 9% of days); 10 of 12 cells negative, A=0.5% loses 7-17%/yr (t -2.5 to -3.2); rebuy-next-open worse than rebuy-close in every cell (misses the overnight gap); only A=2% is ~0 (+0.001 to +0.004%/day, fires 1-3%); her book negative in all 12 cells (-0.04 to -0.23%/day) | FAIL: selling a give-back costs money; the afternoon recovers about as often as it fades |
 
+| 72 | operator's price-level TP: resting limit sell at yesterday's high / the 5-day high, or at +$25/$50/$100 on a $3,500 position; rebuy at the close (research_gpu/price_level_tp.py) | RULES FIXED in the commit that adds this row, before the first run | 501 S&P names, 15m bars 2024-09 to 2026-09; her 7 shown, not graded | pending | PRIMARY prev_high: rule minus hold > 0 per day, t >= 2, both halves > 0; other 4 need abs t >= 3.3 |
+
 **Running total: ~103 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
