@@ -63,6 +63,9 @@ LADDERS = (
     ("1/3 at 1R, 1/3 at 2R, runs", ((1.0, 1 / 3), (2.0, 1 / 3)), None, False),
     ("1/2 at 2R, rest runs", ((2.0, 0.5),), None, False),
     ("all out at 1R", ((1.0, 1.0),), None, False),
+    # The operator's three steps (2026-10-19): a third each at 1R, 2R, 3R.
+    ("1/3 at 1R, 2R, 3R", ((1.0, 1 / 3), (2.0, 1 / 3), (3.0, 1 / 3)), None, False),
+    ("1/3 at 1R, 2R, 3R, +BE", ((1.0, 1 / 3), (2.0, 1 / 3), (3.0, 1 / 3)), None, True),
 )
 
 
