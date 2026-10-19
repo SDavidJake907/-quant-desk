@@ -171,3 +171,35 @@ td.sym { font-family: var(--mono); font-weight: 600; }
 .feed .reason.gain { color: var(--gain); }
 .feed .reason.loss { color: var(--loss); }
 td.no-stop { color: var(--warn); }
+
+/* ---- Gemma's review + Ask Gemma ---- */
+.review-summary { margin: 0 0 12px; color: var(--ink-2); }
+.review-figures { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0 0 14px; }
+.review-figures div { font-size: 12px; color: var(--muted); }
+.review-figures b { display: block; font: 600 15px var(--mono); color: var(--ink); }
+.verdict-tag { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line);
+  white-space: nowrap; }
+.verdict-keep { color: var(--gain); border-color: #2d5a45; }
+.verdict-watch { color: var(--warn); border-color: #5a4614; }
+.verdict-sell_candidate { color: var(--loss); border-color: #5a2a2a; }
+.review-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
+.review-cols h3 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 6px;
+  text-transform: uppercase; letter-spacing: .04em; }
+.review-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.review-list li { font-size: 13px; color: var(--ink-2); }
+.review-list b { color: var(--ink); font-family: var(--mono); margin-right: 6px; }
+.review-list .muted { display: block; }
+.thinking { margin-top: 14px; }
+.thinking pre { white-space: pre-wrap; font: 12px/1.5 var(--sans); color: var(--ink-2);
+  background: var(--surface-2); padding: 12px; border-radius: 8px; max-height: 360px; overflow: auto; }
+.ask-form { display: flex; gap: 8px; align-items: stretch; }
+.ask-form textarea { flex: 1; min-width: 0; resize: vertical; background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: 14px/1.4 var(--sans); }
+.ask-form button { background: var(--gemma); color: #fff; border: 0; border-radius: 8px;
+  padding: 0 18px; font: 600 13px var(--sans); cursor: pointer; }
+.ask-form button:disabled { opacity: .5; cursor: default; }
+.ask-item { border-top: 1px solid var(--line); padding: 10px 0; }
+.ask-q { font-weight: 600; margin-bottom: 4px; }
+.ask-a { white-space: pre-wrap; color: var(--ink-2); }
+.ask-a.failed { color: var(--loss); }
+@media (max-width: 760px) { .review-cols { grid-template-columns: 1fr; } }

@@ -145,10 +145,14 @@ def test_group_positions_by_book():
     assert [r["symbol"] for r in books["other"]] == ["ZZZ"]
 
 
-def test_app_has_no_write_endpoints():
+def test_the_only_write_endpoint_is_ask_gemma():
+    # Read-only until 2026-10-19; the operator then chose guarded edits. Asking
+    # Gemma a question is the one write, and it trades nothing. Any new write
+    # endpoint must be added here deliberately.
     from scanner.web.app import app
-    methods = {m for route in app.routes for m in getattr(route, "methods", set())}
-    assert methods <= {"GET", "HEAD"}
+    writes = {(route.path, m) for route in app.routes
+              for m in getattr(route, "methods", set()) if m not in ("GET", "HEAD")}
+    assert writes == {("/api/ask", "POST")}
 
 
 def test_activity_summaries_for_outcomes_and_decisions(tmp_path):

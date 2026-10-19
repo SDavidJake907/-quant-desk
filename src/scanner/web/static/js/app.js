@@ -1,4 +1,4 @@
-/* stock-scanner dashboard -- read-only. Every value goes in via textContent,
+/* stock-scanner dashboard. Every value goes in via textContent,
    so nothing from the audit log or the broker can inject markup. */
 "use strict";
 
@@ -351,6 +351,99 @@ function renderSystem(sys) {
   $("jobs").replaceChildren(jobs);
 }
 
+// ---- Gemma's review ------------------------------------------------------
+
+const VERDICT_LABELS = { keep: "keep", watch: "watch", sell_candidate: "sell candidate" };
+
+function renderReview(data) {
+  const r = data && data.review;
+  if (!r) return;
+  $("review-when").textContent = `${r.day} · written ${shortTime(r.at)}`;
+  const n = r.numbers || {};
+  const figs = h("div", { class: "review-figures" },
+    h("div", {}, h("b", { text: money(n.invested) }), "invested"),
+    h("div", {}, h("b", { text: `${(n.invested_pct ?? 0).toFixed(0)}%` }), "of her book at work"),
+    h("div", {}, h("b", { text: money(n.idle) }), "idle cash"),
+    h("div", {}, h("b", { class: tone(n.open_pl), text: signedMoney(n.open_pl) }), "open P/L"));
+
+  const body = h("tbody");
+  for (const p of r.positions || []) {
+    body.append(h("tr", {},
+      h("td", { class: "sym", text: p.symbol }),
+      h("td", {}, h("span", { class: `verdict-tag verdict-${p.verdict}`,
+        text: VERDICT_LABELS[p.verdict] || p.verdict })),
+      h("td", { class: `num ${tone(p.pl_pct)}`, text: p.pl_pct == null ? "—" : pct(p.pl_pct) }),
+      h("td", { class: "num", text: p.weight_pct == null ? "—" : `${p.weight_pct.toFixed(0)}%` }),
+      h("td", { class: "num", text: p.stop_gap_pct == null ? "none" : `${p.stop_gap_pct.toFixed(1)}%` }),
+      h("td", { class: "reason" }, p.reason || "",
+        p.risk ? h("span", { class: "muted", text: ` Risk: ${p.risk}` }) : null)));
+  }
+  const table = h("div", { class: "table-scroll" }, h("table", { class: "feed" },
+    h("thead", {}, h("tr", {}, ...["Stock", "Verdict", "P/L", "Weight", "To stop", "Why"]
+      .map((t) => h("th", { text: t })))), body));
+
+  const list = (items, fill) => {
+    const ul = h("ul", { class: "review-list" });
+    if (!items || !items.length) ul.append(h("li", { class: "muted", text: "none" }));
+    for (const it of items || []) ul.append(fill(it));
+    return ul;
+  };
+  const cols = h("div", { class: "review-cols" },
+    h("div", {}, h("h3", { text: "Next stocks coming up" }), list(r.watchlist, (w) =>
+      h("li", {}, h("b", { text: w.symbol }), w.why, h("span", { class: "muted", text: `Buy if: ${w.buy_if}` })))),
+    h("div", {},
+      h("h3", { text: "Coming up" }), list(r.upcoming, (u) => h("li", { text: u })),
+      h("h3", { text: "Her proposals (need your OK)", style: "margin-top:14px" }),
+      list(r.proposals, (pr) => h("li", {}, h("b", { text: "→" }), pr.change,
+        h("span", { class: "muted", text: pr.why })))));
+
+  const think = r.thinking ? h("details", { class: "thinking" },
+    h("summary", { text: "Her thinking" }), h("pre", { text: r.thinking })) : null;
+  $("review").replaceChildren(h("p", { class: "review-summary", text: r.summary }), figs, table, cols, think);
+}
+
+// ---- Ask Gemma -------------------------------------------------------------
+
+let askPoll = null;
+
+function renderAsks(data) {
+  const box = h("div");
+  for (const a of data.asks || []) {
+    const answer = a.status === "answered" ? h("div", { class: "ask-a", text: a.answer })
+      : a.status === "pending" ? h("div", { class: "ask-a muted", text: "Gemma is thinking…" })
+      : h("div", { class: "ask-a failed", text: a.error || "not answered" });
+    box.append(h("div", { class: "ask-item" },
+      h("div", { class: "ask-q", text: a.question }),
+      h("div", { class: "muted", text: shortTime(a.at) }), answer));
+  }
+  $("ask-history").replaceChildren(box);
+  $("ask-send").disabled = !!data.pending;
+  $("ask-status").textContent = data.pending ? "Gemma is answering — usually under a minute." : "";
+  clearTimeout(askPoll);
+  if (data.pending) askPoll = setTimeout(loadAsks, 4000);
+}
+
+function loadAsks() {
+  getJSON("/api/asks").then(renderAsks).catch((e) => console.error(e));
+}
+
+$("ask-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const question = $("ask-text").value.trim();
+  if (!question) return;
+  $("ask-send").disabled = true;
+  try {
+    const r = await fetch("/api/ask", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+    $("ask-text").value = "";
+  } catch (e) {
+    $("ask-status").textContent = `Not sent: ${e.message}`;
+  }
+  loadAsks();
+});
+
 // ---- load -----------------------------------------------------------------
 
 let lastScoreboard = null;
@@ -361,6 +454,8 @@ function load() {
     .then((sb) => { lastScoreboard = sb; renderScoreboard(sb); })
     .catch((e) => console.error(e));
   getJSON("/api/system").then(renderSystem).catch((e) => console.error(e));
+  getJSON("/api/review").then(renderReview).catch((e) => console.error(e));
+  loadAsks();
   getJSON("/api/books").then(renderBooks)
     .catch(() => renderBooks({ ok: false, error: "could not load positions" }));
 }

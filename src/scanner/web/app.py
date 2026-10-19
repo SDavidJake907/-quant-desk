@@ -1,10 +1,14 @@
-"""stock-scanner dashboard -- a read-only view of the competition.
+"""stock-scanner dashboard -- the competition, and Gemma's review.
 
 Shows the month's scoreboard (you vs Gemma, ghosts, S&P, momentum), each
-book's open positions, recent trading activity and whether the scheduled jobs
-are running. It only reads: there is no endpoint that edits a watchlist, runs
-a script or touches the broker beyond GET requests. Lists are still edited by
-hand and committed, as FREEZE.md requires.
+book's open positions, recent trading activity, whether the scheduled jobs
+are running, and Gemma's evening review (scripts/gemma_review.py).
+
+ONE write endpoint (operator 2026-10-19): POST /api/ask records a question for
+Gemma and answers it in the background. It trades nothing and changes no rule.
+It accepts JSON only, from a page on this PC only (Origin check), so another
+website open in the browser cannot post to it. Nothing here edits a watchlist,
+runs a script or sends anything to the broker but GET requests.
 
 Run (binds to this PC only):
     .venv\\Scripts\\python.exe -m uvicorn scanner.web.app:app --port 8000
@@ -18,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,13 +30,18 @@ from fastapi.staticfiles import StaticFiles
 from scanner.config import settings
 from scanner.execution.alpaca import PAPER_HOST, Alpaca, BrokerError
 from scanner.execution.safety import kill_switch_active
-from scanner.web import readers
+from scanner.advisor import gemma_review as rv
+from scanner.web import asks, readers
 
 ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = Path(__file__).resolve().parent
 LOGS = ROOT / "logs"
 COMPETITION = LOGS / "competition"
 WATCHLISTS = ROOT / "watchlists"
+GEMMA_DATA = ROOT / "data" / "gemma"
+REVIEWS = GEMMA_DATA / "reviews"
+ASKS = GEMMA_DATA / "asks.jsonl"
+LOCAL_HOSTS = ("127.0.0.1", "localhost")
 
 app = FastAPI(title="stock-scanner", docs_url=None, redoc_url=None, openapi_url=None)
 # Refuse requests whose Host is not this PC (blocks DNS-rebinding pages from
@@ -95,6 +104,46 @@ async def system() -> dict[str, Any]:
         "activity": readers.activity(ROOT / settings.audit_log_path),
         "server_time": datetime.now().astimezone().isoformat(),
     }
+
+
+@app.get("/api/review")
+async def review() -> dict[str, Any]:
+    """Gemma's latest evening review, and which days have one."""
+    days = sorted((p.stem for p in REVIEWS.glob("????-??-??.json")), reverse=True)
+    return {"review": asks.latest_review(REVIEWS), "days": days[:30]}
+
+
+@app.get("/api/asks")
+async def ask_history() -> dict[str, Any]:
+    rows = asks.load(ASKS)
+    return {"asks": rows[:50], "pending": asks.pending(rows)}
+
+
+def _from_this_pc(request: Request) -> bool:
+    """A same-origin page sends Origin http://127.0.0.1:<port> or localhost."""
+    origin = request.headers.get("origin", "")
+    host = origin.split("://", 1)[-1].split(":", 1)[0]
+    return origin.startswith("http://") and host in LOCAL_HOSTS
+
+
+@app.post("/api/ask")
+async def ask(request: Request) -> dict[str, Any]:
+    if not _from_this_pc(request):
+        raise HTTPException(403, "questions are accepted only from the dashboard on this PC")
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        raise HTTPException(415, "send JSON")
+    try:
+        body = await request.json()
+    except ValueError:
+        raise HTTPException(400, "send JSON") from None
+    question = rv.clean_question(body.get("question") if isinstance(body, dict) else None)
+    if question is None:
+        raise HTTPException(400, f"ask a question of 1-{rv.MAX_QUESTION_CHARS} characters")
+    if asks.pending(asks.load(ASKS)):
+        raise HTTPException(429, "Gemma is still answering the last question")
+    ask_id = asks.submit(ASKS, question, questions_dir=GEMMA_DATA / "questions",
+                         reviews_dir=REVIEWS)
+    return {"ok": True, "id": ask_id}
 
 
 if __name__ == "__main__":  # pragma: no cover

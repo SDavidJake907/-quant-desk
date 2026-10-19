@@ -103,6 +103,28 @@
     <div id="book-other"></div>
   </section>
 
+  <!-- Gemma's evening review + Ask Gemma -->
+  <section class="panel" aria-labelledby="review-title">
+    <div class="panel-head">
+      <h2 id="review-title"><span class="key key-gemma"></span>Gemma's review</h2>
+      <span class="muted" id="review-when"></span>
+    </div>
+    <div id="review"><p class="muted">No review yet. It is written after the close.</p></div>
+  </section>
+  <section class="panel" aria-labelledby="ask-title">
+    <div class="panel-head">
+      <h2 id="ask-title"><span class="key key-gemma"></span>Ask Gemma</h2>
+      <span class="muted">answers from her briefing and review; trades nothing</span>
+    </div>
+    <form class="ask-form" id="ask-form">
+      <textarea id="ask-text" maxlength="500" rows="2"
+        placeholder="e.g. Why are you still holding VLO into earnings?"></textarea>
+      <button type="submit" id="ask-send">Ask</button>
+    </form>
+    <p class="muted" id="ask-status"></p>
+    <div id="ask-history"></div>
+  </section>
+
   <!-- account + selection -->
   <div class="two-up">
     <section class="panel" aria-labelledby="acct-title">
@@ -131,7 +153,7 @@
     </section>
   </div>
 
-  <p class="footer">Read-only. Edit watchlists by hand and commit them; nothing on this page can trade.</p>
+  <p class="footer">Nothing on this page can trade. Asking Gemma is the one thing it sends, and it changes no rule.</p>
 </main>
 
 <div class="tooltip" id="tooltip" hidden></div>
