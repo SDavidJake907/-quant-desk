@@ -13,3 +13,5 @@
 MRNA
 SNDK
 WDC
+# 2026-10-19: NVDA added (operator); all four sold at 11:25 AK today.
+NVDA
