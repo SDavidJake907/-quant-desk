@@ -171,8 +171,9 @@ async def main(use_llm: bool) -> int:
     near = [e for e in evts if e.day in set(days[:SESSIONS_FOR_GEMMA])]
     far_earnings = [e for e in evts if e.kind == "earnings" and e not in near]
     market_text = wa.market_text(near, president_lines=pres_lines, results=results,
-                                 headlines=wide + [h for h in market if h in linked and h not in wide],
-                                 wall_street=street)
+                                 headlines=wide + [h for h in market if h in linked and h not in wide])
+    # Wall Street lines are stored apart ("wall_street" below); gemma_trade.py
+    # keeps only the ones naming her list or the Fed (2026-10-19 trim).
     brief = {
         "date": today.isoformat(), "written_at": datetime.now(timezone.utc).isoformat(),
         "market_text": market_text,

@@ -134,7 +134,8 @@ RULES = "\n".join((
     "copying it cannot beat it. Momentum, "
     "news, earnings timing and the market trend are all yours to weigh. On this "
     "desk RSI, moving averages and chart patterns were tested and showed no edge.",
-    "- An earnings report within days can gap a stock either way, past its stop.",
+    "- An earnings report within days can gap a stock either way, past its stop. A "
+    "stock's block has an 'earnings' line only when it reports within 7 days.",
     "- 'calendar' and 'in the news' lines are context: news is usually in the price within "
     "minutes. Use them for timing and risk (an earnings date, CPI, the Fed), not as a "
     "reason to swap a holding.",

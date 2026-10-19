@@ -54,7 +54,9 @@ def test_market_text_is_short_and_labelled_context():
     text = wa.market_text(events, president_lines=["Iran blockade 'will remain in full force'"],
                           headlines=["OpenAI revenue miss hits AI stocks"])
     assert "Wed 10/14: CPI (Sep)" in text and "Iran blockade" in text and "OpenAI" in text
-    assert "already in the price" in text
+    # The "already in the price" note moved to her rules (2026-10-19 trim): it was
+    # said twice in every briefing.
+    assert "already in the price" not in text
     assert len(text) < 2500
 
 
@@ -297,3 +299,23 @@ def test_dashboard_skips_missing_symbols():
     md = wa.dashboard_md((("US indexes", (("^GSPC", "S&P 500"), ("^XYZ", "Missing"))),),
                          {"^GSPC": [100.0] * 25})
     assert "S&P 500" in md and "Missing" not in md
+
+
+# --- the 2026-10-19 trim: fewer tokens, the same facts ------------------------
+
+def test_market_text_keeps_us_events_only():
+    from scanner.ops.week_ahead import Event
+    evts = [Event(day=date(2026, 10, 19), kind="econ", text="China: China Loan Prime Rate 5Y"),
+            Event(day=date(2026, 10, 21), kind="econ", text="South Korea: Interest Rate Decision"),
+            Event(day=date(2026, 10, 23), kind="econ", text="Michigan Consumer Sentiment"),
+            Event(day=date(2026, 10, 28), kind="fed", text="FOMC rate decision")]
+    text = wa.market_text(evts, president_lines=[], headlines=[])
+    assert "Michigan" in text and "FOMC" in text
+    assert "China" not in text and "South Korea" not in text
+
+
+def test_market_text_drops_the_presidents_routine_schedule():
+    text = wa.market_text([], president_lines=[
+        "schedule Mon 12:30 PM: The President participates in a Policy Meeting",
+        "Tariffs on all chip imports start Friday"], headlines=[])
+    assert "Policy Meeting" not in text and "Tariffs on all chip imports" in text

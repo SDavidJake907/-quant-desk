@@ -66,6 +66,27 @@ OPINION = re.compile(
     re.I)
 
 
+#: Market-wide tags kept for Gemma whatever symbols they name.
+GEMMA_TAGS = ("[fed]", "[macro]")
+#: Most Wall Street lines in her briefing (2026-10-19 trim).
+GEMMA_MAX = 6
+
+
+def for_gemma(items, symbols) -> list[str]:
+    """The Wall Street lines worth her tokens: ones naming a stock on her list,
+    plus Fed / macro lines; opinion and listicles out."""
+    symbols = set(symbols)
+    out = []
+    for line in items:
+        tag, _, rest = str(line).partition(" ")
+        names, sep, title = rest.partition(": ")
+        if not sep or not tag.startswith("[") or is_opinion(title):
+            continue
+        if tag in GEMMA_TAGS or symbols & {n.strip() for n in names.split(",")}:
+            out.append(line)
+    return out[:GEMMA_MAX]
+
+
 def is_opinion(headline: str) -> bool:
     """Opinion, listicle, roundup, chart lore or crypto: not something the
     Street did. Gemma's per-stock headlines and the brief's feed drop these."""

@@ -80,6 +80,10 @@ def daily_brief(day: date) -> dict | None:
     except (OSError, ValueError):
         return None
     return brief if brief.get("date") == day.isoformat() and brief.get("market_text") else None
+#: Her briefing, trimmed 2026-10-19 (operator: "trimming down into tokens"):
+#: headlines were 41% of it. Three per stock, each cut to HEADLINE_CHARS.
+HEADLINES_PER_STOCK = 3
+HEADLINE_CHARS = 120
 CORE = Path("watchlists/core.txt")
 GEMMA_LIST = Path("watchlists/gemma.txt")
 
@@ -138,7 +142,8 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str, bool]:
                  + (f" ({rs:+.0f} pts vs the S&P 500)" if rs is not None else "")
                  + f" | daily ATR {atr_text}"]
         report = earnings.get(s)
-        lines.append(f"earnings: {report.label}" if report else "earnings: none in the next 7 days")
+        if report:      # no line = none within 7 days (her rules say so)
+            lines.append(f"earnings: {report.label}")
         # TradingAgents runs as a SHADOW (2026-10-07): Gemma asked not to see it
         # ("a black box that might lead me to mimic the system's logic") so its
         # record is its own. TradingAgents is still rated, graded, and shown to
@@ -163,8 +168,8 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str, bool]:
             # her evidence for a buy, so "What $5,000 Could Be Worth by 2028"
             # must not be quotable. Same filter as the brief's Wall Street lines.
             news = [i for i in items if not wall_street.is_opinion(i.title)]
-            for item in news[:5]:
-                lines.append(f"headline: {item.title}")
+            for item in news[:HEADLINES_PER_STOCK]:
+                lines.append(f"headline: {item.title[:HEADLINE_CHARS]}")
         except Exception:                                # noqa: BLE001
             lines.append("headlines: unavailable")
         out[s] = "\n".join(lines)
@@ -470,6 +475,10 @@ async def main(submit: bool) -> int:
         brief = daily_brief(date.today()) if POLICY.gemma_sees_brief else None
         if brief:
             trend += ". " + brief["market_text"]
+            street = wall_street.for_gemma(brief.get("wall_street") or [], facts)
+            if street and "Wall Street since" not in brief["market_text"]:
+                trend += (". Wall Street since the last session, your stocks and the Fed: "
+                          + " | ".join(street))
             for s, lines in brief.get("stock_lines", {}).items():
                 if s in facts and lines:
                     facts[s] += "\n" + "\n".join(lines)

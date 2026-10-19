@@ -107,3 +107,15 @@ def test_market_text_leaves_out_opec_country_output():
                Release(name="CPI (MoM)", actual="0.3%", consensus="0.2%", previous="0.4%")]
     text = wa.market_text([], president_lines=[], headlines=[], results=results)
     assert "CPI" in text and "OPEC" not in text
+
+
+
+def test_wall_street_for_gemma_keeps_her_names_and_the_fed():
+    items = ["[rating] TRV: Truist Maintains Buy on Travelers",
+             "[rating] MU: Barclays Upgrades Micron to Overweight",
+             "[fed] GOOG,GS: Treasury yield could run over AI",
+             "[results] GM: How To Earn $500 A Month From General Motors Stock",
+             "no tag at all"]
+    kept = ws.for_gemma(items, {"MU", "VLO"})
+    assert kept == ["[rating] MU: Barclays Upgrades Micron to Overweight",
+                    "[fed] GOOG,GS: Treasury yield could run over AI"]

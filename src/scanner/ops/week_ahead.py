@@ -87,6 +87,9 @@ MAX_SECTOR_LINES = 3
 MAX_NEWS_LINES = 3
 #: Releases that are not US data although the feed tags them "United States".
 FOREIGN_SERIES = re.compile(r"^OPEC\b", re.IGNORECASE)
+#: A calendar line labelled with another country ("China: ...", "South Korea:
+#: ..."). Gemma trades US stocks; the 2026-10-19 trim keeps US events only.
+NON_US_EVENT = re.compile(r"^(?!United States\b)[A-Z][A-Za-z .'-]{1,30}: ")
 CONTEXT_NOTE = ("Headlines and scheduled events are usually already in the price within minutes: "
                 "use them for timing and risk (earnings, CPI, the Fed), not as a reason to swap.")
 
@@ -225,7 +228,10 @@ def market_text(evts: Iterable[Event], *, president_lines: Sequence[str],
                 headlines: Sequence[str], max_events: int = 8,
                 results: Sequence[Release] = (), wall_street: Sequence[str] = ()) -> str:
     """One paragraph for Gemma's market line. Short on purpose."""
-    wide = [e for e in evts if e.kind in MARKET_WIDE][:max_events]
+    wide = [e for e in evts if e.kind in MARKET_WIDE
+            and not NON_US_EVENT.match(e.text)][:max_events]
+    # The President's posts, not his routine calendar (signings, policy meetings).
+    president_lines = [p for p in president_lines if not p.startswith("schedule ")]
     parts = []
     # OPEC's per-country output arrives tagged "United States" by the feed and
     # filled every slot of this line (2026-10-17: six of six); US data only.
@@ -244,7 +250,7 @@ def market_text(evts: Iterable[Event], *, president_lines: Sequence[str],
         parts.append("Wall Street since the last session (ratings, deals, guidance, "
                      "results, the Fed; what the Street did, not a forecast): "
                      + " | ".join(wall_street[:8]))
-    parts.append(CONTEXT_NOTE)
+    # CONTEXT_NOTE is in her rules already; repeating it here cost tokens daily.
     return ". ".join(parts)
 
 
