@@ -1030,6 +1030,18 @@ chips +3.4% at the high, +1.5% later); the days it does not are not. Survivor
 list and two years only. **No options or short book built on it.** Script:
 scratch `after1030.py` (read-only), result recorded here.
 
+Follow-up the same day, operator: "after 10:30am sell. buy back at 11:30 for the next gap". Skip one hour every day vs hold, both readings, same store:
+
+```
+pieces of the day (avg/day)  open-10:30 +0.020  10:30-11:30 -0.007  11:30-14:30 +0.021
+                             14:30-15:30 -0.015  15:30-close -0.008  overnight gap +0.054 (t 2.20, up 59%)
+skip 14:30-15:30 ET (10:30-11:30 AK)  +0.015%/day before costs (t 1.57); -0.025 at 2bps/side; -0.085 at 5bps (about -19%/yr)
+skip 10:30-11:30 ET                    +0.007%/day (t 0.57); -0.033 at 2bps; -0.093 at 5bps
+most volatile fifth: the same, slightly worse
+```
+
+No: the hour skipped is too small to pay for selling and buying back every day. The one piece that stands out is the overnight gap (+0.054%/day, t 2.2) -- the published overnight effect (Lou, Polk & Skouras), found here among six windows, so below this ledger's t 3.3 bar. Holding positions overnight already collects it; trading in and out daily does not add to it.
+
 ## 65. Gemma: graded probabilities, a "sell if", untrusted headlines -- BUILT, live 10-20 (2026-10-19)
 
 Operator chose 1-3 from the GitHub prompt survey (TradingAgents, virattt
