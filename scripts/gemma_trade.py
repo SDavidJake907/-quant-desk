@@ -39,22 +39,16 @@ from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
 from scanner.execution import bookorders, ownership, picks, scorecard, sessions
 from scanner.execution.alpaca import Alpaca
-from scanner.execution.guards import RiskLimits, check_account, sector_concentration
+from scanner.execution.guards import RiskLimits, check_account
 from scanner.execution.ownership import GEMMA
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.safety import kill_switch_active
 from scanner.execution.scorecard import read_rows
-from scanner.execution.session import crosses_session, is_stale_session
 from scanner.features.bars import fetch_bars, fetch_many
-from scanner.features.intraday import EXCHANGE_TZ, drop_incomplete, fetch_intraday, max_range, session_slot
-from scanner.features.intraday_context import atr_pct
 from scanner.momentum import state as mstate
-from scanner.execution.math_signals import build_signals
-from scanner.features.structure import DEFAULT_K
+from scanner.features.intraday_context import atr_pct
 from scanner.features.technicals import compute, relative_strength
-from scanner.features.market_snapshot import fetch_snapshot, summary_text
 from scanner.llm.ollama import LLMError, chat_json
-from scanner.screens.smc import is_live_setup, scan as smc_scan
 from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
 from scanner.sources.index_history import COMPOSITE_1500, SP500
@@ -77,19 +71,6 @@ def daily_brief(day: date) -> dict | None:
     return brief if brief.get("date") == day.isoformat() and brief.get("market_text") else None
 CORE = Path("watchlists/core.txt")
 GEMMA_LIST = Path("watchlists/gemma.txt")
-PORTFOLIO_REVIEW = BRIEF_DIR / "portfolio-review.json"
-
-
-def _portfolio_review_text() -> str:
-    """Gemma's read-only portfolio review, or empty string if unavailable."""
-    try:
-        data = json.loads(PORTFOLIO_REVIEW.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return ""
-    text = str(data.get("summary_text", "")).strip()
-    snap = str(data.get("market_snapshot", {}).get("summary", "")).strip()
-    parts = [p for p in [text, snap] if p]
-    return " ".join(parts)
 
 
 def _ret(closes, back: int) -> str:
@@ -125,16 +106,6 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
         trend += ". (Context only: none of these was a tested edge on this desk.)"
     except Exception as exc:                             # noqa: BLE001
         trend += f". (market context unavailable: {type(exc).__name__})"
-
-    # Live market snapshot: futures, bond yields, VIX, commodities, dollar.
-    # Gemma sees today's tape when she decides what to buy — context only.
-    try:
-        snap = await fetch_snapshot(client)
-        snap_line = summary_text(snap)
-        if snap_line:
-            trend += f". Live tape: {snap_line}"
-    except Exception:                                    # noqa: BLE001
-        pass                                             # snapshot is context, never a blocker
     try:
         earnings, _failed = await event_calendar.upcoming_earnings(frozenset(symbols), client)
     except Exception:                                    # noqa: BLE001
@@ -154,39 +125,6 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
                  f"3m {_ret(b.closes, 63)} | 12m {_ret(b.closes, 252)} | 12-1 momentum {mom}"
                  + (f" ({rs:+.0f} pts vs the S&P 500)" if rs is not None else "")
                  + f" | daily ATR {atr_text}"]
-        # Math signals: percentage-based context for Gemma's decision
-        try:
-            current_close = float(b.closes[-1])
-            recent_closes = list(b.closes[-20:])
-            recent_high = max(recent_closes)
-            recent_low = min(recent_closes)
-            sma_20 = f.sma20 if f.sma20 else current_close
-            # Daily returns for correlation math
-            stock_returns = [(b.closes[i] - b.closes[i - 1]) / b.closes[i - 1]
-                             for i in range(1, len(b.closes))]
-            avg_vol_20d = sum(b.volumes[-20:]) / 20 if len(b.volumes) >= 20 else 0.0
-            math_signals = build_signals(
-                current_price=current_close,
-                entry_price=current_close,  # no entry price for new buys; position_pct = 0
-                sma_20=sma_20,
-                recent_high=recent_high,
-                recent_low=recent_low,
-                current_atr_pct=atr if atr else 0.0,
-                atr_history=[],  # no stored ATR history yet
-                win_probability=0.5,
-                avg_win_pct=0.0,
-                loss_probability=0.5,
-                avg_loss_pct=0.0,
-                stock_returns=stock_returns,
-                portfolio_returns=[],  # no portfolio return history yet
-                current_volume=float(b.volumes[-1]) if b.volumes else 0.0,
-                avg_volume_20d=avg_vol_20d,
-            )
-            for sig in math_signals:
-                lines.append(f"math: {sig.name} = {sig.value_pct:+.1f}% "
-                             f"(conf {sig.confidence:.0%}) - {sig.explanation}")
-        except Exception:  # noqa: BLE001
-            pass  # math signals are context, never a blocker
         report = earnings.get(s)
         lines.append(f"earnings: {report.label}" if report else "earnings: none in the next 7 days")
         # TradingAgents runs as a SHADOW (2026-10-07): Gemma asked not to see it
@@ -307,64 +245,6 @@ MENU_TEXT = "\n".join((
 ))
 
 
-async def scan_for_gemma(
-    client: httpx.AsyncClient,
-    policy: TradingPolicy,
-    universe_symbols: tuple[str, ...],
-) -> tuple[str, ...]:
-    """Scan the S&P 500 for SMC setups that Gemma can choose from.
-
-    Returns symbols that have valid setups and are not already excluded.
-    """
-    range_ = max_range(policy.interval_minutes)
-    session_today = datetime.now(tz=EXCHANGE_TZ).date()
-
-    loaded = await asyncio.gather(
-        *(fetch_intraday(s, client, minutes=policy.interval_minutes, range_=range_)
-          for s in universe_symbols),
-        return_exceptions=True,
-    )
-
-    candidates: list[str] = []
-    for symbol, bars in zip(universe_symbols, loaded):
-        if isinstance(bars, Exception):
-            continue
-        bars = drop_incomplete(bars, minutes=policy.interval_minutes)
-        if not bars.closes:
-            continue
-        # Simple liquidity check: price >= $5 and dollar volume >= $20M
-        closes = bars.closes[-20:]
-        volumes = bars.volumes[-20:]
-        if not closes or not volumes:
-            continue
-        last_price = closes[-1]
-        dollar_vol = sum(v * c for v, c in zip(volumes, closes)) / len(closes)
-        if last_price < 5.0 or dollar_vol < 20_000_000:
-            continue
-        setups = smc_scan(
-            bars,
-            k=policy.swing_k,
-            min_reward_risk=policy.min_reward_risk,
-            min_risk_pct=policy.min_risk_pct,
-            require_value_sweep=policy.require_value_sweep,
-        )
-        for setup in setups:
-            age = len(bars) - 1 - setup.trigger_index
-            if age >= policy.fresh_bars:
-                continue
-            if not is_live_setup(bars, setup):
-                continue
-            if policy.block_overnight_entry and (
-                crosses_session(bars, setup.trigger_index)
-                or is_stale_session(bars, setup.trigger_index, session=session_today)
-            ):
-                continue
-            candidates.append(symbol)
-            break  # Only need one setup per symbol
-
-    return tuple(candidates)
-
-
 async def main(submit: bool) -> int:
     async with httpx.AsyncClient(timeout=120) as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
@@ -395,9 +275,6 @@ async def main(submit: bool) -> int:
         mine = {p["symbol"]: p for p in positions
                 if ownership.owner(p["symbol"], owner_map) == GEMMA}
         taken = {p["symbol"] for p in positions if p["symbol"] not in mine}
-        # Sector map for concentration guard across the account.
-        universe = await composite.load_universe(client)
-        sector_of = {m.symbol: m.sector for m in universe}
         taken |= {o["symbol"] for o in open_orders
                   if ownership.strategy_of(o.get("client_order_id")) != GEMMA}
         # Reserved for other books even before they buy: the operator's picks
@@ -412,17 +289,7 @@ async def main(submit: bool) -> int:
         mom_day, mom_picks, _ = opinions.momentum_picks()
         extra = () if POLICY.momentum_trades else mom_picks
         universe = list(dict.fromkeys((*operator_names(CORE), *operator_names(GEMMA_LIST), *extra)))
-
-        # SCAN: Gemma scans the S&P 500 for setups she can choose from
-        scan_universe = tuple(m.symbol for m in await composite.load_universe(client, (SP500,)))
-        scan_candidates = await scan_for_gemma(client, POLICY, scan_universe)
-        if scan_candidates:
-            print(f"{BOLD}SCAN{RESET} {len(scan_candidates)} setup(s) found: {', '.join(scan_candidates)}")
-        else:
-            print(f"{DIM}No scan setups found{RESET}")
         allowed = [s for s in universe if s not in taken]
-        # Add scan candidates to the allowed list (they may overlap with watchlist)
-        allowed = list(dict.fromkeys([*allowed, *scan_candidates]))
         allowed += [s for s in mine if s not in allowed]
         print(f"{BOLD}Gemma's book{RESET}  sleeve {POLICY.gemma_allocation_pct:.0f}% "
               f"(${account.equity * POLICY.gemma_allocation_pct / 100:,.0f}), "
@@ -448,13 +315,6 @@ async def main(submit: bool) -> int:
                     facts[s] += "\n" + "\n".join(lines)
         elif POLICY.gemma_sees_brief:
             print(f"  {YELLOW}no daily brief for today -- deciding without it{RESET}")
-        # Gemma's portfolio review: read-only snapshot of the whole account
-        # (open positions, by-book stats, refusals, sector exposure,
-        # TradingAgents on holdings). Advisory only -- nothing in it blocks,
-        # sizes, or closes a trade.
-        portfolio_review = _portfolio_review_text()
-        if portfolio_review:
-            trend += ". " + portfolio_review
         held_status ={s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
                        for s, p in mine.items()}
         sleeve_dollars = account.equity * POLICY.gemma_allocation_pct / 100
@@ -525,24 +385,7 @@ async def main(submit: bool) -> int:
         cap = 100.0 / POLICY.gemma_max_positions
         count = len([s for s in mine if s not in sells])
         reasons = dict(decision.reasons)
-        # Sector concentration across the account: count all positions per sector
-        # (not just Gemma's) so the cap applies account-wide.
-        held_sectors: dict[str, int] = {}
-        for p in positions:
-            sym = str(p.get("symbol") or "")
-            sec = sector_of.get(sym, "")
-            if sec:
-                held_sectors[sec] = held_sectors.get(sec, 0) + 1
-
         for s in buys:
-            sector_gate = sector_concentration(
-                {p.get("symbol") for p in positions}, sector_of, s,
-                POLICY.max_per_sector,
-            )
-            if not sector_gate:
-                print(f"  {RED}{s:<6} not bought -- {sector_gate.reason}{RESET}")
-                bookorders.log("gemma_refused", s, sector_gate.reason, POLICY)
-                continue
             gate = check_account(account.equity, float(raw.get("last_equity") or account.equity),
                                  count, limits, market_open=True,
                                  account_status=account.status, account_blocked=account.blocked)
@@ -557,14 +400,8 @@ async def main(submit: bool) -> int:
                 reason=f"Gemma [{pl.stop} stop, target {pl.target}, {pl.size}]: "
                        f"{reasons.get(s, '')}",
                 risk_pct=POLICY.gemma_menu_value("size", pl.size),
-                atr_multiple=POLICY.gemma_menu_value("stop", pl.stop)
-                if pl.stop in ("tight", "normal", "wide") else None,
-                reward_risk=POLICY.gemma_menu_value("target", pl.target)
-                if pl.target in ("none", "2R", "3R", "5R") else None,
-                stop_menu_choice=pl.stop,
-                target_menu_choice=pl.target,
-                size_menu_choice=pl.size,
-                session=session)
+                atr_multiple=POLICY.gemma_menu_value("stop", pl.stop),
+                reward_risk=POLICY.gemma_menu_value("target", pl.target), session=session)
             if not result.ok:
                 print(f"  {YELLOW}{s:<6} not bought -- {result.message}{RESET}")
                 continue

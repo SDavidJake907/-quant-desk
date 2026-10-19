@@ -68,7 +68,7 @@ def test_an_after_hours_buy_is_a_plain_limit_and_logs_its_stop(monkeypatch, tmp_
             return {"id": "1"}
 
     async def fake_price_and_atr(symbol, client):
-        return 100.0, 3.0, None
+        return 100.0, 3.0
 
     async def fake_extended_price(symbol, client, session, now=None):
         return 101.0

@@ -205,15 +205,9 @@ class TradingPolicy(Frozen):
 
     # --- what stops a trade -----------------------------------------------
     block_structural_news: bool = True
-    #: Refuse a setup whose earnings fall inside this many days ahead. Earnings
-    #: gaps are the strategy's fat left tail — the five worst trades in the
-    #: study were all gaps, worst -3.56R against a -1.00R mean for normal
-    #: stops. This is a mechanical protection, not a predictive filter: the
-    #: backtest ran on Yahoo's dividend-adjusted bars where earnings gaps have
-    #: been smoothed away, so it measured a world in which this cost does not
-    #: exist. Live bars are not adjusted.
-    #: Set to 1 to refuse setups reporting inside the holding period.
-    block_earnings_within_days: int = 1
+    #: 0 = hold through earnings (operator's choice for window 16, 2026-10-06:
+    #: the core list is hand-picked trending names). Was 7.
+    block_earnings_within_days: int = 0
 
     #: Refuse a long whose stop would be consumed by the mechanical
     #: ex-dividend price drop. THIS IS NOT A PREDICTIVE FILTER. Every context
@@ -414,10 +408,9 @@ class TradingPolicy(Frozen):
     #: An unfilled list buy older than this is cancelled and re-sent at the
     #: current price on the next run.
     picks_stale_entry_minutes: float = 25.0
-    #: Sector cap for the list. Aligned with max_per_sector (3) so the picks
-    #: book cannot concentrate into one sector while scanner and Gemma are
-    #: capped. 0 disables.
-    picks_max_per_sector: int = 3
+    #: Sector cap for the list. 0 = off: the operator's list is a deliberate
+    #: chip/AI bet and they chose to lift the cap for it (2026-10-06).
+    picks_max_per_sector: int = 0
 
     # --- Gemma's own book (advisor/gemma_trader.py, WORKLIST §42) ----------
     #: Gemma chooses up to `gemma_max_positions` names from watchlists/core.txt
@@ -452,67 +445,6 @@ class TradingPolicy(Frozen):
         ("none", 0.0), ("2R", 2.0), ("3R", 3.0), ("5R", 5.0))
     gemma_size_risk_menu: tuple[tuple[str, float], ...] = (
         ("small", 1.0), ("normal", 2.0), ("large", 3.0))
-    #: GEMMA'S MATH-BASED MENU OPTIONS (new: phase 2)
-    #: These give Gemma mathematical alternatives to fixed ATR multiples and
-    #: R:R multiples. When Gemma selects a math-based option, the system
-    #: calculates the actual price using scanner.execution.stops.build_stop_plan()
-    #: or the math_signals module.
-    #:
-    #: Stop menu extensions (in addition to ATR multiples):
-    #:   swing_low   - stop at recent swing low (structure-based)
-    #:   vol_adjusted - ATR stop adjusted for volatility regime
-    #:   trailing     - trailing stop based on highest high since entry
-    #:
-    #: Target menu extensions (in addition to R:R multiples):
-    #:   swing_high   - target at recent swing high
-    #:   value_area   - target at volume profile value area high
-    #:   fib_1.618    - Fibonacci 1.618 extension target
-    #:
-    #: Size menu extensions (in addition to risk percentages):
-    #:   kelly_half   - half Kelly criterion size
-    #:   vol_adjusted - size inversely proportional to volatility
-    gemma_stop_menu_math: tuple[tuple[str, str], ...] = (
-        ("swing_low", "swing_low"),
-        ("vol_adjusted", "vol_adjusted"),
-        ("trailing", "trailing"),
-    )
-    gemma_target_menu_math: tuple[tuple[str, str], ...] = (
-        ("swing_high", "swing_high"),
-        ("value_area", "value_area"),
-        ("fib_1.618", "fib_1.618"),
-    )
-    gemma_size_menu_math: tuple[tuple[str, str], ...] = (
-        ("kelly_half", "kelly_half"),
-        ("vol_adjusted", "vol_adjusted"),
-    )
-    #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
-    #: STOP LOSS CONFIGURATION (new: replaces pure ATR stops with smarter exits)
-    #: ATR-only stops don't account for market structure, don't trail, and don't
-    #: adjust for volatility regime. These fields add smarter exit logic.
-    #:
-    #: stop_use_structure: If True, use recent swing lows as stop reference when
-    #:   they're below the ATR stop but not too far below entry. Prevents getting
-    #: stopped out by noise above a meaningful support level.
-    #:
-    #: stop_regime_adjust: If True, widen stops in high-vol regimes (top quartile
-    #: of recent ATR%) and tighten in low-vol regimes (bottom quartile).
-    #:
-    #: stop_trail_pct: ATR multiple for chandelier trailing stop. 0 = disabled.
-    #:   When price rises, stop trails at (highest_high - trail_pct * ATR).
-    #:   Only trails if above entry (locks in profits on winners).
-    #:
-    #: stop_trail_lookback: Bars to look back for chandelier highest-high.
-    #:
-    #: stop_tier_config: Multi-tier stop config. Tuple of
-    #:   (target_pct_above_entry, pct_to_sell, stop_pct_below_entry).
-    #:   Example: ((0.02, 0.50, -0.01), (0.04, 0.25, 0.00), (0.06, 0.25, 0.02))
-    #:   = sell 50% at +2% (stop to -1%), sell 25% at +4% (stop to breakeven),
-    #:       sell 25% at +6% (stop to +2%).
-    stop_use_structure: bool = False
-    stop_regime_adjust: bool = False
-    stop_trail_pct: float = 0.0
-    stop_trail_lookback: int = 22
-    stop_tier_config: tuple[tuple[float, float, float], ...] = ()
     #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
     #: (it wants its record to be its own judgement); TradingAgents keeps running
     #: as a graded shadow the operator still sees (second_opinion.py, weekly report).
@@ -522,14 +454,11 @@ class TradingPolicy(Frozen):
     #: its stocks each item touches -- dates and headlines, never its own earlier
     #: read of them. Context, labelled as such; not a tested edge.
     gemma_sees_brief: bool = True
-    #: EXTENDED HOURS (WORKLIST §59). Outside regular hours orders are plain
-    #: limit orders (Alpaca accepts no stops then); the stop is armed by
-    #: protect.py at the open.
-    #: NOTE: Alpaca rejects bracket orders in extended hours, so an extended-
-    #: hours entry is necessarily naked until protect.py arms its stop at the
-    #: 05:33 AK open. Set to False for live trading to avoid naked overnight
-    #: entries. Kept True for paper to measure the behavior.
-    extended_hours_trading: bool = False
+    #: EXTENDED HOURS (WORKLIST §59, operator 2026-10-09: both books, every
+    #: session -- premarket, after-hours, and overnight from Sunday 8 PM ET).
+    #: Outside regular hours orders are plain limit orders (Alpaca accepts no
+    #: stops then); the stop is armed by protect.py at the open.
+    extended_hours_trading: bool = True
     #: An extended-hours sell is a limit this far under the live price, so it
     #: fills in a thin market without becoming a market order.
     extended_sell_offset_pct: float = 0.5

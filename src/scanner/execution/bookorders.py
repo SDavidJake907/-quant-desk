@@ -12,15 +12,12 @@ protect.py reads to re-arm a lost stop and what the scorecard grades.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
 
 from scanner.config import settings
 import asyncio
 
 from scanner.execution import extended, manual, picks
-from scanner.execution.alpaca import (
-    BrokerError, entry_payload, round_tick, stop_payload, take_profit_payload,
-)
+from scanner.execution.alpaca import BrokerError, round_tick
 from scanner.execution.audit import append_event
 from scanner.execution.flatten_run import close_when_released
 from scanner.execution.ownership import prefix_for
@@ -29,11 +26,9 @@ from scanner.execution.provenance import build_id
 from scanner.execution.sessions import REGULAR
 from scanner.execution.sizing import Sizing, size_position
 from scanner.features.bars import fetch_bars
-from scanner.features.intraday import IntradayBars, fetch_intraday, max_range
+from scanner.features.intraday import fetch_intraday, max_range
 from scanner.features.intraday_context import atr_pct
-from scanner.features.profile import build, ProfileError
-from scanner.features.structure import Swing, swings
-from scanner.models import AuditEvent, Frozen, TargetTier, TradeIntent
+from scanner.models import AuditEvent, Frozen, TradeIntent
 
 
 class Bought(Frozen):
@@ -59,62 +54,11 @@ def target_price(*, limit: float, stop: float, reward_risk: float,
     return round_tick(limit * ceiling)
 
 
-def _swing_high_target(bars: Optional[IntradayBars], entry_price: float,
-                       lookback: int = 60, k: int = 2) -> float:
-    """Target at recent swing high. Uses the most recent confirmed swing high
-    above entry price as the target. Falls back to entry_price if no valid
-    swing high found."""
-    if bars is None or len(bars.closes) < k + 1:
-        return entry_price * 1.5  # fallback: 50% above entry
-    from scanner.features.structure import swings, Swing
-    highs = swings(bars.highs, bars.lows, k)
-    recent_highs = [s for s in highs if s.kind == "high" and s.price > entry_price
-                    and s.index >= len(bars.closes) - lookback]
-    if not recent_highs:
-        return entry_price * 1.5
-    return round_tick(min(s.price for s in recent_highs))
-
-
-def _value_area_high_target(bars: Optional[IntradayBars], entry_price: float,
-                            lookback: int = 20) -> float:
-    """Target at volume profile value area high (VAH). Uses the value area high
-    from the volume profile of recent bars as the target price."""
-    if bars is None or len(bars.closes) < lookback:
-        return entry_price * 1.5
-    from scanner.features.profile import build, ProfileError
-    try:
-        profile = build(bars, len(bars.closes) - lookback, len(bars.closes))
-        return round_tick(profile.value_area_high)
-    except ProfileError:
-        return entry_price * 1.5
-
-
-def _fib_extension_target(bars: Optional[IntradayBars], entry_price: float,
-                          lookback: int = 60, k: int = 2) -> float:
-    """Fibonacci 1.618 extension target. Uses swing high - swing low range
-    multiplied by 1.618 and added to swing low."""
-    if bars is None or len(bars.closes) < k + 1:
-        return entry_price * 1.5
-    from scanner.features.structure import swings, Swing
-    highs = swings(bars.highs, bars.lows, k)
-    high_points = [s for s in highs if s.kind == "high"
-                   and s.index >= len(bars.closes) - lookback]
-    lows = swings(bars.lows, bars.highs, k) if hasattr(bars, 'lows') else []
-    recent_lows = [s for s in lows if s.kind == "low"
-                   and s.index >= len(bars.closes) - lookback]
-    if not recent_highs or not recent_lows:
-        return entry_price * 1.5
-    swing_high = max(s.price for s in highs if s.price > entry_price)
-    swing_low = min(s.price for s in lows if s.price < entry_price)
-    fib_extension = swing_low + (swing_high - swing_low) * 1.618
-    return round_tick(fib_extension)
-
-
-async def price_and_atr(symbol: str, client) -> tuple[float, float, Optional[IntradayBars]]:
+async def price_and_atr(symbol: str, client) -> tuple[float, float]:
     intraday = await fetch_intraday(symbol, client, minutes=30, range_=max_range(30))
     daily = await fetch_bars(symbol, client, range_="6mo")
     last = float(intraday.closes[-1]) if intraday.closes else float(daily.closes[-1])
-    return last, atr_pct(daily) or 0.0, intraday
+    return last, atr_pct(daily) or 0.0
 
 
 async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: float,
@@ -122,51 +66,22 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
                         reason: str, risk_pct: float | None = None,
                         atr_multiple: float | None = None,
                         reward_risk: float | None = None,
-                        targets: tuple[TargetTier, ...] = (),
-                        session: str = REGULAR,
-                        # Gemma's math-based menu choices (phase 2):
-                        stop_menu_choice: str | None = None,
-                        target_menu_choice: str | None = None,
-                        size_menu_choice: str | None = None) -> Bought:
+                        session: str = REGULAR) -> Bought:
     """Price, size, send and log one bracket buy. Never raises on a broker or
     pricing failure; the refusal is logged and returned. `atr_multiple` and
-    `reward_risk` are Gemma's menu choices; left out, the picks defaults.
-
-    When `targets` is non-empty (take-profit ladder), the order is submitted
-    as separate legs: entry limit + one limit sell per tier + one stop sell.
-    Each tier sells `pct_of_shares` of the position at its `target_price`.
-    The remaining shares ride to the final target or the stop.
-
-    Gemma's math-based menu choices (phase 2):
-    - stop_menu_choice: "swing_low", "vol_adjusted", "trailing" (overrides atr_multiple)
-    - target_menu_choice: "swing_high", "value_area", "fib_1.618" (overrides reward_risk)
-    - size_menu_choice: "kelly_half", "vol_adjusted" (overrides risk_pct)
-    """
+    `reward_risk` are Gemma's menu choices; left out, the picks defaults."""
     try:
-        last, atr, bars = await price_and_atr(symbol, client)
+        last, atr = await price_and_atr(symbol, client)
         if session != REGULAR:
             # Outside regular hours: today's extended-session price, fresh or nothing.
             live = await extended.price(symbol, client, session)
             if live is None:
                 raise ValueError(f"no fresh {session} price")
             last = live
-
-        # Gemma's math-based stop menu choice overrides ATR multiple
-        use_structure = stop_menu_choice == "swing_low"
-        use_regime = stop_menu_choice == "vol_adjusted"
-        use_trailing = stop_menu_choice == "trailing"
-
         limit, stop, _ = picks.levels(
             last=last, atr_pct=atr,
             atr_multiple=policy.picks_stop_atr_multiple if atr_multiple is None else atr_multiple,
-            offset_pct=policy.entry_limit_offset_pct, ceiling=policy.picks_target_ceiling,
-            bars=bars,
-            stop_use_structure=use_structure,
-            stop_regime_adjust=use_regime,
-            stop_trail_pct=policy.stop_trail_pct if use_trailing else 0.0,
-            stop_trail_lookback=policy.stop_trail_lookback,
-            atr_history=None,
-        )
+            offset_pct=policy.entry_limit_offset_pct, ceiling=policy.picks_target_ceiling)
         # reward_risk is None when the picks list calls without specifying
         # (picks always uses picks_target_ceiling as its ceiling target).
         # reward_risk == 0.0 means Gemma explicitly chose "none" (ride it).
@@ -179,182 +94,61 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
             target_ceiling = None if effective_rr == 0.0 else policy.picks_target_ceiling
         target = target_price(limit=limit, stop=stop, reward_risk=effective_rr,
                               ceiling=target_ceiling)
-        # Gemma's math-based target menu choice overrides R:R multiple
-        if target_menu_choice == "swing_high":
-            target = _swing_high_target(bars, entry_price=limit)
-        elif target_menu_choice == "value_area":
-            target = _value_area_high_target(bars, entry_price=limit)
-        elif target_menu_choice == "fib_1.618":
-            target = _fib_extension_target(bars, entry_price=limit)
-        # Gemma's math-based size menu choice overrides risk_pct
-        effective_risk_pct = risk_pct if risk_pct is not None else policy.risk_pct
-        if size_menu_choice == "kelly_half":
-            effective_risk_pct = effective_risk_pct / 2.0
-        elif size_menu_choice == "vol_adjusted":
-            # Size inversely proportional to volatility: higher ATR% = smaller size
-            effective_risk_pct = effective_risk_pct * (2.0 / max(atr, 1.0))
-            effective_risk_pct = max(0.5, min(effective_risk_pct, 5.0))
     except Exception as exc:                               # noqa: BLE001
         log(f"{strategy}_refused", symbol, f"cannot price: {exc}", policy)
         return Bought(symbol=symbol, ok=False, message=f"cannot price: {exc}")
     sizing = size_position(sleeve, limit, stop,
-                           risk_pct=effective_risk_pct,
+                           risk_pct=policy.risk_pct if risk_pct is None else risk_pct,
                            max_position_pct=cap_pct, buying_power=room)
     if not sizing.is_tradeable:
         log(f"{strategy}_refused", symbol, sizing.limited_by, policy)
         return Bought(symbol=symbol, ok=False, message=sizing.limited_by)
     now = datetime.now().astimezone()
     coid = f"{prefix_for(strategy)}{symbol}-{int(now.timestamp())}"
-    intent_target = target  # default; overridden in each branch below
-    intent_rr = 0.0
-
-    if session != REGULAR:
-        # Outside regular hours: plain limit entry only. No stop or bracket
-        # legs are allowed (Alpaca rejects them). protect.py arms the stop at
-        # the 05:33 AK open (WORKLIST §59).
-        try:
-            payload = extended.limit_payload(symbol, sizing.shares, "buy",
-                                             limit, coid)
-            order = await broker.submit(payload)
-            order_id = str(order.get("id", ""))
-        except BrokerError as exc:
-            log("order_rejected", symbol, str(exc), policy,
-                intent=TradeIntent(symbol=symbol, action="buy",
-                                   strategy=strategy, trigger_at=now,
-                                   entry_price=limit, stop_price=stop,
-                                   target_price=target,
-                                   shares=sizing.shares,
-                                   risk_dollars=sizing.risk_dollars,
-                                   position_dollars=sizing.position_dollars,
-                                   reward_risk=0.0,
-                                   paper=True, client_order_id=coid,
-                                   targets=targets,
-                                   llm_concern=reason[:300]))
-            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
-    elif targets:
-        # Take-profit ladder: entry limit + per-tier limit sells + stop sell,
-        # all as separate orders. Each tier sells pct_of_shares at target_price.
-        # The stop protects whatever shares remain after all tiers fill.
-        intent_target = 0.0
-        intent_rr = 0.0
-        try:
-            # 1. Entry limit order (full shares)
-            entry_order = await broker.submit(entry_payload(
-                symbol, sizing.shares, limit, now, coid,
-                entry_offset_pct=policy.entry_limit_offset_pct))
-            order_id = str(entry_order.get("id", ""))
-
-            # 2. Take-profit limit sells for each tier
-            remaining_shares = sizing.shares
-            for tier in targets:
-                tier_shares = max(1, int(sizing.shares * tier.pct_of_shares))
-                remaining_shares -= tier_shares
-                await broker.submit(take_profit_payload(
-                    symbol, tier_shares, tier.target_price, tier.label, now, coid))
-
-            # 3. Stop loss for whatever remains after all tiers
-            stop_shares = max(1, remaining_shares)
-            await broker.submit(stop_payload(
-                symbol, stop_shares, stop, now, coid))
-        except BrokerError as exc:
-            log("order_rejected", symbol, str(exc), policy,
-                intent=TradeIntent(symbol=symbol, action="buy",
-                                   strategy=strategy, trigger_at=now,
-                                   entry_price=limit, stop_price=stop,
-                                   target_price=intent_target,
-                                   shares=sizing.shares,
-                                   risk_dollars=sizing.risk_dollars,
-                                   position_dollars=sizing.position_dollars,
-                                   reward_risk=intent_rr,
-                                   paper=True, client_order_id=coid,
-                                   targets=targets,
-                                   llm_concern=reason[:300]))
-            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
-    elif effective_rr > 0:
-        # Gemma chose 2R/3R/5R: single bracket order
+    # Gemma may choose target "none" (reward_risk == 0): ride it, no ceiling
+    # target. The bracket still needs a take_profit leg, so use a ceiling so
+    # high it is effectively never hit — she decides when to sell. Record the
+    # true choice (0.0 target, 0.0 R:R) in the audit intent.
+    if effective_rr > 0:
+        # Gemma chose 2R/3R/5R: target is limit + R:R * risk
         order_target = target
         intent_target = target
         intent_rr = round((target - limit) / (limit - stop), 3)
-        try:
-            payload = manual.bracket(symbol, sizing.shares, limit=limit,
-                                     stop=stop, target=order_target, at=now)
-            payload["client_order_id"] = coid
-            order = await broker.submit(payload)
-            order_id = str(order.get("id", ""))
-        except BrokerError as exc:
-            log("order_rejected", symbol, str(exc), policy,
-                intent=TradeIntent(symbol=symbol, action="buy",
-                                   strategy=strategy, trigger_at=now,
-                                   entry_price=limit, stop_price=stop,
-                                   target_price=intent_target,
-                                   shares=sizing.shares,
-                                   risk_dollars=sizing.risk_dollars,
-                                   position_dollars=sizing.position_dollars,
-                                   reward_risk=intent_rr,
-                                   paper=True, client_order_id=coid,
-                                   llm_concern=reason[:300]))
-            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
     elif target_ceiling is not None:
         # Picks list: ceiling target (2.0x entry), reward_risk not specified
         order_target = target  # which is limit * ceiling
         intent_target = target
         intent_rr = round((target - limit) / (limit - stop), 3)
-        try:
-            payload = manual.bracket(symbol, sizing.shares, limit=limit,
-                                     stop=stop, target=order_target, at=now)
-            payload["client_order_id"] = coid
-            order = await broker.submit(payload)
-            order_id = str(order.get("id", ""))
-        except BrokerError as exc:
-            log("order_rejected", symbol, str(exc), policy,
-                intent=TradeIntent(symbol=symbol, action="buy",
-                                   strategy=strategy, trigger_at=now,
-                                   entry_price=limit, stop_price=stop,
-                                   target_price=intent_target,
-                                   shares=sizing.shares,
-                                   risk_dollars=sizing.risk_dollars,
-                                   position_dollars=sizing.position_dollars,
-                                   reward_risk=intent_rr,
-                                   paper=True, client_order_id=coid,
-                                   llm_concern=reason[:300]))
-            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
     else:
-        # Gemma chose "none": effectively no target (ceiling at 1000x)
+        # Gemma chose "none": effectively no target
         order_target = limit * 1000.0
         intent_target = 0.0
         intent_rr = 0.0
-        try:
-            payload = manual.bracket(symbol, sizing.shares, limit=limit,
-                                     stop=stop, target=order_target, at=now)
-            payload["client_order_id"] = coid
-            order = await broker.submit(payload)
-            order_id = str(order.get("id", ""))
-        except BrokerError as exc:
-            log("order_rejected", symbol, str(exc), policy,
-                intent=TradeIntent(symbol=symbol, action="buy",
-                                   strategy=strategy, trigger_at=now,
-                                   entry_price=limit, stop_price=stop,
-                                   target_price=intent_target,
-                                   shares=sizing.shares,
-                                   risk_dollars=sizing.risk_dollars,
-                                   position_dollars=sizing.position_dollars,
-                                   reward_risk=intent_rr,
-                                   paper=True, client_order_id=coid,
-                                   llm_concern=reason[:300]))
-            return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
-
+    if session == REGULAR:
+        payload = manual.bracket(symbol, sizing.shares, limit=limit, stop=stop,
+                                 target=order_target, at=now)
+        payload["client_order_id"] = coid
+    else:
+        # No stop legs exist outside regular hours: the stop and target ride in
+        # the logged intent and protect.py arms them at the open (WORKLIST §59).
+        payload = extended.limit_payload(symbol, sizing.shares, "buy", limit, coid)
     intent = TradeIntent(
         symbol=symbol, action="buy", strategy=strategy, trigger_at=now,
         entry_price=limit, stop_price=stop, target_price=intent_target,
         shares=sizing.shares, risk_dollars=sizing.risk_dollars,
         position_dollars=sizing.position_dollars,
+        # limit > entry > stop (offset_pct >= 0, and sizing guarantees
+        # stop < entry), so the denominator is strictly positive.
         reward_risk=intent_rr,
-        paper=True, client_order_id=payload.get("client_order_id", coid) if not targets else coid,
-        targets=targets,
-        llm_concern=reason[:300])
+        paper=True, client_order_id=payload["client_order_id"], llm_concern=reason[:300])
     log("trade_intent", symbol, reason, policy, intent=intent)
+    try:
+        order = await broker.submit(payload)
+    except BrokerError as exc:
+        log("order_rejected", symbol, str(exc), policy, intent=intent)
+        return Bought(symbol=symbol, ok=False, message=f"rejected: {exc}")
     log("order_submitted", symbol, reason, policy, intent=intent,
-        order_id=order_id)
+        order_id=str(order.get("id", "")))
     return Bought(symbol=symbol, ok=True, sizing=sizing,
                   message=(f"{sizing.shares} sh limit {limit:,.2f} stop {stop:,.2f} "
                            f"({(limit - stop) / limit * 100:.1f}% below), "

@@ -1049,6 +1049,22 @@ measurement first, because it observes and grades without changing a trade:
        are ~40+ trading days, else the fit is noise.
 9. [ ] Congressional-trades test (disclosure date entry vs the S&P), rules first.
 10. [ ] Decide on survivorship-free data (Norgate): it biases every backtest here.
+11. [ ] **The 10-15 math, as tests** (rolled back 10-18, still in git at a554c75;
+       modules stops.py, math_signals.py, market_snapshot.py, portfolio_review.py
+       remain in the tree, unused). Each needs a pass bar written before it runs:
+       - stop menu: swing-low, volatility-regime, trailing vs the 2.5-ATR stop
+         (trend-break exits already lost to stop-only, §64)
+       - size menu: half-Kelly, volatility-adjusted vs fixed 1%/2% risk
+       - target menu: swing-high, value-area, 1.618 extension (take-profit
+         ladders failed, TRIALS #16-19)
+       - math_signals' composite "setup score": its inputs must be real first
+         (it was fed win probability 0.5 and average win/loss 0)
+       - Gemma choosing from sweep (SMC) setups: the sweep failed unseen data
+         (TRIALS #1); only with new evidence
+       - the live market snapshot in Gemma's facts, and the picks sector cap
+12. [ ] **Money-flow 4 vs rising 4** (logs/leaders, graded from 10-19): if the
+       flow list beats the rising list on the pre-set grade, consider option B,
+       money flow in Gemma's facts.
 Already done since the list was started: the overnight world-markets table
 (in the market dashboard, §61).
 From the outside proposal (10-13) already built: selection uplift (§47

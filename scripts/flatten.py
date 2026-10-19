@@ -54,7 +54,6 @@ from scanner.execution.flatten_run import close_when_released
 from scanner.execution import ownership
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.provenance import build_id
-from scanner.features.intraday import EXCHANGE_TZ
 from scanner.models import AuditEvent
 
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
@@ -92,18 +91,9 @@ def _report_untouched(positions, owner_map: dict[str, str]) -> None:
 
 async def _session_close(broker: Alpaca) -> datetime | None:
     """Today's closing bell from the broker calendar, or None if no session."""
-    # The broker calendar is ET; the machine may run in Alaska time. Derive
-    # "today" from the broker clock so a late-evening AK scan doesn't query
-    # the wrong ET date.
+    today = datetime.now().astimezone().date().isoformat()
     try:
-        clock = await broker._get("/v2/clock")
-        et_today = datetime.fromisoformat(
-            str(clock.get("timestamp", "")).replace("Z", "+00:00")
-        ).astimezone(EXCHANGE_TZ).date().isoformat()
-    except Exception:
-        et_today = datetime.now(tz=EXCHANGE_TZ).date().isoformat()
-    try:
-        days = await broker._get("/v2/calendar", start=et_today, end=et_today)
+        days = await broker._get("/v2/calendar", start=today, end=today)
     except BrokerError:
         return None
     for day in days or []:
