@@ -29,11 +29,58 @@ from scanner.advisor import opinions
 from scanner.config import settings
 from scanner.execution.scorecard import read_rows
 from scanner.features.bars import fetch_many
+from scanner.advisor import gemma_shadow as gsh
+from scanner.ops import answer
 from scanner.ops import selection as sel
 
 HORIZONS = (5, 21)
 OUT_MD, OUT_JSON = Path("logs/competition/selection.md"), Path("data/competition/selection.json")
 GEMMA_LOG = Path("logs/scheduled_gemma.log")
+SHADOW = Path("data/gemma/shadow.jsonl")
+
+
+def shadow_records() -> list[gsh.ShadowRecord]:
+    if not SHADOW.exists():
+        return []
+    return [gsh.ShadowRecord.model_validate_json(line)
+            for line in SHADOW.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def shadow_lines(records, ohlc, result) -> list[str]:
+    """Each shadow variant vs live Gemma on the same mornings (advisor/gemma_shadow.py)."""
+    if not records:
+        return []
+    lines = ["## Shadow Gemma (never trades)", "",
+             "Each variant was asked live Gemma's exact question. Per morning: its chosen-minus-"
+             "passed-over spread minus hers, in points; above zero means the variant picked better.",
+             ""]
+    result["shadow"] = {}
+    for h in HORIZONS:
+        spread_of = {}
+        for r in records:
+            day = date.fromisoformat(r.day)
+            fwd = {s: v for s in r.menu if s in ohlc
+                   and (v := sel.forward_return(ohlc[s], day, h)) is not None}
+            for keep in (r.keep, r.live_keep):
+                spread_of[(r.day, keep)] = sel.spread(keep, r.menu, fwd)
+        for variant in gsh.VARIANTS:
+            mine = [r for r in records if r.variant == variant]
+            diffs = gsh.paired(mine, variant, spread_of)
+            differ = sum(set(r.keep) != set(r.live_keep) for r in mine)
+            broke = sum(not r.schema_kept for r in mine)
+            head = (f"- **{variant}**, {h} sessions on: {len(mine)} mornings answered, "
+                    f"{differ} differed from live, schema broken {broke}x")
+            result["shadow"][f"{variant}:{h}"] = {"days": len(diffs),
+                                                  "mean": sum(diffs) / len(diffs) if diffs else 0.0}
+            if len(diffs) < 2:
+                lines.append(head + f"; {len(diffs)} graded so far")
+                continue
+            ans = answer.one_sample(diffs, unit="pts", trials=len(gsh.VARIANTS),
+                                    question=f"{variant} vs live", prior_sd=1.0)
+            lines.append(head + f"; {ans.effect:+.2f} pts vs live over {ans.n} graded "
+                         f"mornings -- {ans.verdict} (P above zero {ans.prob_real:.0%}; "
+                         f"promotion needs {gsh.PROMOTE_AFTER_DAYS}+ at 5 sessions and REAL)")
+    return lines + [""]
 
 
 def menu_from_log(day: date) -> list[str]:
@@ -81,7 +128,9 @@ def ta_calls(rows) -> dict[date, dict[str, int]]:
 async def main() -> int:
     rows = read_rows(settings.audit_log_path)
     decisions, calls = gemma_decisions(rows), ta_calls(rows)
-    symbols = {s for _, _, m in decisions for s in m} | {s for c in calls.values() for s in c}
+    shadows = shadow_records()
+    symbols = ({s for _, _, m in decisions for s in m} | {s for c in calls.values() for s in c}
+               | {s for r in shadows for s in r.menu})
     async with httpx.AsyncClient(timeout=120) as client:
         bars, _ = await fetch_many(tuple(sorted(symbols)), client, range_="6mo") if symbols else ({}, ())
     ohlc = {s: list(zip(b.dates, b.opens, b.closes)) for s, b in bars.items()}
@@ -113,6 +162,7 @@ async def main() -> int:
                   f"- **TradingAgents**, rank correlation of its calls with returns: "
                   + (f"{t.mean:+.3f} on average over {t.days} graded days, positive on "
                      f"{t.positive_days} (t {t.t:+.2f})" if t.days else "no day graded yet"), ""]
+    lines += shadow_lines(shadows, ohlc, result)
     pending = len(decisions) - result["gemma"]["5"]["days"]
     lines.append(f"_{len(decisions)} Gemma decisions on record, {pending} waiting for their first "
                  f"5 sessions; {len(calls)} days of TradingAgents ratings._")

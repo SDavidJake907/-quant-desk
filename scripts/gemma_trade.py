@@ -65,6 +65,7 @@ BRIEF_DIR = Path("data/brief")
 SNAPSHOTS = Path("data/competition/snapshots.jsonl")
 PAPER_BOOKS = Path("data/competition/paper_books.json")
 GHOST_SCANNER = Path("data/competition/ghost_scanner.json")
+QUESTIONS = Path("data/gemma/questions")
 
 
 def daily_brief(day: date) -> dict | None:
@@ -163,6 +164,25 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
             lines.append("headlines: unavailable")
         out[s] = "\n".join(lines)
     return out, trend
+
+
+def save_question(text: str, schema: dict, facts: dict, held, keep, *,
+                  submitted: bool, session: str) -> None:
+    """The exact question Gemma was asked, for the shadow bench
+    (advisor/gemma_shadow.py). Never allowed to break a trading run."""
+    try:
+        now = datetime.now().astimezone()
+        QUESTIONS.mkdir(parents=True, exist_ok=True)
+        path = QUESTIONS / f"{now:%Y-%m-%dT%H%M}-{session}.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({
+            "id": path.stem, "at": now.isoformat(), "day": now.date().isoformat(),
+            "session": session, "submitted": submitted, "text": text, "schema": schema,
+            "facts": facts, "held": sorted(held), "live_keep": list(keep),
+            "max_positions": POLICY.gemma_max_positions}), encoding="utf-8")
+        tmp.replace(path)
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"  {YELLOW}question not saved for the shadow bench: {exc}{RESET}")
 
 
 def money_at_work(positions, owner_map, done_dollars: float, sleeve: float) -> str:
@@ -417,6 +437,9 @@ async def main(submit: bool) -> int:
             # against the ones it chose (ops/selection.py, WORKLIST §47).
             "menu": sorted(facts),
             "submitted": submit and tradable, "session": session}), POLICY)
+        save_question(text, gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU),
+                      facts, mine, decision.keep, submitted=submit and tradable,
+                      session=session)
 
         print(f"\n  {BOLD}Gemma holds{RESET} {list(decision.keep) or 'nothing'}")
         plans = {pl.symbol: pl for pl in decision.plans}

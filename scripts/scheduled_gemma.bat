@@ -10,4 +10,9 @@ echo. >> "%LOG%"
 echo ===== GEMMA %DATE% %TIME% ===== >> "%LOG%"
 
 ".venv\Scripts\python.exe" "scripts\gemma_trade.py" --submit >> "%LOG%" 2>&1
-exit /b %errorlevel%
+set RC=%errorlevel%
+REM Shadow Gemma (advisor/gemma_shadow.py): variants asked her exact question
+REM AFTER her orders went out; never trades. Own log.
+echo ===== SHADOW %DATE% %TIME% ===== >> "logs\scheduled_gemma_shadow.log"
+".venv\Scripts\python.exe" "scripts\gemma_shadow.py" >> "logs\scheduled_gemma_shadow.log" 2>&1
+exit /b %RC%
