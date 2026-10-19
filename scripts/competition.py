@@ -31,15 +31,19 @@ from scanner.execution.policy import TradingPolicy
 from scanner.features.bars import fetch_bars, fetch_many
 from scanner.features.intraday_context import atr_pct
 from scanner.ops import competition as c
+from scanner.ops import ghost_scanner as gs
 from scanner.sources import composite
 from scanner.sources.index_history import SP500
 
 DATA = Path("data/competition")
 SNAPS, PAPER = DATA / "snapshots.jsonl", DATA / "paper_books.json"
 OUT = Path("logs/competition")
+GHOST_SCANNER = "ghost_scanner"
+GHOST_FILE = DATA / "ghost_scanner.json"
 POLICY = TradingPolicy()
 NAMES = {c.PICKS: "You (picks)", c.GEMMA: "Gemma", c.GHOST_PICKS: "Ghost-you (random 8)",
-         c.GHOST_GEMMA: "Ghost-Gemma (random 5)", c.MOMENTUM: "Momentum rule", c.SPX: "S&P 500"}
+         c.GHOST_GEMMA: "Ghost-Gemma (random 5)", c.MOMENTUM: "Momentum rule", c.SPX: "S&P 500",
+         GHOST_SCANNER: "Ghost-scanner (sweep rules, avg per trade)"}
 
 
 def load_snaps() -> list[c.Snapshot]:
@@ -159,9 +163,12 @@ def with_start(snaps: list[c.Snapshot]) -> list[c.Snapshot]:
     return out
 
 
-def standings_text(snaps, books, last_close) -> str:
+def standings_text(snaps, books, last_close, scanner_ghost=None) -> str:
+    """`scanner_ghost`: {month: ghost_scanner.Summary}, scored beside the books."""
+    scanner_ghost = scanner_ghost or {}
     snaps = with_start(snaps)
-    months = sorted({c.month_of(s.day) for s in snaps} | {v.month for v in books.values()})
+    months = sorted({c.month_of(s.day) for s in snaps} | {v.month for v in books.values()}
+                    | set(scanner_ghost))
     results = []
     for m in months:
         days = sorted({s.day for s in snaps if c.month_of(s.day) == m})
@@ -176,11 +183,14 @@ def standings_text(snaps, books, last_close) -> str:
         for k, v in books.items():
             if v.month == m:
                 scores[v.name] = c.paper_return(v, last_close.get(m, {}))
+        ghost_m = scanner_ghost.get(m)
+        if ghost_m is not None and ghost_m.mean_pct is not None:
+            scores[GHOST_SCANNER] = ghost_m.mean_pct
         results.append(c.MonthResult(month=m, scores=scores, winner=c.month_winner(scores)))
     lines = ["# Competition standings", "",
              "You vs Gemma, month by month. Ghosts are random picks under the same rules: beating "
              "your ghost means the picking, not the list, did the work.", ""]
-    order = [c.PICKS, c.GEMMA, c.GHOST_PICKS, c.GHOST_GEMMA, c.MOMENTUM, c.SPX]
+    order = [c.PICKS, c.GEMMA, c.GHOST_PICKS, c.GHOST_GEMMA, GHOST_SCANNER, c.MOMENTUM, c.SPX]
     for r in results:
         lines += [f"## {r.month}" + (" (in progress)" if r is results[-1] else ""), "",
                   "| Competitor | Return |", "|---|---|"]
@@ -193,6 +203,12 @@ def standings_text(snaps, books, last_close) -> str:
             if real in r.scores and g in r.scores:
                 ghost.append(f"{NAMES[real]} {'beat' if r.scores[real] > r.scores[g] else 'did not beat'} its ghost")
         lines += ["", f"**Head to head: {win}.**" + (" " + "; ".join(ghost) + "." if ghost else ""), ""]
+        g = scanner_ghost.get(r.month)
+        if g is not None:
+            lines += [f"Ghost-scanner: the paused sweep scanner's own rules replayed on paper "
+                      f"(S&P 500, 30-minute bars, its stops, targets and slots; no news veto). "
+                      f"{g.closed} closed, {g.won} won, {g.total_r:+.2f}R; {g.open} open "
+                      f"{g.open_r:+.2f}R marked. Not in the head to head.", ""]
     by_q = defaultdict(list)
     for r in results:
         by_q[c.quarter_of(r.month)].append(r)
@@ -219,10 +235,18 @@ def standings_text(snaps, books, last_close) -> str:
     return "\n".join(lines)
 
 
+def scanner_ghost(trades, marks) -> dict:
+    """The ghost scanner's month summaries, open trades marked at the last daily close."""
+    months = sorted({t.entry_at.astimezone(gs.EXCHANGE_TZ).strftime("%Y-%m") for t in trades})
+    return {m: gs.summary(trades, m, marks) for m in months}
+
+
 async def standings() -> int:
     snaps, books = load_snaps(), load_paper()
     async with httpx.AsyncClient(timeout=120) as client:
-        symbols = tuple({n.symbol for v in books.values() for n in v.names})
+        ghost = gs.load(GHOST_FILE.read_text(encoding="utf-8"))[0] if GHOST_FILE.exists() else ()
+        ghost_open = {t.symbol for t in ghost if t.exit_price is None}
+        symbols = tuple({n.symbol for v in books.values() for n in v.names} | ghost_open)
         bars, _ = (await fetch_many(symbols, client, range_="6mo", ttl_seconds=FRESH_S)
                    if symbols else ({}, ()))
     last_close: dict[str, dict[str, float]] = defaultdict(dict)
@@ -233,7 +257,8 @@ async def standings() -> int:
                 inside = [cl for d, cl in zip(b.dates, b.closes) if c.month_of(d) <= v.month]
                 if inside:
                     last_close[v.month][n.symbol] = inside[-1]
-    text = standings_text(snaps, books, last_close)
+    text = standings_text(snaps, books, last_close, scanner_ghost(
+        ghost, {s: bars[s].closes[-1] for s in ghost_open if s in bars}))
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "standings.md").write_text(text, encoding="utf-8")
     print(text)

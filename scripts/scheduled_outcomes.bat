@@ -33,6 +33,9 @@ REM over 21 sessions (WORKLIST §38). Advisory; read-only.
 
 REM The competition (WORKLIST §46): snapshot both books, draw/advance the
 REM month's ghost and benchmark paper books, then the standings table.
+REM Ghost-scanner: the paused sweep scanner replayed on paper (no orders),
+REM before the standings that show it.
+".venv\Scripts\python.exe" "scripts\ghost_scanner.py" >> "%LOG%" 2>&1
 ".venv\Scripts\python.exe" "scripts\competition.py" snapshot >> "%LOG%" 2>&1
 ".venv\Scripts\python.exe" "scripts\competition.py" standings >> "%LOG%" 2>&1
 
