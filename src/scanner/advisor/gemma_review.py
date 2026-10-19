@@ -24,6 +24,7 @@ from typing import Any
 from scanner.models import Frozen
 
 VERDICTS = ("keep", "watch", "sell_candidate")
+SELL_IF_MET = ("no", "yes", "unclear")
 WATCHLIST = 8
 PROPOSALS = 3
 ASK_TOKENS = 900
@@ -43,6 +44,7 @@ class PositionView(Frozen):
     weight_pct: float
     stop: float | None = None
     stop_gap_pct: float | None = None
+    sell_if: str = ""
 
 
 def _f(x: Any) -> float:
@@ -53,7 +55,8 @@ def _f(x: Any) -> float:
 
 
 def position_views(positions: Iterable[Mapping[str, Any]], stops: Mapping[str, float],
-                   *, sleeve: float) -> list[PositionView]:
+                   *, sleeve: float, sell_ifs: Mapping[str, str] | None = None
+                   ) -> list[PositionView]:
     """One row per holding. `weight_pct` is of her whole book (the sleeve)."""
     out = []
     for p in positions:
@@ -65,7 +68,8 @@ def position_views(positions: Iterable[Mapping[str, Any]], stops: Mapping[str, f
             value=value, pl_dollars=_f(p.get("unrealized_pl")),
             pl_pct=_f(p.get("unrealized_plpc")) * 100,
             weight_pct=value / sleeve * 100 if sleeve > 0 else 0.0,
-            stop=stop, stop_gap_pct=(price - stop) / price * 100 if stop and price else None))
+            stop=stop, stop_gap_pct=(price - stop) / price * 100 if stop and price else None,
+            sell_if=(sell_ifs or {}).get(s, "")))
     return out
 
 
@@ -80,8 +84,9 @@ def book_numbers(views: Sequence[PositionView], *, sleeve: float) -> dict[str, f
 def _view_line(v: PositionView) -> str:
     stop = (f"stop {v.stop:,.2f} ({v.stop_gap_pct:.1f}% below)" if v.stop is not None
             and v.stop_gap_pct is not None else "no stop found")
+    exit_ = f"; your sell-if: {v.sell_if}" if v.sell_if else "; no sell-if given yet"
     return (f"- {v.symbol}: {v.pl_pct:+.1f}% (${v.pl_dollars:+,.0f}), ${v.value:,.0f} = "
-            f"{v.weight_pct:.0f}% of your book, {stop}")
+            f"{v.weight_pct:.0f}% of your book, {stop}{exit_}")
 
 
 def prompt(facts: Mapping[str, str], views: Sequence[PositionView], *,
@@ -110,7 +115,9 @@ def prompt(facts: Mapping[str, str], views: Sequence[PositionView], *,
         "- summary: how the book stands and what matters most tomorrow, 2-4 sentences.",
         "- positions: for EACH holding a verdict -- keep (reason intact), watch (something "
         "to check) or sell_candidate (the reason has failed) -- and why, quoting its block "
-        "where you can, plus the main risk (earnings date, event, stop distance).",
+        "where you can, plus the main risk (earnings date, event, stop distance), and "
+        "sell_if_met: has YOUR OWN sell-if happened, judged only from today's facts? "
+        "yes, no, or unclear (unclear when the facts do not show it, or you gave none).",
         f"- watchlist: up to {WATCHLIST} candidates you would most like to own next, why, "
         "and buy_if: what you would need to see to buy it.",
         "- upcoming: the dates and events in the next week that could move your book.",
@@ -128,7 +135,9 @@ def schema(held: Sequence[str], candidates: Sequence[str]) -> dict[str, Any]:
     held_item = {"type": "object", "properties": {
         "symbol": {"type": "string", "enum": list(held) or [""]},
         "verdict": {"type": "string", "enum": list(VERDICTS)},
-        "reason": _text(), "risk": _text()}, "required": ["symbol", "verdict", "reason", "risk"]}
+        "reason": _text(), "risk": _text(),
+        "sell_if_met": {"type": "string", "enum": list(SELL_IF_MET)}},
+        "required": ["symbol", "verdict", "reason", "risk", "sell_if_met"]}
     watch_item = {"type": "object", "properties": {
         "symbol": {"type": "string", "enum": list(candidates) or [""]},
         "why": _text(), "buy_if": _text()}, "required": ["symbol", "why", "buy_if"]}
@@ -161,10 +170,12 @@ def validate(answer: Any, *, held: Sequence[str], candidates: Sequence[str]) -> 
         s = _s(p.get("symbol")).upper()
         if s in held and s not in first:
             verdict = p.get("verdict") if p.get("verdict") in VERDICTS else "keep"
+            met = p.get("sell_if_met") if p.get("sell_if_met") in SELL_IF_MET else "unclear"
             first[s] = {"symbol": s, "verdict": verdict, "reason": _s(p.get("reason")),
-                        "risk": _s(p.get("risk"))}
+                        "risk": _s(p.get("risk")), "sell_if_met": met}
     positions = [first.get(s) or {"symbol": s, "verdict": "keep",
-                                  "reason": "(no review from Gemma)", "risk": ""}
+                                  "reason": "(no review from Gemma)", "risk": "",
+                                  "sell_if_met": "unclear"}
                  for s in held]
     allowed, seen, watchlist = set(candidates) - set(held), set(), []
     for w in _items(answer, "watchlist"):

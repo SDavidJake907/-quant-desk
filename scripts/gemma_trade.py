@@ -485,14 +485,15 @@ async def main(submit: bool) -> int:
             print(f"  {YELLOW}scoreboard unavailable: {exc}{RESET}")
         text = gt.prompt(facts, held=held_status, max_positions=POLICY.gemma_max_positions,
                          scoreboard=score, sleeve=f"${sleeve_dollars:,.0f}",
-                         menu=MENU, menu_text=MENU_TEXT, session=session, min_positions=least)
+                         menu=MENU, menu_text=MENU_TEXT, session=session, min_positions=least,
+                         graded=True)
         # Her short memory (operator 2026-10-19): her own record with what
         # happened since, built from outcomes and prices (advisor/gemma_memory.py).
         memory = await memory_feed.memory_block(client, held=list(mine))
         text = text.replace("The list:", (f"{memory}\n\n" if memory else "")
                             + f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
-                                  min_positions=least)
+                                  min_positions=least, graded=True)
         notes = ""
         try:
             answer, notes = await think_then_answer(text, answer_schema, client)
@@ -515,7 +516,10 @@ async def main(submit: bool) -> int:
             "menu": sorted(facts),
             "submitted": submit and tradable, "session": session,
             "pool_size": pool_size, "thinking": notes,
-            "memory": memory}), POLICY)
+            "memory": memory,
+            # WORKLIST §65: her 5-day probabilities (graded by advisor/forecast_grade.py)
+            # and the observable exit she names for each holding.
+            "forecasts": dict(decision.forecasts), "sell_if": dict(decision.sell_if)}), POLICY)
         save_question(text, answer_schema, facts, mine, decision.keep, submitted=submit and tradable,
                       session=session)
 
@@ -529,6 +533,12 @@ async def main(submit: bool) -> int:
             print(f"    {DIM}{s:<6} not taken -- {why}{RESET}")
         if decision.journal:
             print(f"  {DIM}journal: {decision.journal}{RESET}")
+        for s, cond in decision.sell_if:
+            print(f"  {DIM}{s:<6} sell if: {cond}{RESET}")
+        if decision.forecasts:
+            top = sorted(decision.forecasts, key=lambda f: -f[1])
+            print(f"  {DIM}forecasts ({len(top)}): "
+                  + ", ".join(f"{s} {p:.2f}" for s, p in top) + RESET)
         print(f"  plan: buy {list(buys) or 'nothing'}; sell {list(sells) or 'nothing'}")
 
         if not tradable:

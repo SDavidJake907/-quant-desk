@@ -364,7 +364,8 @@ function renderReview(data) {
     h("div", {}, h("b", { text: money(n.invested) }), "invested"),
     h("div", {}, h("b", { text: `${(n.invested_pct ?? 0).toFixed(0)}%` }), "of her book at work"),
     h("div", {}, h("b", { text: money(n.idle) }), "idle cash"),
-    h("div", {}, h("b", { class: tone(n.open_pl), text: signedMoney(n.open_pl) }), "open P/L"));
+    h("div", {}, h("b", { class: tone(n.open_pl), text: signedMoney(n.open_pl) }), "open P/L"),
+    forecastFigure(r.forecast_score));
 
   const body = h("tbody");
   for (const p of r.positions || []) {
@@ -376,7 +377,9 @@ function renderReview(data) {
       h("td", { class: "num", text: p.weight_pct == null ? "—" : `${p.weight_pct.toFixed(0)}%` }),
       h("td", { class: "num", text: p.stop_gap_pct == null ? "none" : `${p.stop_gap_pct.toFixed(1)}%` }),
       h("td", { class: "reason" }, p.reason || "",
-        p.risk ? h("span", { class: "muted", text: ` Risk: ${p.risk}` }) : null)));
+        p.risk ? h("span", { class: "muted", text: ` Risk: ${p.risk}` }) : null,
+        p.sell_if ? h("span", { class: `muted sell-if met-${p.sell_if_met || "unclear"}`,
+          text: ` Sell if: ${p.sell_if} (met: ${p.sell_if_met || "unclear"})` }) : null)));
   }
   const table = h("div", { class: "table-scroll" }, h("table", { class: "feed" },
     h("thead", {}, h("tr", {}, ...["Stock", "Verdict", "P/L", "Weight", "To stop", "Why"]
@@ -400,6 +403,15 @@ function renderReview(data) {
   const think = r.thinking ? h("details", { class: "thinking" },
     h("summary", { text: "Her thinking" }), h("pre", { text: r.thinking })) : null;
   $("review").replaceChildren(h("p", { class: "review-summary", text: r.summary }), figs, table, cols, think);
+}
+
+/** Her 5-day forecast score (WORKLIST §65): Brier vs 0.25 for "no view". */
+function forecastFigure(sc) {
+  if (!sc || !sc.n) return h("div", {}, h("b", { text: "—" }), "forecasts graded: none yet");
+  if (sc.n < 30) return h("div", {}, h("b", { text: `${sc.n}` }), "forecasts graded (need 30)");
+  const good = sc.brier < 0.25;
+  return h("div", {}, h("b", { class: good ? "gain" : "loss", text: sc.brier.toFixed(3) }),
+    `forecast score, ${sc.n} graded (0.250 = no skill)`);
 }
 
 // ---- Ask Gemma -------------------------------------------------------------

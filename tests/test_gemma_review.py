@@ -105,3 +105,18 @@ def test_clean_question_trims_and_refuses_empty_or_long():
     assert rv.clean_question("   ") is None
     assert rv.clean_question(None) is None
     assert rv.clean_question("x" * (rv.MAX_QUESTION_CHARS + 1)) is None
+
+
+def test_her_sell_if_is_shown_and_she_says_whether_it_is_met():
+    views = rv.position_views(POSITIONS, {}, sleeve=50_000, sell_ifs={"MU": "guidance cut"})
+    text = rv.prompt({"MU": "x", "VLO": "y"}, views, numbers=rv.book_numbers(views, sleeve=50_000),
+                     scoreboard="", market="", candidates=[])
+    assert "your sell-if: guidance cut" in text and "no sell-if given yet" in text
+    s = rv.schema(["MU", "VLO"], [])
+    assert s["properties"]["positions"]["items"]["properties"]["sell_if_met"]["enum"] == \
+        list(rv.SELL_IF_MET)
+    out = rv.validate({"summary": "s", "positions": [
+        {"symbol": "MU", "verdict": "keep", "reason": "r", "sell_if_met": "yes"},
+        {"symbol": "VLO", "verdict": "keep", "reason": "r", "sell_if_met": "maybe"}]},
+        held=["MU", "VLO"], candidates=[])
+    assert [p["sell_if_met"] for p in out["positions"]] == ["yes", "unclear"]

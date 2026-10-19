@@ -88,3 +88,17 @@ def test_symbols_to_price_cover_sells_and_watchlist():
     review = {"day": "2026-10-19", "watchlist": [{"symbol": "STX"}], "positions": []}
     wanted = gm.symbols_to_price(ROWS, review=review)
     assert {"XOM", "STX"} <= wanted
+
+
+def test_sell_ifs_take_the_latest_she_gave_and_show_for_holdings():
+    rows = [
+        {"event": "gemma_decision", "at": "2026-10-19T05:46", "reason": json.dumps(
+            {"submitted": True, "sell_if": {"MU": "guidance cut", "VLO": "margins fall"}})},
+        {"event": "gemma_decision", "at": "2026-10-20T05:46", "reason": json.dumps(
+            {"submitted": True, "sell_if": {"MU": "loses the AI order"}})},
+    ]
+    assert gm.sell_ifs(rows) == {"MU": "loses the AI order", "VLO": "margins fall"}
+    text = gm.block(rows, review=None, change_since=gm.change_lookup({}), held=["MU"],
+                    today=date(2026, 10, 21), extras=("Your 5-day forecasts: 3 graded",))
+    assert "MU: loses the AI order" in text and "VLO" not in text.split("sell-ifs:")[1]
+    assert "Your 5-day forecasts: 3 graded" in text

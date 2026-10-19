@@ -203,3 +203,5 @@ td.no-stop { color: var(--warn); }
 .ask-a { white-space: pre-wrap; color: var(--ink-2); }
 .ask-a.failed { color: var(--loss); }
 @media (max-width: 760px) { .review-cols { grid-template-columns: 1fr; } }
+.sell-if { display: block; }
+.sell-if.met-yes { color: var(--loss); }

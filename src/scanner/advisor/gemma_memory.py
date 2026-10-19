@@ -113,14 +113,31 @@ def _since(change: float | None) -> str:
     return f" ({change:+.1f}% since)" if change is not None else ""
 
 
+def sell_ifs(rows: Iterable[Mapping[str, Any]]) -> dict[str, str]:
+    """The latest sell-if she gave for each name, from her submitted decisions."""
+    out: dict[str, str] = {}
+    for r in rows:
+        if r.get("event") == "gemma_decision":
+            b = _body(r)
+            if b.get("submitted") and isinstance(b.get("sell_if"), dict):
+                out.update({str(k): str(v) for k, v in b["sell_if"].items() if v})
+    return out
+
+
 def block(rows: Sequence[Mapping[str, Any]], *, review: Mapping[str, Any] | None,
-          change_since: ChangeSince, held: Iterable[str], today: date) -> str:
+          change_since: ChangeSince, held: Iterable[str], today: date,
+          extras: Sequence[str] = ()) -> str:
     held = set(held)
     trades, recent = closed_trades(rows), sessions(rows)
     lines = ["YOUR SHORT MEMORY -- your own recent record, with what happened since. Notes "
              "can go stale; today's facts below win when they disagree."]
-    if not trades and not recent and not review:
+    if not trades and not recent and not review and not extras:
         return "\n".join((*lines, "(no history yet)"))
+    lines += [e for e in extras if e]
+    exits = sell_ifs(rows)
+    mine = [f"{s}: {exits[s][:120]}" for s in sorted(held) if s in exits]
+    if mine:
+        lines.append("Your sell-ifs: " + "; ".join(mine))
     if trades:
         lines.append("Your closed trades: " + "; ".join(
             f"{t.symbol} {t.r:+.2f}R (${t.dollars:+,.0f}, {t.why}, {t.day})" for t in trades))

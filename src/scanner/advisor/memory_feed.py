@@ -10,10 +10,11 @@ from pathlib import Path
 
 import httpx
 
+from scanner.advisor import forecast_grade as fg
 from scanner.advisor import gemma_memory as gm
 from scanner.config import settings
 from scanner.execution.scorecard import read_rows
-from scanner.features.bars import fetch_many
+from scanner.features.bars import fetch_bars, fetch_many
 
 REVIEWS = Path("data/gemma/reviews")
 
@@ -23,6 +24,20 @@ def latest_review(reviews_dir: Path = REVIEWS) -> dict | None:
         return json.loads((reviews_dir / "latest.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+async def forecast_score(client: httpx.AsyncClient, rows=None) -> dict:
+    """Her graded 5-day forecasts so far (advisor/forecast_grade.py). Never raises."""
+    try:
+        rows = rows if rows is not None else read_rows(settings.audit_log_path)
+        made = fg.extract(rows)
+        if not made:
+            return fg.score([])
+        bars, _ = await fetch_many(tuple(sorted({f.symbol for f in made})), client, range_="3mo")
+        spx = await fetch_bars("^GSPC", client, range_="3mo")
+        return fg.score(fg.grade(made, bars, spx))
+    except Exception as exc:                              # noqa: BLE001
+        return {"n": 0, "error": type(exc).__name__}
 
 
 async def memory_block(client: httpx.AsyncClient, *, held, today: date | None = None,
@@ -39,7 +54,8 @@ async def memory_block(client: httpx.AsyncClient, *, held, today: date | None = 
             for s, b in bars.items():
                 prices[s] = {**{d.isoformat(): c for d, c in zip(b.dates, b.closes)},
                              "now": b.closes[-1]}
+        score = await forecast_score(client, rows)
         return gm.block(rows, review=review, change_since=gm.change_lookup(prices),
-                        held=held, today=today or date.today())
+                        held=held, today=today or date.today(), extras=(fg.text(score),))
     except Exception as exc:                              # noqa: BLE001
         return f"YOUR SHORT MEMORY -- unavailable today ({type(exc).__name__})."
