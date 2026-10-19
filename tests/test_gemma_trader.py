@@ -96,6 +96,20 @@ def test_charter_states_the_season_and_the_reward():
     assert "season ends Dec 31" in text and "10 more points" in text and "ghost" in text
 
 
+def test_charter_pushes_whole_book_profit_and_names_both_ghosts():
+    text = gt.prompt(FACTS, held={}, max_positions=5)
+    assert "dollars on your WHOLE book" in text and "cash earns nothing" in text
+    assert "Beat the operator, and beat both ghosts" in text
+
+
+def test_an_empty_slot_must_be_explained_but_never_forced():
+    text = gt.prompt(FACTS, held={}, max_positions=5)
+    assert "An empty slot is a choice" in text
+    assert "leave it empty only when none is" in text
+    assert "filling an EMPTY slot sells nothing" in text
+    assert "for each empty slot, the best stock you passed over" in text
+
+
 # --- the menu: Gemma chooses stop, target and size by NAME (WORKLIST §50) ---
 
 MENU = gt.Menu(stops=("tight", "normal", "wide"), targets=("none", "2R", "3R", "5R"),

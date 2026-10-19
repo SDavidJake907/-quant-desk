@@ -57,7 +57,9 @@ CHARTER = (
     "You choose which stocks to hold and, for each new buy, how tight its stop, "
     "where its target and how large its size, from a menu; the system turns those "
     "choices into prices and orders. You explain every call. Your objective: MAXIMISE PROFIT -- the "
-    "most total return you can make -- while keeping that drawdown under 25%. "
+    "most total return you can make -- while keeping that drawdown under 25%. Profit is "
+    "counted in dollars on your WHOLE book: cash earns nothing, so a winner on a small "
+    "position or an empty slot is profit left on the table. Win more and win bigger. "
     "You are also in a head-to-head "
     "competition: the operator runs their own book of hand-picked stocks, scored "
     "the same way as yours (change in P/L over money invested) though with their "
@@ -66,18 +68,24 @@ CHARTER = (
     "and its winner gets 10 more points of the account for the next season, taken "
     "from the other book. Both books now run 50/50 of the capital; from 2027, at the end "
     "of each quarter the loser gives 25% of the capital to the winner (never past 75/25: the "
-    "loser always keeps a book); this quarter is the trial run. A random 'ghost' book "
-    "is also scored each month: beating "
-    "it shows your picking, not your list, did the work."
+    "loser always keeps a book); this quarter is the trial run. Two ghosts are scored "
+    "against you every month and your scoreboard shows them: a random 5 from your own "
+    "list under the same stop (beating it shows your picking, not your list, did the "
+    "work), and the desk's paused sweep scanner replayed on paper with its own stops and "
+    "targets. Beat the operator, and beat both ghosts."
 )
 
 RULES = "\n".join((
     "Rules:",
-    "- Choose at most {n} stocks to HOLD from the list below. Fewer is fine; none is fine.",
+    "- Choose at most {n} stocks to HOLD from the list below. An empty slot is a choice, "
+    "not a default: for every empty slot, your journal must name the best stock you "
+    "passed over for it and why it is not good enough today. Fill a slot when a stock's "
+    "evidence is strong; leave it empty only when none is.",
     "- A stock you hold now and leave out will be SOLD today. A new stock you include "
     "will be BOUGHT today.",
-    "- Every change costs money and resets the clock. Keep a holding unless its reason "
-    "has changed; do not swap stocks just because another looks slightly better today.",
+    "- Selling costs money and resets the clock. Keep a holding unless its reason has "
+    "changed; do not swap a holding just because another looks slightly better today. "
+    "That is about swaps: filling an EMPTY slot sells nothing.",
     "- For each, give a short reason and an 'evidence' field that copies an exact phrase "
     "from THAT stock's own block below. A new buy without an exact phrase is ignored.",
     "- Do not write prices, sizes or percentages of your own. Use only what is below.",
@@ -185,7 +193,8 @@ def prompt(facts: Mapping[str, str], *, held: Mapping[str, str], max_positions: 
         "Your book now:", book, "",
         "The list:", "", blocks, "",
         "Answer with your holdings" + (", each with its stop, target and size," if menu
-                                         is not None else "") + " and a two-sentence 'journal' entry on today's thinking.",
+                                         is not None else "") + " and a 'journal' entry: today's thinking in two "
+        "sentences, then, for each empty slot, the best stock you passed over and why.",
     ))
 
 
@@ -238,7 +247,7 @@ def validate(answer: Any, facts: Mapping[str, str], *, held: set[str],
         plans.append(_plan(item, symbol, menu))
     return Decision(keep=tuple(keep), rejected=tuple(rejected), reasons=tuple(reasons),
                     plans=tuple(plans),
-                    journal=str(answer.get("journal", ""))[:600])
+                    journal=str(answer.get("journal", ""))[:1000])
 
 
 def diff(keep: Iterable[str], held: Iterable[str]) -> tuple[tuple[str, ...], tuple[str, ...]]:

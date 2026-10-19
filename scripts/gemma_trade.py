@@ -48,6 +48,7 @@ from scanner.execution.scorecard import read_rows
 from scanner.features.bars import fetch_bars, fetch_many
 from scanner.momentum import state as mstate
 from scanner.ops import competition
+from scanner.ops import ghost_scanner
 from scanner.features.intraday_context import atr_pct
 from scanner.features.technicals import compute, relative_strength
 from scanner.llm.ollama import LLMError, chat_json
@@ -62,6 +63,8 @@ GREEN, RED, YELLOW = "\033[32m", "\033[31m", "\033[33m"
 POLICY = TradingPolicy()
 BRIEF_DIR = Path("data/brief")
 SNAPSHOTS = Path("data/competition/snapshots.jsonl")
+PAPER_BOOKS = Path("data/competition/paper_books.json")
+GHOST_SCANNER = Path("data/competition/ghost_scanner.json")
 
 
 def daily_brief(day: date) -> dict | None:
@@ -162,6 +165,46 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str]:
     return out, trend
 
 
+def money_at_work(positions, owner_map, done_dollars: float, sleeve: float) -> str:
+    """How much of Gemma's book is working, and its P/L on the WHOLE book."""
+    held = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA]
+    working = sum(float(p.get("market_value") or 0) for p in held)
+    pl = done_dollars + sum(float(p.get("unrealized_pl") or 0) for p in held)
+    empty = max(0, POLICY.gemma_max_positions - len(held))
+    if sleeve <= 0:
+        return ""
+    return (f"Your money at work: ${working:,.0f} of your ${sleeve:,.0f} book invested "
+            f"({working / sleeve * 100:.0f}%), {empty} of {POLICY.gemma_max_positions} slots "
+            f"empty; P/L on your whole book since your first order {'+' if pl >= 0 else '-'}${abs(pl):,.0f} "
+            f"({pl / sleeve * 100:+.2f}% of the book)")
+
+
+async def ghosts_text(client, month: str) -> str:
+    """This month's two ghosts, priced at the latest closes."""
+    try:
+        raw = json.loads(PAPER_BOOKS.read_text(encoding="utf-8")) if PAPER_BOOKS.exists() else {}
+        mine = raw.get(f"{month}:ghost_gemma")
+        book = competition.PaperBook.model_validate(mine) if mine else None
+        trades = (ghost_scanner.load(GHOST_SCANNER.read_text(encoding="utf-8"))[0]
+                  if GHOST_SCANNER.exists() else ())
+    except (OSError, ValueError):
+        return ""
+    open_names = {t.symbol for t in trades if t.exit_price is None}
+    wanted = tuple(({n.symbol for n in book.names} if book else set()) | open_names)
+    prices, _ = await fetch_many(wanted, client, range_="1mo") if wanted else ({}, ())
+    last = {s: b.closes[-1] for s, b in prices.items() if len(b.closes)}
+    parts = []
+    if book is not None:
+        parts.append(f"ghost-Gemma (5 random from your list, same stop) "
+                     f"{competition.paper_return(book, last):+.2f}%")
+    g = ghost_scanner.summary(trades, month, last)
+    if g.closed or g.open:
+        avg = f", average {g.mean_pct:+.2f}% per trade" if g.mean_pct is not None else ""
+        parts.append(f"ghost-scanner (the sweep scanner's rules on paper) {g.closed} closed "
+                     f"trades, {g.won} won, {g.total_r:+.2f}R, {g.open} open{avg}")
+    return "Your ghosts this month: " + "; ".join(parts) if parts else ""
+
+
 def _first_order_day(rows) -> str | None:
     """The day Gemma's book placed its first order: the start of its record."""
     days = [str(r.get("at", ""))[:10] for r in rows
@@ -191,6 +234,8 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
         return (pl / cost * 100 if cost else 0.0), (done.trades if done else 0)
 
     mine, closed = on_invested(GEMMA)
+    done = by_book.get(GEMMA)
+    work = money_at_work(positions, owner_map, done.total_dollars if done else 0.0, sleeve)
     spx = await fetch_bars("^GSPC", client, range_="1y")
     since = [c for d, c in zip(spx.dates, spx.closes) if d.isoformat() >= start]
     spx_ret = (spx.closes[-1] / since[0] - 1) * 100 if since else 0.0
@@ -226,6 +271,11 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
         text += (f". This month so far, scored as the monthly verdict scores it (change in "
                  f"P/L over average money invested): your book {score(GEMMA)}, the "
                  f"operator's picks book {score(ownership.PICKS)}")
+    ghosts = await ghosts_text(client, competition.month_of(date.today()))
+    if ghosts:
+        text += ". " + ghosts
+    if work:
+        text += ". " + work
     recent = []
     for r in rows:
         if r.get("event") == "gemma_decision":
