@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 
 from scanner.advisor import gemma_review as rv
+from scanner.advisor import memory_feed
 from scanner.llm.ollama import LLMError, chat_text
 
 STALE_MIN = 15
@@ -100,11 +101,15 @@ async def answer(path: Path, ask_id: str, question: str, *, questions_dir: Path,
     async with _lock:
         history = [(r["question"], r["answer"]) for r in reversed(load(path))
                    if r["status"] == "answered"]
-        text = rv.ask_prompt(question, briefing=latest_briefing(questions_dir),
-                             review=rv.review_text(latest_review(reviews_dir)),
-                             history=history)
+        review = latest_review(reviews_dir)
         try:
             async with httpx.AsyncClient() as client:
+                held = [p["symbol"] for p in (review or {}).get("positions") or []]
+                memory = await memory_feed.memory_block(client, held=held,
+                                                        reviews_dir=reviews_dir)
+                text = rv.ask_prompt(question, briefing=latest_briefing(questions_dir),
+                                     review=rv.review_text(review), history=history,
+                                     memory=memory)
                 reply = await chat_text(text, client, max_tokens=rv.ASK_TOKENS)
             append(path, {"id": ask_id, "answered_at": _now(), "answer": reply})
         except LLMError as exc:

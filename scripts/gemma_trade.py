@@ -37,6 +37,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
+from scanner.advisor import memory_feed
 from scanner.advisor import opinions
 from scanner.advisor import wall_street
 from scanner.advisor.scan_watch import operator_names
@@ -485,7 +486,11 @@ async def main(submit: bool) -> int:
         text = gt.prompt(facts, held=held_status, max_positions=POLICY.gemma_max_positions,
                          scoreboard=score, sleeve=f"${sleeve_dollars:,.0f}",
                          menu=MENU, menu_text=MENU_TEXT, session=session, min_positions=least)
-        text = text.replace("The list:", f"Market: {trend}.\n\nThe list:", 1)
+        # Her short memory (operator 2026-10-19): her own record with what
+        # happened since, built from outcomes and prices (advisor/gemma_memory.py).
+        memory = await memory_feed.memory_block(client, held=list(mine))
+        text = text.replace("The list:", (f"{memory}\n\n" if memory else "")
+                            + f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
                                   min_positions=least)
         notes = ""
@@ -509,7 +514,8 @@ async def main(submit: bool) -> int:
             # against the ones it chose (ops/selection.py, WORKLIST §47).
             "menu": sorted(facts),
             "submitted": submit and tradable, "session": session,
-            "pool_size": pool_size, "thinking": notes}), POLICY)
+            "pool_size": pool_size, "thinking": notes,
+            "memory": memory}), POLICY)
         save_question(text, answer_schema, facts, mine, decision.keep, submitted=submit and tradable,
                       session=session)
 

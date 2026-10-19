@@ -86,7 +86,7 @@ def _view_line(v: PositionView) -> str:
 
 def prompt(facts: Mapping[str, str], views: Sequence[PositionView], *,
            numbers: Mapping[str, float], scoreboard: str, market: str,
-           candidates: Sequence[str]) -> str:
+           candidates: Sequence[str], memory: str = "") -> str:
     held = [v.symbol for v in views]
     return "\n".join((
         "You are the desk's junior trader. The market has closed. Write your EVENING "
@@ -96,6 +96,7 @@ def prompt(facts: Mapping[str, str], views: Sequence[PositionView], *,
         f"Your scoreboard: {scoreboard or 'not available'}",
         f"Market: {market}",
         "",
+        *((memory, "") if memory else ()),
         f"Your book: ${numbers['invested']:,.0f} of ${numbers['sleeve']:,.0f} invested "
         f"({numbers['invested_pct']:.0f}%), ${numbers['idle']:,.0f} idle, "
         f"{int(numbers['positions'])} positions, open P/L ${numbers['open_pl']:+,.0f}.",
@@ -200,7 +201,7 @@ def review_text(review: Mapping[str, Any] | None) -> str:
 
 
 def ask_prompt(question: str, *, briefing: str, review: str,
-               history: Sequence[tuple[str, str]] = ()) -> str:
+               history: Sequence[tuple[str, str]] = (), memory: str = "") -> str:
     recent = [f"Q: {q}\nA: {a}" for q, a in list(history)[-HISTORY:]]
     return "\n".join((
         "You are the desk's junior trader. The operator is asking you a question about "
@@ -213,6 +214,7 @@ def ask_prompt(question: str, *, briefing: str, review: str,
         "",
         "=== Your latest evening review ===",
         review,
+        *(("", "=== Your short memory ===", memory) if memory else ()),
         *(("", "=== Recent questions ===", *recent) if recent else ()),
         "",
         f"Question: {question}",

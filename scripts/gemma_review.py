@@ -27,6 +27,7 @@ if hasattr(sys.stdout, "reconfigure"):
 import gemma_trade as gtr  # scripts/ is on the path when this script runs
 
 from scanner.advisor import gemma_review as rv
+from scanner.advisor import memory_feed
 from scanner.advisor import opinions
 from scanner.config import settings
 from scanner.execution import ownership, picks
@@ -100,8 +101,9 @@ async def main() -> int:
         except Exception as exc:                          # noqa: BLE001
             score = ""
             print(f"  scoreboard unavailable: {exc}")
+        memory = await memory_feed.memory_block(client, held=held)
         text = rv.prompt(facts, views, numbers=numbers, scoreboard=score, market=trend,
-                         candidates=candidates)
+                         candidates=candidates, memory=memory)
         notes = ""
         try:
             answer, notes = await gtr.think_then_answer(text, rv.schema(held, candidates), client)
@@ -118,7 +120,7 @@ async def main() -> int:
     path = save({**review, "day": date.today().isoformat(),
                  "at": datetime.now().astimezone().isoformat(), "numbers": numbers,
                  "market": trend, "scoreboard": score, "pool_size": pool_size,
-                 "candidates": candidates, "thinking": notes})
+                 "candidates": candidates, "thinking": notes, "memory": memory})
     print(f"\n{review['summary']}")
     for p in review["positions"]:
         print(f"  {p['symbol']:<6} {p['verdict']:<15} {p['reason'][:110]}")
