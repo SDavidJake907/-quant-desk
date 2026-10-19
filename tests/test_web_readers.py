@@ -167,3 +167,20 @@ def test_activity_summaries_for_outcomes_and_decisions(tmp_path):
     assert outcome["realized"] == -71.95
     assert decision["book"] == "gemma"
     assert decision["reason"] == "keep MPC, MU · buy — · sell VLO"
+
+
+def test_bracket_stop_leg_in_held_state_counts_as_the_stop():
+    """Alpaca keeps a filled bracket's stop leg 'held' and leaves it out of
+    status=open; the stop must still be found from the order history."""
+    all_orders = [{"symbol": "MU", "side": "buy", "status": "filled",
+                   "client_order_id": "gem-MU-1",
+                   "legs": [{"symbol": "MU", "side": "sell", "type": "limit", "status": "new",
+                             "limit_price": "1752.5"},
+                            {"symbol": "MU", "side": "sell", "type": "stop", "status": "held",
+                             "stop_price": "761.81"}]},
+                  {"symbol": "OLD", "side": "buy", "status": "filled", "client_order_id": "gem-OLD-1",
+                   "legs": [{"symbol": "OLD", "side": "sell", "type": "stop", "status": "canceled",
+                             "stop_price": "10"}]}]
+    stops = readers._stops_by_symbol([], all_orders)
+    assert stops["MU"] == 761.81
+    assert "OLD" not in stops            # a canceled leg is not a stop

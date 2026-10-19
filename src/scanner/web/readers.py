@@ -244,11 +244,19 @@ def _book_of(coid: str, event: str) -> str:
 
 # ---- broker -----------------------------------------------------------------
 
-def _stops_by_symbol(open_orders: Iterable[Mapping[str, Any]]) -> dict[str, float]:
+#: Order states in which a stop can still fire. A bracket's stop leg sits in
+#: "held" (paired with its take-profit) and Alpaca's status=open list leaves it
+#: out, so legs are also read from the full order history.
+LIVE_STATES = {"new", "held", "accepted", "pending_new", "partially_filled", "accepted_for_bidding"}
+
+
+def _stops_by_symbol(open_orders: Iterable[Mapping[str, Any]],
+                     all_orders: Iterable[Mapping[str, Any]] = ()) -> dict[str, float]:
     stops: dict[str, float] = {}
-    for order in open_orders:
+    for order in (*all_orders, *open_orders):
         for o in (order, *(order.get("legs") or ())):
-            if o.get("side") == "sell" and o.get("stop_price"):
+            if (o.get("side") == "sell" and o.get("stop_price")
+                    and str(o.get("status", "new")) in LIVE_STATES):
                 stops[str(o.get("symbol"))] = float(o["stop_price"])
     return stops
 
@@ -262,7 +270,7 @@ def group_positions(positions: Iterable[Mapping[str, Any]],
     under "picks"; anything the system cannot attribute goes to "other".
     """
     owner_map = ownership.owners(all_orders)
-    stops = _stops_by_symbol(open_orders)
+    stops = _stops_by_symbol(open_orders, all_orders)
     books: dict[str, list[dict[str, Any]]] = {"picks": [], "gemma": [], "other": []}
     for p in positions:
         symbol = str(p.get("symbol") or "")
