@@ -10,8 +10,8 @@
 # liquid, no earnings before Friday, not on Gemma's menu).
 # 2026-10-14: RVTY, KEYS, CRWD, HPE removed (operator: sell the red positions).
 # 2026-10-19: MRNA, SNDK, WDC added (operator).
-MRNA
 SNDK
 WDC
 # 2026-10-19: NVDA added (operator); all four sold at 11:25 AK today.
 NVDA
+# 2026-10-19 10:25 AK: MRNA removed (operator: sell MRNA).
