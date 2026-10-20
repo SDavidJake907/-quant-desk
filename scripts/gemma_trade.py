@@ -386,8 +386,10 @@ async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
               f"its 210-day average {sma:,.0f}")
     text = gp.prompt(rows, held=mine, market=market)
     try:
+        # Full thinking budget (operator 2026-10-20, "enable thinking"): at half
+        # (750) her pool notes were cut off mid-thought.
         answer, _ = await think_then_answer(text, gp.schema([r.symbol for r in rows]),
-                                            client, max_tokens=gt.THINK_TOKENS // 2)
+                                            client, max_tokens=gt.THINK_TOKENS)
     except LLMError as exc:
         print(f"  {YELLOW}pool shortlist failed ({exc}) -- using the hand lists{RESET}")
         return [], len(rows)
