@@ -39,6 +39,8 @@ from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
 from scanner.advisor import hindsight_memory
 from scanner.advisor import memory_feed
+from scanner.advisor import stock_context
+from scanner.sources import yahoo_fundamentals
 from scanner.sources import market_caps
 from scanner.advisor import opinions
 from scanner.advisor import wall_street
@@ -129,6 +131,9 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str, bool]:
     except Exception:                                    # noqa: BLE001
         earnings = {}
     rows = read_rows(settings.audit_log_path)
+    # Analysts and fundamentals (operator 2026-10-19): what the companies earn
+    # and whether forecasts are rising -- information she never had.
+    fundamentals = await yahoo_fundamentals.fetch_many(symbols)
     out: dict[str, str] = {}
     for s in symbols:
         b = daily.get(s)
@@ -143,6 +148,12 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str, bool]:
                  f"3m {_ret(b.closes, 63)} | 12m {_ret(b.closes, 252)} | 12-1 momentum {mom}"
                  + (f" ({rs:+.0f} pts vs the S&P 500)" if rs is not None else "")
                  + f" | daily ATR {atr_text}"]
+        for extra in (stock_context.analysts_line(fundamentals.get(s)),
+                      stock_context.fundamentals_line(fundamentals.get(s)),
+                      stock_context.chart_line(f.price, f.sma50, f.sma200, b.volumes,
+                                               b.highs, b.lows, b.closes)):
+            if extra:
+                lines.append(extra)
         report = earnings.get(s)
         if report:      # no line = none within 7 days (her rules say so)
             lines.append(f"earnings: {report.label}")
