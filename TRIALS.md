@@ -89,6 +89,8 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 73 | operator's morning window: buy the 9:30 open, sell 10:30 ET, flat otherwise; secondary: buy the close, sell 10:30 next day (research_gpu/morning_window.py) | RULES FIXED in the commit that adds this row, before the first run (5a0ea23) | 501 S&P names, 15m bars 2024-09 to 2026-09 (518 days); her 7 shown, not graded | hold +0.070%/day (+17.7%/yr); 9:30-10:30 earns +0.021%/day BEFORE costs, under the 0.10% round trip; morning minus hold -0.149%/day t -4.04 (-37.5%/yr), both halves negative; night+morning -0.091%/day t -2.88; her 7: hold +0.44%/day vs morning +0.08% before costs | FAIL: the first hour is not where the return is; costs alone exceed it |
 
+| 74 | operator's indicator TP from today's highs: first 5-min close with RSI(14) > 75 AND > 1% above VWAP -> sell next bar open, rebuy at the close (research_gpu/rsi_vwap_tp.py) | RULES FIXED in the commit that adds this row, before the first run | 100 random S&P names (seed 74), Alpaca 5-min SIP 2024-10 to 2026-10; her 7 shown per stock, not graded | pending | PRIMARY next-open fill: rule minus hold > 0 per day, t >= 2, both halves > 0; signal-close fill needs abs t >= 3.3 |
+
 **Running total: ~105 trials. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
