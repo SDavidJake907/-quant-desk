@@ -37,6 +37,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
+from scanner.advisor import hindsight_memory
 from scanner.advisor import memory_feed
 from scanner.sources import market_caps
 from scanner.advisor import opinions
@@ -505,7 +506,14 @@ async def main(submit: bool) -> int:
         # Her short memory (operator 2026-10-19): her own record with what
         # happened since, built from outcomes and prices (advisor/gemma_memory.py).
         memory = await memory_feed.memory_block(client, held=list(mine))
+        # Her long-term memory (operator 2026-10-19, live): Hindsight's lessons
+        # from her own trades, written at 05:05 (advisor/hindsight_memory.py).
+        lessons = hindsight_memory.block(hindsight_memory.read_lessons(),
+                                         now=datetime.now().astimezone())
+        print(f"  {DIM}hindsight lessons: "
+              f"{f'{len(lessons):,} chars' if lessons else 'none (missing or stale)'}{RESET}")
         text = text.replace("The list:", (f"{memory}\n\n" if memory else "")
+                            + (f"{lessons}\n\n" if lessons else "")
                             + f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
                                   min_positions=least, graded=True)
@@ -532,6 +540,7 @@ async def main(submit: bool) -> int:
             "submitted": submit and tradable, "session": session,
             "pool_size": pool_size, "thinking": notes,
             "memory": memory,
+            "hindsight": lessons,
             # WORKLIST §65: her 5-day probabilities (graded by advisor/forecast_grade.py)
             # and the observable exit she names for each holding.
             "forecasts": dict(decision.forecasts), "sell_if": dict(decision.sell_if)}), POLICY)
