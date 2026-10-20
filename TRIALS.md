@@ -95,6 +95,8 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 76 | momentum settings grid: lookback 12-1 / 6-1 x top 10 / 20 / 30 x sector cap none / 3, trend filter on, live engine otherwise (research_gpu/momentum_settings.py) | RULES FIXED in the commit that adds this row, before the first run (8b31761) | panel_LIVE (500+400, 2014-26, 129 books), panel_CRASH (500, 1997-2016, 222 books) | LIVE cell: LIVE +17.4% CAGR, +2.62pp vs random t 2.25, max DD 17.9%; CRASH +17.1%, +2.04pp t 2.10, DD 11.4%; worst book -27.0% / -26.5%. 6-1 earns more (+21.3% / +22.2% CAGR, t 2.59 / 3.44) but max DD 26.9% / 31.5%; top 20/30 lower return, no lower DD; sector cap 3 lowers return and RAISES LIVE DD (22.9% at top 10) | no cell qualifies: the live setting (12-1, top 10, no cap) stays; 6-1 is a return-for-drawdown trade, not a better setting | a cell replaces live (12-1, top 10, no cap) only if on BOTH panels gap vs random >= live and max DD <= live, and LIVE NW t >= 1.5 |
 
+| 77 | operator's 'Simple Strategy' card: 4H HH/HL trend, 4H swing-low level, 15m touch, 15m CHoCH, FVG limit entry, stop under the pullback, target the last 4H swing high; shorts mirrored (research_gpu/smc_card.py) | RULES FIXED in the commit that adds this row, before the first run | 501 S&P names, 15m bars 2024-09 to 2026-09, 4H built from them | pending | PRIMARY long: mean R > 0 t >= 2, both years > 0, and minus a same-stop/target random control > 0 t >= 2 |
+
 **Running total: ~107 trials + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
