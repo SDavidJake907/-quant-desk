@@ -171,7 +171,7 @@ def simulate(bars):
         if state == "idle":
             if up and sl4 and i > 0:
                 lvl = sl4[-1][1]
-                if l <= lvl * (1 + ZONE) and bars[i - 1][4] > lvl * (1 + ZONE):
+                if l <= lvl + ZONE * abs(lvl) and bars[i - 1][4] > lvl + ZONE * abs(lvl):
                     state, arm_i, level, pull_low = "armed", i, lvl, l
             continue
         # armed
@@ -194,7 +194,7 @@ def simulate(bars):
                 continue
             tgt = above[-1]
             stop = pull_low
-            if not (stop < fvg < tgt) or (fvg - stop) / fvg < MIN_RISK:
+            if not (stop < fvg < tgt) or (fvg - stop) / abs(fvg) < MIN_RISK:
                 continue
             pend = (fvg, stop, tgt, i + ENTRY_BARS)
     return trades
