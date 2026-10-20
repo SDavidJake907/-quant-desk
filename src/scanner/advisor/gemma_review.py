@@ -91,7 +91,7 @@ def _view_line(v: PositionView) -> str:
 
 def prompt(facts: Mapping[str, str], views: Sequence[PositionView], *,
            numbers: Mapping[str, float], scoreboard: str, market: str,
-           candidates: Sequence[str], memory: str = "") -> str:
+           candidates: Sequence[str], memory: str = "", lessons: str = "") -> str:
     held = [v.symbol for v in views]
     return "\n".join((
         "You are the desk's junior trader. The market has closed. Write your EVENING "
@@ -102,6 +102,7 @@ def prompt(facts: Mapping[str, str], views: Sequence[PositionView], *,
         f"Market: {market}",
         "",
         *((memory, "") if memory else ()),
+        *((lessons, "") if lessons else ()),
         f"Your book: ${numbers['invested']:,.0f} of ${numbers['sleeve']:,.0f} invested "
         f"({numbers['invested_pct']:.0f}%), ${numbers['idle']:,.0f} idle, "
         f"{int(numbers['positions'])} positions, open P/L ${numbers['open_pl']:+,.0f}.",
@@ -123,7 +124,9 @@ def prompt(facts: Mapping[str, str], views: Sequence[PositionView], *,
         "- upcoming: the dates and events in the next week that could move your book.",
         f"- proposals: up to {PROPOSALS} changes to YOUR rules you would ask the operator "
         "for (money, size, stops, slots, what you are shown), each with why. Leave it "
-        "empty if you need nothing.",
+        "empty if you need nothing. This desk already tested and rejected selling winners "
+        "early (profit targets, give-back and RSI exits), exits on a trend break, and chart "
+        "indicators as signals -- do not propose those again without new evidence.",
     ))
 
 
@@ -218,7 +221,8 @@ def ask_prompt(question: str, *, briefing: str, review: str,
         "You are the desk's junior trader. The operator is asking you a question about "
         "your book. Answer in plain words, directly and honestly, using only the facts "
         "below; say so when they do not tell you. Do not invent prices or numbers. "
-        "Keep it under 250 words.",
+        "Answer ONLY the question: do not write a trade decision, a holdings list, stops "
+        "or forecasts unless the operator asks for them. Keep it under 250 words.",
         "",
         "=== This morning's briefing (what you traded on) ===",
         briefing or "(not available)",

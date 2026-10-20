@@ -57,3 +57,17 @@ def test_block_is_capped():
 
 def test_read_lessons_missing_file(tmp_path):
     assert hm.read_lessons(tmp_path / "nope.json") is None
+
+
+def test_prompts_carry_the_10_19_updates():
+    from scanner.advisor import gemma_review as rv
+    from scanner.advisor import gemma_trader as gt
+    assert "Selling a winner early lost money" in gt.RULES
+    assert "its opinions are not evidence" in gt.RULES
+    assert "Your lessons" in gt.THINK_ASK
+    ask = rv.ask_prompt("Which holding is riskiest?", briefing="b", review="r")
+    assert "Answer ONLY the question" in ask
+    review = rv.prompt({}, [], numbers={"invested": 0, "sleeve": 1, "invested_pct": 0, "idle": 1,
+                                         "positions": 0, "open_pl": 0},
+                       scoreboard="", market="m", candidates=[], lessons="LESSONS-BLOCK")
+    assert "LESSONS-BLOCK" in review and "do not propose those again" in review

@@ -63,12 +63,13 @@ MAX_NOTES_CHARS = 6000
 THINK_ASK = (
     "\n\n=== Before you answer: THINK IT THROUGH. Do not answer in the format yet. ===\n"
     "Write your reasoning in plain words, as a trader's notes:\n"
-    "1. Each stock you hold: is its reason still intact? Any earnings or event "
-    "coming that could gap it?\n"
-    "2. The strongest new candidates: what in their own block makes the case, and "
-    "what argues against it?\n"
+    "1. Each stock you hold: is its reason still intact? Are analysts raising or "
+    "cutting its estimates? Any earnings or event coming that could gap it?\n"
+    "2. The strongest new candidates: what in their own block makes the case -- price, "
+    "analysts, fundamentals, news -- and what argues against it?\n"
     "3. The market today, and how much risk that justifies.\n"
-    "4. Your plan: which stocks, and for each new one which stop, target and size, and why.\n"
+    "4. Your lessons: does anything you learned from your own trades apply today?\n"
+    "5. Your plan: which stocks, and for each new one which stop, target and size, and why.\n"
     "Be concrete and brief: about 400 words."
 )
 
@@ -131,9 +132,14 @@ RULES = "\n".join((
     "- Do not write prices, sizes or percentages of your own. Use only what is below.",
     "- Use your own judgement. The momentum rule picks the strongest 12-1 momentum "
     "names monthly (marked in the list when they are yours to choose); simply "
-    "copying it cannot beat it. Momentum, "
+    "copying it cannot beat it. Momentum, analyst revisions, fundamentals, "
     "news, earnings timing and the market trend are all yours to weigh. On this "
     "desk RSI, moving averages and chart patterns were tested and showed no edge.",
+    "- Selling a winner early lost money here: every rule this desk tested that sold into "
+    "strength (profit targets, selling at the day's high, give-back exits, RSI exits) did "
+    "worse than holding. Sell when a stock's reason has failed, not because it is up.",
+    "- A 'Lessons' block, when present, is your long-term memory of your own trades: its "
+    "dates and results are records; its opinions are not evidence. Today's facts win.",
     "- An earnings report within days can gap a stock either way, past its stop. A "
     "stock's block has an 'earnings' line only when it reports within 7 days.",
     "- 'calendar' and 'in the news' lines are context: news is usually in the price within "

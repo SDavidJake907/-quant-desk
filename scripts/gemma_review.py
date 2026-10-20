@@ -28,6 +28,7 @@ import gemma_trade as gtr  # scripts/ is on the path when this script runs
 
 from scanner.advisor import gemma_memory as gm
 from scanner.advisor import gemma_review as rv
+from scanner.advisor import hindsight_memory
 from scanner.advisor import memory_feed
 from scanner.advisor import opinions
 from scanner.config import settings
@@ -106,8 +107,10 @@ async def main() -> int:
             print(f"  scoreboard unavailable: {exc}")
         memory = await memory_feed.memory_block(client, held=held)
         forecast_score = await memory_feed.forecast_score(client)
+        lessons = hindsight_memory.block(hindsight_memory.read_lessons(),
+                                         now=datetime.now().astimezone())
         text = rv.prompt(facts, views, numbers=numbers, scoreboard=score, market=trend,
-                         candidates=candidates, memory=memory)
+                         candidates=candidates, memory=memory, lessons=lessons)
         notes = ""
         try:
             answer, notes = await gtr.think_then_answer(text, rv.schema(held, candidates), client)
