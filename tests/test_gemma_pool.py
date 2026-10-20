@@ -56,3 +56,14 @@ def test_rows_are_listed_strongest_momentum_first():
                        atr={"A": 2.0}, momentum_rank={"B": 3})
     assert [r.symbol for r in rows] == ["B", "A", "C"]
     assert rows[0].momentum_rank == 3 and rows[0].r1m == 0.0 and rows[2].sector == "unknown"
+
+
+
+def test_market_cap_floor_drops_small_and_keeps_unknown():
+    caps = {"BIG": 5e9, "EDGE": 2e9, "SMALL": 1.5e9}
+    assert gp.large_enough("BIG", caps)
+    assert gp.large_enough("EDGE", caps)
+    assert not gp.large_enough("SMALL", caps)
+    assert gp.large_enough("NEW", caps)          # missing: kept
+    assert gp.large_enough("SMALL", {})          # no data today: kept
+    assert gp.MIN_MARKET_CAP == 2_000_000_000.0

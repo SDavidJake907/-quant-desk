@@ -15,7 +15,8 @@ Universes
   (The Dow 30 adds nothing: all 30 are in the S&P 500.)
 
 Per universe: how many names, how many clear the floors (price >= $5, 20-day
-average daily dollar volume >= $20M), the share above the 210-day average, and
+average daily dollar volume >= $20M, market cap >= $2B -- the operator's floor,
+2026-10-19, shared with Gemma's pool), the share above the 210-day average, and
 the top names by 12-1 momentum (the live momentum engine's ranking) with their
 1-month move, daily ATR and sector. Descriptive only -- not a tested signal
 beyond what TRIALS #20-#26 and #76 measured for 12-1 momentum.
@@ -35,7 +36,9 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.advisor import gemma_pool as gp
 from scanner.features.bars import fetch_many
+from scanner.sources import market_caps
 from scanner.features.technicals import compute
 from scanner.sources import composite
 from scanner.sources.index_history import SP400, SP500, SP600, IndexSpec, fetch_wikitext
@@ -46,6 +49,8 @@ NASDAQ_100 = IndexSpec(key="ndx", label="Nasdaq-100", page="List of NASDAQ-100 c
 EXCLUDED = {"MSTR"}
 MIN_PRICE = 5.0
 MIN_DOLLAR_VOLUME = 20_000_000.0
+#: The same floor as Gemma's pool (advisor/gemma_pool.py).
+MIN_MARKET_CAP = gp.MIN_MARKET_CAP
 TOP = 10
 TREND_DAYS = 210
 #: Rows of the constituents table: "| ADBE || [[Adobe Inc.]] || ...".
@@ -63,7 +68,7 @@ async def nasdaq_extras(client, in_sp: set[str]) -> dict[str, str]:
     return {s: "Nasdaq-100" for s in sorted(names - in_sp - EXCLUDED)}
 
 
-def row(symbol: str, bars, sector: str) -> dict | None:
+def row(symbol: str, bars, sector: str, caps: dict[str, float]) -> dict | None:
     if bars is None or len(bars) < 260:
         return None
     f = compute(bars)
@@ -72,7 +77,9 @@ def row(symbol: str, bars, sector: str) -> dict | None:
     return {"symbol": symbol, "sector": sector, "price": f.price, "mom": f.momentum_12_1,
             "m1": closes[-1] / closes[-22] - 1, "atr": f.atr_pct,
             "above": closes[-1] > sum(closes[-TREND_DAYS:]) / TREND_DAYS,
-            "liquid": f.price >= MIN_PRICE and dollar >= MIN_DOLLAR_VOLUME}
+            "cap": caps.get(symbol),
+            "liquid": f.price >= MIN_PRICE and dollar >= MIN_DOLLAR_VOLUME
+            and gp.large_enough(symbol, caps, floor=MIN_MARKET_CAP)}
 
 
 def section(label: str, rows: list[dict], total: int) -> list[str]:
@@ -82,10 +89,11 @@ def section(label: str, rows: list[dict], total: int) -> list[str]:
     lines = [f"## {label}", "",
              f"{total} names; {len(rows)} priced; **{len(ok)} clear the floors**; "
              f"{above:.0f}% of those above their {TREND_DAYS}-day average.", "",
-             "| # | Stock | Sector | 12-1 momentum | 1 month | Daily ATR |",
-             "|---|---|---|---|---|---|"]
+             "| # | Stock | Sector | Market cap | 12-1 momentum | 1 month | Daily ATR |",
+             "|---|---|---|---|---|---|---|"]
     for i, r in enumerate(ranked, 1):
-        lines.append(f"| {i} | {r['symbol']} | {r['sector']} | {r['mom']:+.0f}% | "
+        cap = f"${r['cap'] / 1e9:,.1f}B" if r["cap"] else "n/a"
+        lines.append(f"| {i} | {r['symbol']} | {r['sector']} | {cap} | {r['mom']:+.0f}% | "
                      f"{r['m1'] * 100:+.1f}% | {(r['atr'] or 0):.1f}% |")
     mix = Counter(r["sector"] for r in ranked)
     lines += ["", "Top-10 sector mix: " + ", ".join(f"{k} {v}" for k, v in mix.most_common()), ""]
@@ -110,14 +118,15 @@ async def main() -> int:
         allsyms = tuple(sorted({s for _, m in universes for s in m}))
         print(f"fetching daily bars for {len(allsyms)} names ...")
         daily, errors = await fetch_many(allsyms, client, range_="2y")
+        caps = await market_caps.load(client)
     lines = [f"# Universes {today}", "",
              "Read-only. What each universe would bring; nothing here changes a pool or a trade. "
              f"Floors: price >= ${MIN_PRICE:.0f}, 20-day average daily dollar volume >= "
-             f"${MIN_DOLLAR_VOLUME / 1e6:.0f}M. Ranked by 12-1 momentum (the live momentum engine's "
+             f"${MIN_DOLLAR_VOLUME / 1e6:.0f}M, market cap >= ${MIN_MARKET_CAP / 1e9:.0f}B. Ranked by 12-1 momentum (the live momentum engine's "
              "measure). MSTR is left out (bitcoin holder; stocks only). The Dow 30 adds no names: "
              "all 30 are in the S&P 500.", ""]
     for label, members in universes:
-        rows = [r for s, sec in members.items() if (r := row(s, daily.get(s), sec))]
+        rows = [r for s, sec in members.items() if (r := row(s, daily.get(s), sec, caps))]
         lines += section(label, rows, len(members))
     lines.append(f"_{len(errors)} names could not be priced._")
     OUT.mkdir(parents=True, exist_ok=True)

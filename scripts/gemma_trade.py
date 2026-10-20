@@ -38,6 +38,7 @@ from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
 from scanner.advisor import memory_feed
+from scanner.sources import market_caps
 from scanner.advisor import opinions
 from scanner.advisor import wall_street
 from scanner.advisor.scan_watch import operator_names
@@ -352,7 +353,12 @@ async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
     mine = set(mine)
     members = await composite.load_universe(client, (SP500,))
     sectors = {m.symbol: m.sector for m in members}
-    names = tuple(s for s in sectors if s not in taken and s not in mine)
+    caps = await market_caps.load(client)
+    small = sorted(s for s in sectors if not gp.large_enough(s, caps))
+    if small:
+        print(f"  {DIM}under the ${gp.MIN_MARKET_CAP / 1e9:.0f}B cap floor, left out: "
+              f"{', '.join(small)}{RESET}")
+    names = tuple(s for s in sectors if s not in taken and s not in mine and s not in small)
     daily, _ = await fetch_many(names, client, range_="2y")
     bars = {s: b for s, b in daily.items()
             if b is not None and len(b.closes) >= 30 and gp.tradeable(

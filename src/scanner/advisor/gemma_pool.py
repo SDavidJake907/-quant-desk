@@ -30,6 +30,10 @@ from scanner.models import Frozen
 ENABLED = True
 SHORTLIST = 20
 WINDOW = 20
+#: Operator 2026-10-19: "increase the market cap to 2B" -- no stock under $2B
+#: in her pool (sources/market_caps.py). Every S&P 500 member is far above it
+#: today; it bites once smaller universes join the pool.
+MIN_MARKET_CAP = 2_000_000_000.0
 
 
 class PoolRow(Frozen):
@@ -53,6 +57,14 @@ def tradeable(closes: Sequence[float], highs: Sequence[float], lows: Sequence[fl
     if (sum(spans) / len(spans) if spans else 0.0) < min_range_pct:
         return False
     return sum(a * b for a, b in zip(v, c)) / len(c) >= min_dollar_volume
+
+
+def large_enough(symbol: str, caps: Mapping[str, float], *,
+                 floor: float = MIN_MARKET_CAP) -> bool:
+    """At or above the cap floor. Unknown (no caps today, or the name missing)
+    is KEPT: a data outage must never empty her pool."""
+    cap = caps.get(symbol)
+    return cap is None or cap >= floor
 
 
 def _pct(x: float | None) -> str:
