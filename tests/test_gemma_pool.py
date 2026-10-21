@@ -67,3 +67,22 @@ def test_market_cap_floor_drops_small_and_keeps_unknown():
     assert gp.large_enough("NEW", caps)          # missing: kept
     assert gp.large_enough("SMALL", {})          # no data today: kept
     assert gp.MIN_MARKET_CAP == 2_000_000_000.0
+
+
+def test_midcap_switches_on_after_the_october_verdict():
+    from datetime import date
+    assert not gp.midcap_on(date(2026, 10, 30))
+    assert gp.midcap_on(date(2026, 11, 2))
+
+
+def test_strongest_keeps_positive_momentum_capped():
+    rows = [gp.PoolRow(symbol=s, sector="x", r1m=None, r3m=None, mom_12_1=m, atr_pct=None)
+            for s, m in (("A", 10.0), ("B", -5.0), ("C", 40.0), ("D", None), ("E", 25.0))]
+    assert [r.symbol for r in gp.strongest(rows, limit=2)] == ["C", "E"]
+
+
+def test_prompt_unchanged_by_default_and_names_the_wider_universe():
+    rows = [gp.PoolRow(symbol="A", sector="x", r1m=1.0, r3m=2.0, mom_12_1=3.0, atr_pct=1.0)]
+    assert "tradeable S&P 500 stocks no other book holds" in gp.prompt(rows, held=[], market="m")
+    wide = gp.prompt(rows, held=[], market="m", universe="S&P 500 stocks plus 120 MidCap")
+    assert "tradeable S&P 500 stocks plus 120 MidCap no other book" in wide

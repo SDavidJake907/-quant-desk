@@ -22,6 +22,7 @@ PURE: numbers in, text and validation out.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import date
 from typing import Any
 
 from scanner.models import Frozen
@@ -34,6 +35,14 @@ WINDOW = 20
 #: in her pool (sources/market_caps.py). Every S&P 500 member is far above it
 #: today; it bites once smaller universes join the pool.
 MIN_MARKET_CAP = 2_000_000_000.0
+#: MidCap 400 joins her pool (operator 2026-10-21, "lets do all 3", the step
+#: queued for after the Oct 31 verdict): from MIDCAP_FROM, the strongest
+#: MIDCAP_MAX mid-caps by 12-1 momentum (positive only) that pass the same
+#: floor and the cap floor. Capped so round 1 stays inside her 32k context
+#: (~35 tokens a line: 488 S&P lines measured 17,152 tokens; +120 is ~+4,200).
+#: Before MIDCAP_FROM her pool and prompt are exactly as they were.
+MIDCAP_FROM = date(2026, 11, 2)
+MIDCAP_MAX = 120
 
 
 class PoolRow(Frozen):
@@ -67,6 +76,16 @@ def large_enough(symbol: str, caps: Mapping[str, float], *,
     return cap is None or cap >= floor
 
 
+def midcap_on(today: date, *, start: date = MIDCAP_FROM) -> bool:
+    return today >= start
+
+
+def strongest(rows: Iterable[PoolRow], limit: int = MIDCAP_MAX) -> list[PoolRow]:
+    """The `limit` rows with the strongest positive 12-1 momentum."""
+    up = [r for r in rows if r.mom_12_1 is not None and r.mom_12_1 > 0]
+    return sorted(up, key=lambda r: (-(r.mom_12_1 or 0.0), r.symbol))[:limit]
+
+
 def _pct(x: float | None) -> str:
     return f"{x:+.0f}%" if x is not None else "n/a"
 
@@ -79,13 +98,13 @@ def line(r: PoolRow) -> str:
 
 
 def prompt(rows: Iterable[PoolRow], *, held: Iterable[str], market: str,
-           shortlist: int = SHORTLIST) -> str:
+           shortlist: int = SHORTLIST, universe: str = "S&P 500 stocks") -> str:
     rows = list(rows)
     held = sorted(held)
     return "\n".join((
         "You are the desk's junior trader. Step 1 of 2: choose which stocks to look at "
         "closely today.",
-        f"Below is your stock pool: all {len(rows)} tradeable S&P 500 stocks no other book "
+        f"Below is your stock pool: all {len(rows)} tradeable {universe} no other book "
         "holds, one line each (1-month and 3-month return, 12-1 momentum, daily ATR = how "
         "far it typically moves in a day).",
         f"Shortlist up to {shortlist} stocks you might buy today. In step 2 you will see "

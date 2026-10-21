@@ -62,7 +62,7 @@ from scanner.features.technicals import compute, relative_strength
 from scanner.llm.ollama import LLMError, chat_json, chat_text
 from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
-from scanner.sources.index_history import COMPOSITE_1500, SP500
+from scanner.sources.index_history import COMPOSITE_1500, SP400, SP500
 from scanner.sources import yahoo_rss
 from pathlib import Path
 
@@ -358,10 +358,31 @@ async def think_then_answer(text: str, answer_schema: dict, client,
     return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
 
 
+async def midcap_rows(client, exclude: set[str], caps, mom_picks: Sequence[str]) -> list:
+    """The MidCap 400 rows for round 1 (gemma_pool.MIDCAP_FROM): same floors, the
+    strongest gemma_pool.MIDCAP_MAX by 12-1. A failure adds none, never blocks."""
+    try:
+        members = await composite.load_universe(client, (SP400,))
+        sectors = {m.symbol: m.sector for m in members if m.symbol not in exclude
+                   and gp.large_enough(m.symbol, caps)}
+        daily, _ = await fetch_many(tuple(sectors), client, range_="2y")
+    except Exception as exc:                             # noqa: BLE001
+        print(f"  {YELLOW}MidCap 400 unavailable ({type(exc).__name__}) -- S&P 500 only{RESET}")
+        return []
+    bars = {s: b for s, b in daily.items()
+            if b is not None and len(b.closes) >= 30 and gp.tradeable(
+                b.closes, b.highs, b.lows, b.volumes, min_price=POLICY.min_price,
+                min_range_pct=POLICY.min_range_pct, min_dollar_volume=POLICY.min_dollar_volume)}
+    rows = gp.rows_for(bars, sectors, momentum={s: compute(b).momentum_12_1 for s, b in bars.items()},
+                       atr={s: atr_pct(b) for s, b in bars.items()},
+                       momentum_rank={s: i for i, s in enumerate(mom_picks, 1)})
+    return gp.strongest(rows)
+
+
 async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
                          mom_picks: Sequence[str]) -> tuple[list[str], int]:
-    """Round 1 (advisor/gemma_pool.py): the S&P 500 through the scanner's floor,
-    shortlisted by Gemma. (shortlist, pool size); an empty shortlist means fall back."""
+    """Round 1 (advisor/gemma_pool.py): the S&P 500 (plus the strongest MidCap 400
+    from gemma_pool.MIDCAP_FROM) through the scanner's floor, shortlisted by Gemma. (shortlist, pool size); an empty shortlist means fall back."""
     mine = set(mine)
     members = await composite.load_universe(client, (SP500,))
     sectors = {m.symbol: m.sector for m in members}
@@ -380,11 +401,19 @@ async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
     rows = gp.rows_for(bars, sectors, momentum=momentum,
                        atr={s: atr_pct(b) for s, b in bars.items()},
                        momentum_rank={s: i for i, s in enumerate(mom_picks, 1)})
+    universe = "S&P 500 stocks"
+    if gp.midcap_on(date.today()):
+        mid = await midcap_rows(client, taken | mine | set(sectors), caps, mom_picks)
+        print(f"  {DIM}MidCap 400: the strongest {len(mid)} join the pool{RESET}")
+        if mid:
+            rows = sorted(rows + mid, key=lambda r: (r.mom_12_1 is None, -(r.mom_12_1 or 0.0), r.symbol))
+            universe = (f"S&P 500 stocks plus the {len(mid)} strongest S&P MidCap 400 stocks "
+                        "by 12-1 momentum")
     spx = await fetch_bars("^GSPC", client, range_="2y")
     sma = sum(spx.closes[-210:]) / 210
     market = (f"S&P 500 {spx.closes[-1]:,.0f} is {'ABOVE' if spx.closes[-1] > sma else 'BELOW'} "
               f"its 210-day average {sma:,.0f}")
-    text = gp.prompt(rows, held=mine, market=market)
+    text = gp.prompt(rows, held=mine, market=market, universe=universe)
     try:
         # Full thinking budget (operator 2026-10-20, "enable thinking"): at half
         # (750) her pool notes were cut off mid-thought.
@@ -394,7 +423,7 @@ async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
         print(f"  {YELLOW}pool shortlist failed ({exc}) -- using the hand lists{RESET}")
         return [], len(rows)
     picked = gp.validate(answer, [r.symbol for r in rows], held=mine)
-    print(f"  {BOLD}pool{RESET}: {len(rows)} tradeable S&P 500 stocks; she shortlisted "
+    print(f"  {BOLD}pool{RESET}: {len(rows)} tradeable {universe}; she shortlisted "
           f"{list(picked)}")
     if isinstance(answer, dict) and answer.get("looking_for"):
         print(f"  {DIM}looking for: {str(answer['looking_for'])[:300]}{RESET}")

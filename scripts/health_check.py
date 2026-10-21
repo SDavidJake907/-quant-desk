@@ -34,7 +34,7 @@ from scanner.ops import health as h  # noqa: E402
 OUT = Path("logs/health")
 REVIEWS = Path("data/gemma/reviews")
 #: Morning tasks whose logs are scanned for errors in today's runs.
-MORNING_LOGS = ("weekahead", "leaders", "hindsight", "scan", "gemma", "gemma_review")
+MORNING_LOGS = ("weekahead", "ideas", "leaders", "hindsight", "scan", "gemma", "gemma_review")
 #: From this hour the day's own 12:30 review should exist; before it, the last session's.
 REVIEW_HOUR = 13
 
