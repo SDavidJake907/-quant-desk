@@ -53,9 +53,10 @@ TOAST_PS = (
     "[Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
     "$x = $t.GetElementsByTagName('text'); $x.Item(0).AppendChild($t.CreateTextNode($env:HC_TITLE)) > $null; "
     "$x.Item(1).AppendChild($t.CreateTextNode($env:HC_BODY)) > $null; "
+    "$n = [Windows.UI.Notifications.ToastNotification]::new($t); "
+    "$n.ExpirationTime = [DateTimeOffset]::Now.AddHours(8); "   # a stale alert clears itself
     "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
-    "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show("
-    "[Windows.UI.Notifications.ToastNotification]::new($t))")
+    "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($n)")
 
 
 def powershell_json(script: str) -> list[dict]:
