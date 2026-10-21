@@ -16,3 +16,9 @@
 NVDA
 # 2026-10-19 10:25 AK: MRNA removed (operator: sell MRNA).
 # 2026-10-19 10:35 AK: 11:25 sell-off CANCELLED (operator: "hold, wait for recover"); SNDK, WDC, NVDA held overnight.
+# 2026-10-21 09:50 AK: added for a hold to Mon 10/26 (operator: "best 4, hold until next week monday").
+# Uptrend, near highs, not stretched over the 50d, no earnings before 10/27, one per sector.
+AAPL
+AMZN
+AMGN
+MET
