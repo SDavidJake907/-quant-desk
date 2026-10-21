@@ -10,6 +10,9 @@ failure, prints it, and returns False.
 
 from __future__ import annotations
 
+import os
+import subprocess
+
 import httpx
 
 PRIORITIES = ("min", "low", "default", "high", "urgent")
@@ -42,4 +45,29 @@ async def send(client: httpx.AsyncClient, *, server: str, topic: str, title: str
         return True
     except httpx.HTTPError as exc:
         print(f"  ! alert not delivered ({exc}): {title}")
+        return False
+
+
+#: A Windows notification on this PC; a stale alert clears itself after 8 hours.
+TOAST_PS = (
+    "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] > $null; "
+    "$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
+    "[Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
+    "$x = $t.GetElementsByTagName('text'); $x.Item(0).AppendChild($t.CreateTextNode($env:HC_TITLE)) > $null; "
+    "$x.Item(1).AppendChild($t.CreateTextNode($env:HC_BODY)) > $null; "
+    "$n = [Windows.UI.Notifications.ToastNotification]::new($t); "
+    "$n.ExpirationTime = [DateTimeOffset]::Now.AddHours(8); "   # a stale alert clears itself
+    "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
+    "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($n)")
+
+
+def toast(title: str, body: str) -> bool:
+    """Show a Windows notification. Like `send`, never raises."""
+    env = {**os.environ, "HC_TITLE": title, "HC_BODY": body[:250]}
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", TOAST_PS],
+                       check=False, env=env, capture_output=True, timeout=30)
+        return True
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"  (windows notification failed: {exc})")
         return False

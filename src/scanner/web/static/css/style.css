@@ -182,6 +182,8 @@ td.no-stop { color: var(--warn); }
 .verdict-keep { color: var(--gain); border-color: #2d5a45; }
 .verdict-watch { color: var(--warn); border-color: #5a4614; }
 .verdict-sell_candidate { color: var(--loss); border-color: #5a2a2a; }
+.verdict-ok { color: var(--gain); border-color: #2d5a45; }
+.verdict-concern { color: var(--loss); border-color: #5a2a2a; }
 .review-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
 .review-cols h3 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 6px;
   text-transform: uppercase; letter-spacing: .04em; }

@@ -402,7 +402,28 @@ function renderReview(data) {
 
   const think = r.thinking ? h("details", { class: "thinking" },
     h("summary", { text: "Her thinking" }), h("pre", { text: r.thinking })) : null;
-  $("review").replaceChildren(h("p", { class: "review-summary", text: r.summary }), figs, table, cols, think);
+  $("review").replaceChildren(h("p", { class: "review-summary", text: r.summary }), figs, table, cols,
+    operatorBook(r.operator_book), think);
+}
+
+/** Her safety check of the OPERATOR's positions (advisor/operator_watch.py). Advice only. */
+function operatorBook(ob) {
+  if (!ob || !(ob.positions || []).length) return null;
+  const body = h("tbody");
+  for (const p of ob.positions) {
+    body.append(h("tr", {},
+      h("td", { class: "sym", text: p.symbol }),
+      h("td", {}, h("span", { class: `verdict-tag verdict-${p.verdict}`, text: p.verdict })),
+      h("td", { class: `num ${tone(p.pl_pct)}`, text: p.pl_pct == null ? "—" : pct(p.pl_pct) }),
+      h("td", { class: "num", text: p.stop_gap_pct == null ? "none" : `${p.stop_gap_pct.toFixed(1)}%` }),
+      h("td", { class: "reason" }, p.reason || "",
+        p.watch_for ? h("span", { class: "muted", text: ` Watch: ${p.watch_for}` }) : null,
+        ...(p.flags || []).map((f) => h("span", { class: "muted", text: ` Flag: ${f}` })))));
+  }
+  return h("div", {}, h("h3", { text: "Your positions: Gemma's safety check (advice only)", style: "margin-top:14px" }),
+    h("div", { class: "table-scroll" }, h("table", { class: "feed" },
+      h("thead", {}, h("tr", {}, ...["Stock", "Her read", "P/L", "To stop", "Why"]
+        .map((t) => h("th", { text: t })))), body)));
 }
 
 /** Her 5-day forecast score (WORKLIST §65): Brier vs 0.25 for "no view". */

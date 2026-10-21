@@ -11,4 +11,11 @@ echo. >> "%LOG%"
 echo ===== GEMMA REVIEW %DATE% %TIME% ===== >> "%LOG%"
 
 ".venv\Scripts\python.exe" "scripts\gemma_review.py" >> "%LOG%" 2>&1
-exit /b %errorlevel%
+set RC=%errorlevel%
+
+REM Then her safety check of the OPERATOR's positions (scripts/operator_watch.py, operator
+REM 2026-10-21): advice only, after the review so one model runs at a time. Its own
+REM failure never changes this task's result, which stays the review's.
+echo ----- OPERATOR WATCH %TIME% ----- >> "%LOG%"
+".venv\Scripts\python.exe" "scripts\operator_watch.py" >> "%LOG%" 2>&1
+exit /b %RC%

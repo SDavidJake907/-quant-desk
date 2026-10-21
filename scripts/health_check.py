@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import subprocess
 import sys
 from datetime import date, datetime, timedelta
@@ -47,16 +46,6 @@ PROCS_PS = (
     "Get-CimInstance Win32_Process -Filter \"Name='ollama.exe' or Name='llama-server.exe'\" | "
     "ForEach-Object { [pscustomobject]@{pid=[int]$_.ProcessId; ppid=[int]$_.ParentProcessId; "
     "name=$_.Name; cmd=[string]$_.CommandLine} } | ConvertTo-Json")
-TOAST_PS = (
-    "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] > $null; "
-    "$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
-    "[Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
-    "$x = $t.GetElementsByTagName('text'); $x.Item(0).AppendChild($t.CreateTextNode($env:HC_TITLE)) > $null; "
-    "$x.Item(1).AppendChild($t.CreateTextNode($env:HC_BODY)) > $null; "
-    "$n = [Windows.UI.Notifications.ToastNotification]::new($t); "
-    "$n.ExpirationTime = [DateTimeOffset]::Now.AddHours(8); "   # a stale alert clears itself
-    "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
-    "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($n)")
 
 
 def powershell_json(script: str) -> list[dict]:
@@ -68,13 +57,6 @@ def powershell_json(script: str) -> list[dict]:
     return data if isinstance(data, list) else [data]
 
 
-def toast(title: str, body: str) -> None:
-    env = {**os.environ, "HC_TITLE": title, "HC_BODY": body[:250]}
-    try:
-        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", TOAST_PS],
-                       env=env, capture_output=True, timeout=30)
-    except (OSError, subprocess.SubprocessError) as exc:
-        print(f"  (windows notification failed: {exc})")
 
 
 def log_texts() -> dict[str, str]:
@@ -142,7 +124,7 @@ async def main() -> int:
             title = "Stock scanner: health check"
             await notify.send(c, server=settings.ntfy_server, topic=settings.ntfy_topic,
                               title=title, message=line, priority="high", tags=("warning",))
-            toast(title, line)
+            notify.toast(title, line)
     return 0
 
 
