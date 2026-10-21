@@ -20,9 +20,11 @@ current window, fingerprint and pass/fail rules are always at the top of
 | Part | Evidence |
 |---|---|
 | Your picks | Your judgement. Stop width and "no target" are chosen, not tested. |
-| Gemma's book | Unproven. Earlier tests here found its calls did not predict prices; this book exists to measure it fairly. |
+| Gemma's book | Unproven. Earlier tests here found its calls did not predict prices; this book exists to measure it fairly. Since 10-19 she picks from the whole S&P 500, thinks before answering, and has a short memory and Hindsight lessons -- live, not yet graded as an edge. |
 | Momentum rule (paper only) | The one rule that held up on data it was not built on: +2.38pp a 3-month hold over random picks 2016-26 (t 1.49), max drawdown 12.7% through 2000-15. Survivorship still flatters it. |
-| TradingAgents (shadow) | Unproven; graded, never traded, not shown to Gemma. |
+| Morning ideas, leaders lists | Report only, graded forward vs the S&P 500 from their first day. Nothing trades on them. |
+| Gemma's safety check of your positions | Advice only; her verdicts graded vs the S&P 500 over 5 sessions. |
+| TradingAgents | Paused 2026-10-19 (task disabled, not deleted); its calls on file are graded from ~11-04. |
 | Sweep scanner | Paused. −0.041R a trade on unseen 2018-24 data (WORKLIST §30). |
 
 The project's strength is saying which is which. Every order and refusal is in
@@ -41,9 +43,9 @@ PICKS     (pck-)     you: watchlists/      system: every 30 min in    safety sto
           equity (shared with one-off     extended hours (24/5)
           manual trades, 12 slots)
 GEMMA     (gem-)     Gemma: up to 5        system: 05:45 AK weekdays  safety stop, or Gemma drops
-          50% of     names from core.txt,  and Sunday 16:45 AK        the name at her next decision
-          equity     gemma.txt and the     (overnight session)
-                     momentum rule's picks; her own stop/target/size from a menu
+          50% of     names from her pool   and Sunday 16:45 AK        the name at her next decision
+          equity     (the S&P 500; + the   (overnight session)
+                     strongest 120 MidCap 400 from 11-02); her own stop/target/size from a menu
 MANUAL    (man-)     you                   you: manual_trade.py       stop or target (bracket)
 MOMENTUM  helper     the rule: top 10 by   nobody -- a paper record   (a helper for BOTH books: its
           no money   12-1 momentum         kept by the monthly dry run picks are in the shared brief
@@ -92,27 +94,39 @@ the session whenever she decides outside regular hours. Switch:
 ### One trading day (Alaska time; New York is +4 hours)
 
 ```
-03:30  RATINGS     TradingAgents rates up to 12 names, each about once a week (shadow)
-03:00  BRIEF       calendar, news, the President, which stocks each item touches (Gemma reads it)
+03:00  BRIEF       calendar, news, Wall Street ratings, the President, which stocks each item touches
+04:40  IDEAS       earnings winners + estimates rising, S&P 500 + MidCap 400 (report only, graded)
+05:00  LEADERS     momentum leaders: rising 4, money-flow 4 (report only, graded)
+05:05  HINDSIGHT   Gemma's long-term memory: new memories in, her lessons out (warm-up, retry, unload)
 05:30  ── market opens ──────────────────────────────────────────────────────────────
 05:33  SAFETY PASS every 30 min until 12:03:
          1 protect.py         any position without a live stop gets one back
          2 picks_sync.py      buy names added to picks.txt, sell names removed
          3 manage_positions   60-bar limit, sweep positions only
-05:45  GEMMA       Gemma names up to 5 stocks; the system prices, sizes, stops, sends
+05:45  GEMMA       round 1: shortlist 20 from her pool; round 2: think, then hold up to 5;
+                   the system prices, sizes, stops, sends (a shadow bench runs after, trading nothing)
+06:00  HEALTH      read-only check: a stop on every share, every task's last run, Ollama orphans,
+                   morning log errors, today's lessons/decision/review; a problem pops a notification
 11:40  MOMENTUM    dry run: the rule's monthly top 10, on paper only
 11:45  FLATTEN     sweep positions only, only before a 3+ day closure
 12:00  ── market closes ─────────────────────────────────────────────────────────────
+12:30  REVIEW      Gemma's evening review of her book (verdicts, sell-ifs, watchlist), then her
+                   SAFETY CHECK of your positions (ok / watch / concern; a concern pops a notification)
 13:00  DATA        30-minute bars for 1,500 stocks
-13:30  OUTCOMES    closed trades -> scorecard -> second opinions graded -> competition
-                   snapshot + standings -> selection grades
+13:30  OUTCOMES    closed trades -> scorecard -> competition snapshot + standings -> ghosts ->
+                   selection grades
 13:45  JOURNAL     desk officer: code checks every task ran and every stop is live; Gemma writes it up
 14:00+ RESEARCH    news archive, extended hours, auctions
+14:15  HEALTH      the afternoon health check
 12:35-04:35 EXTENDED  picks sync hourly in after-hours, overnight and premarket (limit orders;
                    the stop is armed by protect.py at the 05:33 open)
-SUN 16:45 GEMMA    her weekend decision, in the overnight session
+MON 04:30 RESEARCH Gemma's list rolled, your Monday research pack (logs/research/)
 FRI 07:00 WEEKLY   the weekly review: every position, both books, the standings, next week's calendar
+SUN 16:00 HINDSIGHT, 16:45 GEMMA   her weekend decision, in the overnight session
 ```
+
+One model on the GPU at a time: Hindsight, Gemma's run, her review and the
+safety check run one after another, each unloading before the next.
 
 Windows Task Scheduler starts each step from a `.bat` file in `scripts/`
 (`register_tasks.ps1` installs them). Every step is a short program: it starts,
@@ -127,7 +141,7 @@ once silently stopped overlapping tasks from running at all (WORKLIST §40).
 2. The next safety pass in market hours sees a listed name nobody holds.
 3. It prices it: limit at the last price + 0.30%, safety stop 2.5 daily ATRs
    below, target a ceiling at 2x entry (a valid bracket, but winners ride).
-4. It sizes it: 1% of the picks + manual share (40%) at risk, no more than
+4. It sizes it: 1% of the picks + manual share (50%) at risk, no more than
    12.5% of that share in one stock.
 5. It checks: market open, account active, daily loss under 3%, kill switch
    off, a slot free (12, shared with manual trades), nobody else holds NVDA.
@@ -139,35 +153,44 @@ An unfilled buy older than 25 minutes is cancelled and re-sent at the new price.
 
 ### What happens in Gemma's book
 
-Each weekday at 05:45 Gemma gets a facts block per name on its menu (core.txt,
-gemma.txt, and the momentum rule's picks marked as such, minus anything
-another book holds): returns, 12-1 momentum, ATR, the S&P trend, earnings and
-headlines -- plus its charter and scoreboard. It answers which names to hold
-(at most 5), each with a reason and an exact quote from its facts. The answer
-format can only name stocks from its menu and has no numbers; a new buy
-without a findable quote is ignored; a bad or missing answer changes nothing;
-it is told churn costs money. Since 2026-10-08 it also chooses, for each new
-buy, its own stop (tight / normal / wide = 1.5 / 2.5 / 3.5 daily ATRs), target
-(none / 2R / 3R / 5R) and size (small / normal / large = 1 / 2 / 3% of its book
-at risk) -- by name only; the system turns the names into prices and sends
-the bracket (60% of the account, its own 5 slots, no stock over a fifth of
-its book). A position it already holds keeps the bracket it was bought with.
-`python scripts/gemma_trade.py` shows its decision without trading.
+Each weekday at 05:45, in two rounds (gemma4:12b on the local GPU, 32k context):
 
-Gemma's list (`watchlists/gemma.txt`) rolls weekly by
-`scripts/screen_gemma_list.py`: names stay while they still qualify, new ones
-join from the same screen (up to two per sector from the 150 most-traded S&P
-500 stocks, by 12-1 momentum), and only lapsed names leave.
+1. **Pool.** Every S&P 500 stock past the scanner's tradeability floor and the
+   $2B cap floor that no other book holds -- about 490, one line each -- and
+   from 2026-11-02 the 120 strongest MidCap 400 names by 12-1 momentum. She
+   thinks first, then shortlists 20 (`advisor/gemma_pool.py`). If this round
+   fails, the hand lists (core.txt, gemma.txt, the momentum rule) stand in.
+2. **Decision.** A full facts block for the shortlist plus her holdings:
+   returns, momentum, ATR, analyst estimate changes, fundamentals, the chart,
+   earnings dates and headlines; the market line and the brief; her charter
+   and scoreboard; her short memory (recent trades and journal) and her
+   Hindsight lessons (dated records, labelled "today's facts win"). She writes
+   her thinking in plain words (capped at 1,500 tokens), then answers.
+
+She holds at most 5 (at least 4 when the S&P 500 is above its 210-day
+average), each with a reason quoting its facts, a sell-if, and a 5-day forecast
+for every stock on her list (graded). For each new buy she names her stop
+(tight / normal / wide = 1.5 / 2.5 / 3.5 daily ATRs), target (none / 2R / 3R /
+5R) and size (small / normal / large = 1 / 2 / 3% of her book at risk) -- names
+only; the system turns them into prices and sends the bracket (50% of the
+account, 5 slots, no stock over a fifth of her book). A bad or missing answer
+changes nothing. `python scripts/gemma_trade.py` shows her decision without trading.
+
+At 12:30 she reviews her book (keep / watch / sell candidate, whether her own
+sell-if was met, a watchlist of next stocks) -- it trades nothing; the 05:45
+run still decides. The dashboard shows the review and takes questions (Ask Gemma).
 
 ### What keeps it safe
 
 | Layer | What it does |
 |---|---|
-| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock (picks), 20% per stock (Gemma); Gemma 60%, picks + manual 40% |
+| Sizing | Shares come from the stop distance: 1% risk, 12.5% per stock (picks), 20% per stock (Gemma); Gemma 50%, picks + manual 50% |
 | Daily loss stop | No new entries after a 3% day |
 | Kill switch | A file that blocks every new entry (`settings.kill_switch_path`) |
 | protect.py | Every 30 min: a position without a live stop gets one; a stop already breached is sold |
 | Ownership | Closers act only on the book they were built for |
+| Health check | 06:00 and 14:15: every share covered by a live stop (held bracket legs count), every enabled task's last result, no orphaned Ollama runners, no errors in the morning logs, today's lessons / decision / review written. Report in `logs/health/`; a problem pops a Windows notification (and ntfy, if `SCANNER_NTFY_TOPIC` is set) |
+| Gemma's safety check | 12:30, after her review: your positions flagged in code (earnings within 7 days, within 1 ATR of the stop, no stop), then her ok / watch / concern from a prompt that leaves out the competition. Advice only |
 | Desk journal | 13:45: code checks that every task ran, nothing logged an error, every stop is live, and no sector is over 50% of the money across books |
 | Records | `logs/trading_audit.jsonl`: every intent, order, refusal and outcome, never edited |
 
@@ -197,8 +220,7 @@ after-hours risk a stop cannot catch.
 ### The daily brief (03:00 AK, read by Gemma at 05:45)
 
 `scripts/week_ahead.py` writes `logs/week_ahead/YYYY-MM-DD.md` (yours) and
-`data/brief/YYYY-MM-DD.json` (Gemma's) every day at 03:00 AK, before
-TradingAgents takes the GPU:
+`data/brief/YYYY-MM-DD.json` (Gemma's) every day at 03:00 AK:
 
 - **Calendar, next 10 sessions:** US market-moving releases (CPI, PPI, Fed
   speakers...), FOMC meetings, the midterms, and earnings for every stock either
@@ -220,8 +242,9 @@ reason to swap. Switch: `gemma_sees_brief`. WORKLIST §52.
 `scripts/second_opinion.py SYMBOL` shows every opinion in a tier:
 
 - **Primary**: the momentum rule.
-- **Advisory, unproven**: TradingAgents (a shadow: rated and graded, never
-  traded, not shown to Gemma at its own request) and Gemma's news read.
+- **Advisory, unproven**: TradingAgents (paused 2026-10-19; its calls on file
+  are still graded; never traded, not shown to Gemma at her request) and
+  Gemma's news read.
   Graduates only at 100 graded calls and t ≥ 2, rules fixed before the first grade.
 - **Advisory, tested, no edge**: RSI, 50/200-day averages, chart patterns, the
   sweep. Shown, labelled, never re-graded.
@@ -236,6 +259,11 @@ python scripts/competition.py standings        # you vs Gemma: months, quarters,
 python scripts/weekly_report.py                # the Friday review, any day
 python scripts/selection_grade.py              # selection skill: Gemma and TradingAgents
 python scripts/gemma_trade.py                  # Gemma's decision today, nothing sent
+python scripts/gemma_review.py                 # her review of her book (trades nothing)
+python scripts/operator_watch.py               # her safety check of YOUR positions (advice only)
+python scripts/health_check.py                 # the health check, any time (read-only)
+python scripts/morning_ideas.py --no-write     # earnings winners + estimates rising, record nothing
+python scripts/morning_leaders.py --no-write   # momentum leaders, record nothing
 python scripts/picks_sync.py                   # what the list sync would do now (preview)
 python scripts/manual_trade.py NVDA --stop 172.50 --target 195           # preview a one-off
 python scripts/manual_trade.py NVDA --stop 172.50 --target 195 --submit  # send it
@@ -252,12 +280,17 @@ python scripts/protect.py                      # which positions lack a stop (re
 | Path | What |
 |---|---|
 | `watchlists/picks.txt` | your list, traded automatically |
-| `watchlists/core.txt` | your wider watch list, on Gemma's menu and rated each morning |
-| `watchlists/gemma.txt` | Gemma's rolling list, refreshed weekly |
+| `watchlists/core.txt` | your wider watch list; Gemma's fallback menu if her pool round fails |
+| `watchlists/gemma.txt` | Gemma's rolling list, refreshed Mondays; also part of her fallback menu |
 | `data/momentum/dry_run_book.json`, `dry_run.jsonl` | the momentum rule's paper record |
 | `data/competition/` | daily book snapshots, ghost and benchmark paper books, selection grades |
 | `logs/competition/standings.md`, `selection.md` | the latest standings and selection grades |
 | `logs/weekly/`, `logs/journal/` | Friday reviews and nightly desk journals |
+| `logs/health/` | the twice-daily health reports |
+| `logs/ideas/`, `logs/leaders/` | the morning report lists; their records and grades in `data/ideas/`, `data/leaders/` |
+| `data/gemma/reviews/`, `data/gemma/operator_watch/` | her evening reviews and her safety checks of your positions |
+| `data/gemma/hindsight/lessons.json` | her Hindsight lessons, rewritten each morning |
+| `data/oneshot/` | one-time tasks (e.g. a timed exit), each with its own log |
 | `logs/trading_audit.jsonl` | every decision and order |
 | `logs/scheduled_<task>.log` | each scheduled task's output |
 | `src/scanner/execution/policy.py` | every rule, hashed into the policy fingerprint |
