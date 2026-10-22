@@ -109,7 +109,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 82 | operator's best RSI levels, WALK-FORWARD: RSI mean reversion (buy under BUY, sell over SELL), grid length {2,3,5,14} x BUY {5,10,15,20,30} x SELL {50,70,90} x {none, close > EMA200} = 120 settings, searched on YEAR 1 only for fast movers and big caps on 15m and 1h; the year-1 best (highest t, >= 100 trades) judged on YEAR 2 only (research_gpu/rsi_search.py) | RULES FIXED in the commit that adds this row, before the first run | 15m/1h 2024-09 -> 2026-09 | **0 of 4 pass.** Year-1 picks: fast 15m RSI(5) buy<20 sell>70 -> year 2 -0.04%, t 1.8; big 15m RSI(14) buy<15 sell>50 -> -0.00%, t 0.9; fast 1h RSI(2) buy<10 sell>50 -> -0.07%, t 1.4; big 1h RSI(5) buy<30 sell>70 -> -0.28%, t -0.7. RSI dip-buys win 55-62% of trades on fast movers but the average trade is about zero after costs vs holding; no setting reached t 2 cleanly in year 1 | **FAIL** all. Pine export of the fast 15m pick for viewing: pine/rsi_reversion_walkforward.pine (not a proven edge) |
 
-**Running total: ~723 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 83 | Alpaca's example scalper (github.com/alpacahq/example-scalping, the operator's nearest 'pro scalper'): 1-min close crosses above the 20-min SMA -> limit buy at last trade (2-min expiry) -> sell limit at entry + $0.01, out at 15:55; A original (no stop), B + 3 x ATR(14) stop; conservative queue fills; big caps and monthly fast movers (research_gpu/scalper_test.py) | RULES FIXED in the commit that adds this row, before the first run | Alpaca SIP 1-min, 2025-10-01 -> last session | pending | PASS (B): mean net > 0, t >= 2 over days, both halves (split 2026-04-15) |
+
+**Running total: ~725 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
