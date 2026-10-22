@@ -119,7 +119,10 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 88 | the operator's footprint chart, ABSORPTION: the 1h sweep (#87) plus an estimated footprint (bulk volume classification from 1-minute candles, Easley et al. 2012): >= 60% selling in the bottom quarter of the sweep hour AND a close in its top half; same exits as #87; vs the plain sweep and FAIR random entries; big and fast (research_gpu/footprint_test.py) | RULES FIXED in the commit that adds this row, before the first run | data/research_1m 2025-10 -> 2026-10 (93 names) | **0 of 2 pass.** Absorption is rare: 85 trades on big caps, 73 on fast movers in a year. Big: ABSORB +0.11% / -0.11% a trade vs plain sweep +0.13% / +0.11% and random -0.23% / +0.36%. Fast: ABSORB +1.04% / +1.62% (t 0.9 / 1.1) vs plain sweep +0.01% / +0.56% and FAIR random +1.76% / +0.69% -- random fast-mover entries earned as much; too few trades to tell absorption from luck | **FAIL** -- the estimated footprint adds nothing measurable |
 
-**Running total: ~807 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 89 | the example scalper on 4-HOUR candles (9:30-13:30, 13:30-16:00): close crosses above the 20-candle SMA; original +1c exit and #84's 12 dollar pairs, 10-candle time stop; pair picked on year 1, judged on year 2; big and fast (research_gpu/four_hour.py) | RULES FIXED in the commit that adds this row, before the first run | 15m store -> 4h, 2024-09 -> 2026-09 | pending | PASS: year 2 mean > 0, t >= 3 |
+| 90 | footprint ABSORPTION (#88) on 4-HOUR candles: sweep + >= 60% estimated selling at the lows + close in the top half; 2R target, 9-candle time stop; vs plain sweep and fair random (research_gpu/four_hour.py) | RULES FIXED in the commit that adds this row, before the first run | data/research_1m -> 4h, 2025-10 -> 2026-10 | pending | PASS: > 0, t >= 3 both halves, above random and sweep (expected too few trades) |
+
+**Running total: ~822 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
