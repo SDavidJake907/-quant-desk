@@ -107,7 +107,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 81 | operator's Pine signals on BIG CAPS: #80 unchanged (11 signals, plain/+ADX, 15m/1h/5m, same fills, stop, Friday flat, costs, excess over drift, PASS) except the universe -- the 20 largest US companies, fixed list, every month (research_gpu/signal_lab.py --bigcap) | RULES FIXED in the commit that adds this row, before the first run | 15m+1h 2024-09 -> 2026-09 (20 names); 5m 2024-10 -> 2026-10 (AAPL, NVDA, V, XOM, HD) | **0 of 66 pass.** Same picture as the fast movers: on the 20 largest companies every trend-flip and volume signal loses to simply holding them (e.g. 15m supertrend -0.12% / -0.10% a trade vs drift, t -5.5 / -6.2; 5m OBV -0.12%, t -11.9 / -20.8). Raw net per trade -0.13% to +0.50%, win 19-58%. Connors RSI, the one bright spot on fast movers (#80), is flat to negative on big caps | **FAIL** all |
 
-**Running total: ~243 trials (#80 and #81 add 66 versions each) + #75's ~70 slices. Passes that survive everything: 0.**
+| 82 | operator's best RSI levels, WALK-FORWARD: RSI mean reversion (buy under BUY, sell over SELL), grid length {2,3,5,14} x BUY {5,10,15,20,30} x SELL {50,70,90} x {none, close > EMA200} = 120 settings, searched on YEAR 1 only for fast movers and big caps on 15m and 1h; the year-1 best (highest t, >= 100 trades) judged on YEAR 2 only (research_gpu/rsi_search.py) | RULES FIXED in the commit that adds this row, before the first run | 15m/1h 2024-09 -> 2026-09 | pending | PASS: the selected setting, year 2 excess > 0, t >= 2 |
+
+**Running total: ~723 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
