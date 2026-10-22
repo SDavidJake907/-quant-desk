@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
 import functools
 import json
 import subprocess
@@ -172,9 +173,13 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
 
 
 async def gemma_peak_sell(client, broker, positions, owner_map, open_orders, lines, dry: bool,
-                          skip: set[str]) -> list[str]:
-    """Show Gemma the six peak checks for each of her positions; sell what she picks AND the code allows."""
-    mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA and p["symbol"] not in skip]
+                          skip: set[str], *, book: str = GEMMA, stops: dict | None = None) -> list[str]:
+    """Show Gemma the six peak checks and the ATR stop for each position of `book` (her own, or the
+    operator's picks -- operator 2026-10-22: "have gemma monitor atr sellig point"); sell what she
+    picks AND the code allows (in profit, >= 4 of 6)."""
+    mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == book and p["symbol"] not in skip]
+    who = "Gemma" if book == GEMMA else "picks"
+    stops = stops or {}
     if not mine:
         return []
     symbols = tuple(p["symbol"] for p in mine)
@@ -196,9 +201,11 @@ async def gemma_peak_sell(client, broker, positions, owner_map, open_orders, lin
             closes[-1] = price
         elif closes:
             closes.append(price)
-        rs.append(ps.readings(s, float(p["unrealized_plpc"]) * 100, five, closes))
+        r = ps.readings(s, float(p["unrealized_plpc"]) * 100, five, closes)
+        atr = average_true_range_pct(daily[s]) if s in daily else None
+        rs.append(dataclasses.replace(r, stop_note=ps.stop_note(price, stops.get(s), atr)))
     for r in rs:
-        log(lines, "  peak-sell " + ps.table(r).replace("\n", "\n  "))
+        log(lines, f"  peak-sell ({who}) " + ps.table(r).replace("\n", "\n  "))
     if not any(r.may_sell() for r in rs):
         log(lines, "  peak-sell: no position eligible -- Gemma not asked")
         return []
@@ -211,11 +218,21 @@ async def gemma_peak_sell(client, broker, positions, owner_map, open_orders, lin
     for a in (answer or {}).get("positions", []):
         log(lines, f"  Gemma peak-sell {a.get('symbol'):<6} {a.get('action'):<5} {str(a.get('why'))[:160]}")
     sold = []
-    for s, why in ps.approved(answer, rs):
+    approved = ps.approved(answer, rs)
+    if dry:
+        for s, why in approved:
+            log(lines, f"  WOULD SELL {who} {s}: peak-sell: {why}")
+        return []
+    if book == PICKS:
+        if approved:
+            gone = remove_picks([s for s, _ in approved], "peak-sell: in profit, >= 4 of 6 peak checks, Gemma said sell")
+            subprocess.run([sys.executable, "scripts/picks_sync.py", "--submit"], check=False)
+            for s, why in approved:
+                log(lines, f"  SOLD picks {s}: peak-sell: {why}")
+            sold.extend(gone)
+        return sold
+    for s, why in approved:
         reason = f"peak-sell: {why}"
-        if dry:
-            log(lines, f"  WOULD SELL Gemma {s}: {reason}")
-            continue
         ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA, reason=reason, policy=gtr.POLICY, client=client)
         log(lines, f"  {'SOLD' if ok else 'SELL FAILED'} Gemma {s}: {reason}")
         if ok:
@@ -296,9 +313,14 @@ async def main(dry: bool) -> int:
                 alerts.append(f"Gemma sold {', '.join(sold)} (her sell-if was met)")
         if books["gemma"] and hourly:
             taken = await gemma_peak_sell(client, broker, positions, owner_map, open_orders, lines, dry,
-                                          skip=set(sold))
+                                          skip=set(sold), stops=stops)
             if taken:
                 alerts.append(f"Gemma took profit on {', '.join(taken)} (peak-sell checks)")
+        if books["picks"] and hourly:
+            taken = await gemma_peak_sell(client, broker, positions, owner_map, open_orders, lines, dry,
+                                          skip={s for s, _ in to_sell}, book=PICKS, stops=stops)
+            if taken:
+                alerts.append(f"Took profit on your picks {', '.join(taken)} (peak-sell checks, Gemma said sell)")
         for a in [x for x in books["other"]]:
             log(lines, f"  note: {a.symbol} is held outside both books (hand trade) -- alerts only")
         if alerts and not dry:

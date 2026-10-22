@@ -41,6 +41,7 @@ class Readings:
     symbol: str
     pl_pct: float                   # unrealized P/L on the position, %
     values: Mapping[str, float | None]
+    stop_note: str = ""             # the ATR stop: where it is and how far away, for Gemma to see
 
     def met(self) -> dict[str, bool | None]:
         """None = the reading is missing (counts as not met)."""
@@ -125,8 +126,10 @@ def table(r: Readings) -> str:
     met = r.met()
     rows = [f"  - {CHECKS[k][0]}: now {_fmt(k, r.values.get(k))} -> "
             f"{'MET' if m else 'missing' if m is None else 'not met'}" for k, m in met.items()]
-    return "\n".join((f"[{r.symbol}] P/L {r.pl_pct:+.2f}% | {r.score()} of {len(CHECKS)} checks met"
-                      f" | {'ELIGIBLE to sell' if r.may_sell() else 'not eligible'}", *rows))
+    head = (f"[{r.symbol}] P/L {r.pl_pct:+.2f}% | {r.score()} of {len(CHECKS)} checks met"
+            f" | {'ELIGIBLE to sell' if r.may_sell() else 'not eligible'}")
+    stop = (f"  - ATR stop: {r.stop_note}",) if r.stop_note else ()
+    return "\n".join((head, *rows, *stop))
 
 
 def plan_text() -> str:
@@ -170,3 +173,12 @@ def approved(answer: Mapping | None, rs: Sequence[Readings]) -> list[tuple[str, 
         if p.get("action") == "sell" and s in eligible:
             out.append((s, str(p.get("why", ""))[:200]))
     return out
+
+
+def stop_note(price: float, stop: float | None, atr_pct: float | None) -> str:
+    """'stop $12.42, 16.5% below = 2.5 ATR away' -- the protective sell already at the broker."""
+    if not stop or not price:
+        return "no live stop found"
+    gap = (price / stop - 1) * 100
+    atrs = f" = {gap / atr_pct:.1f} ATR away" if atr_pct else ""
+    return f"${stop:.2f}, {gap:.1f}% below the price{atrs} (sells automatically if hit)"

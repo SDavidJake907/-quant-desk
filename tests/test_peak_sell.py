@@ -70,3 +70,14 @@ def test_readings_computes_every_check_with_enough_data():
 def test_prompt_contains_plan_and_readings():
     text = ps.prompt([ps.Readings("A", 1.5, HOT)], market="up")
     assert "[A]" in text and "6 of 6" in text and "ELIGIBLE" in text and "PLAN" in text
+
+
+def test_stop_note_shows_distance_in_atr():
+    note = ps.stop_note(100.0, 90.0, 4.0)
+    assert "$90.00" in note and "11.1%" in note and "2.8 ATR" in note
+    assert ps.stop_note(100.0, None, 4.0) == "no live stop found"
+
+
+def test_table_shows_the_atr_stop():
+    r = ps.Readings("A", 1.0, HOT, stop_note="$90.00, 11.1% below")
+    assert "ATR stop: $90.00" in ps.table(r)
