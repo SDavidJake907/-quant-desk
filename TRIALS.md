@@ -99,7 +99,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 27 | post-earnings drift (PEAD): BEAT (surprise >= +5% and announcement return > 0) held 60 days from the close of day +2, vs ALL events (scripts/pead_test.py) | RULES FIXED 2026-10-05 before any earnings data was seen; run 2026-10-21 | Nasdaq earnings 2010-2026, point-in-time S&P 500 + MidCap 400; 38,305 events priced | BEAT -ALL +0.23pp per entry month, NW t 1.33 (198 months); halves +0.31 / +0.15pp; BEAT +0.02% abnormal (2010-17 +0.88%, 2018-26 -0.30%). Quintiles Q5-Q1 +0.43pp, t 1.18, not monotonic | **FAIL** test 1 (t < 2). Drift too small to trade at ~110 trials; the 2018-26 half is negative for BEAT. The morning ideas 'earnings winners' list stays report-only |
 
-**Running total: ~108 trials + #75's ~70 slices. Passes that survive everything: 0.**
+| 78 | operator's sister stocks (lead-lag): a leader's +3% day vs the S&P -> its 3-5 smaller sisters (suppliers, customers, peers; 9 leaders, list in the script) open t+1 to close t+5 vs the S&P, minus each sister's own average (research_gpu/sister_stocks.py) | RULES FIXED in the commit that adds this row, before the first run | Yahoo daily, 10y | pending | pending |
+
+**Running total: ~110 trials + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
