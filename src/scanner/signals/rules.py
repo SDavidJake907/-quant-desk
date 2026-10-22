@@ -104,7 +104,7 @@ class Trade(Frozen):
 def simulate(symbol: str, times: Sequence[datetime], o, h, lo, c, state: Sequence[int], *,
              entry_ok: Sequence[bool] | None = None, may_enter: Sequence[bool] | None = None,
              atr_series=None, stop_atr: float = STOP_ATR, cost: float = COST,
-             close_open: bool = True) -> list[Trade]:
+             close_open: bool = True, friday_flat: bool = True) -> list[Trade]:
     """Trades from a state series. `may_enter[i]` gates entries (e.g. the name
     is in the fast universe that month); `entry_ok[i]` is the ADX filter. A
     position still open at the last bar is closed there when `close_open`."""
@@ -125,7 +125,7 @@ def simulate(symbol: str, times: Sequence[datetime], o, h, lo, c, state: Sequenc
             if lo[j] <= stop:
                 exit_px, reason = min(o[j], stop), "stop"
                 break
-            last_fri = times[j].weekday() == 4 and (j + 1 >= n or times[j + 1].date() != times[j].date())
+            last_fri = friday_flat and times[j].weekday() == 4 and (j + 1 >= n or times[j + 1].date() != times[j].date())
             if last_fri:
                 exit_px, reason = c[j], "friday close"
                 break

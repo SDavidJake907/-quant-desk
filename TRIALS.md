@@ -128,7 +128,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 **SCORING CORRECTION, 2026-10-22 (operator: "Are you sure?? it seem like you mistaking somewhere").** Engine sanity checks passed: a signal that knows the next candle makes +1.76% a trade (t 18); a random signal loses about the costs (-0.13% vs drift). But #80, #81, #82, #87, #88 and #91 computed t over each day's MEAN trade, which can disagree with the money (the SUM of trades) when a few days hold big winners -- #80 1h STC fast: +0.18% a trade, yet t -5.6. The scalper tests (#83, #84, #92) already used daily sums. Re-scored post hoc with t over daily P&L totals (research_gpu/rescore_daily_pnl.py, logs/rescore_daily_pnl_2026-10-22.log): 527 versions, 178 change the sign of t, 13 are positive a trade in both halves -- and none reaches t 2 in both halves on daily totals (best: #87 1h fast sweep +0.86% / +0.38%, t 0.7 / 1.2; #91 1h fast TTM Squeeze +0.34% / +1.66%, t 0.2 / 1.4). The correction changes no verdict; the right statistic is noisier, not kinder. From here every test scores daily P&L totals.
 
-**Running total: ~855 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 93 | Connors' RSI(2) pullback on DAILY candles (queued since 10-05): buy next open when close > SMA200 and RSI(2) < 10, sell next open when close > SMA5; 3 ATR stop; CLASSIC (holds weekends) and DESK (flat Friday); ALL / BIG / FAST; excess over drift, t over DAILY P&L TOTALS; cheat and random checks (research_gpu/rsi2_daily.py) | RULES FIXED in the commit that adds this row, before the first run | Yahoo daily 10y, S&P 500 | pending | PASS: excess > 0, t >= 3, both halves (2016-20 / 2021-26) |
+
+**Running total: ~861 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 

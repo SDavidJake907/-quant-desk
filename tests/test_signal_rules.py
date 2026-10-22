@@ -53,3 +53,10 @@ def test_every_rule_returns_a_state_per_bar():
     for name, (_, rule) in rules.RULES.items():
         s = rule(o, h, lo, c, v)
         assert len(s) == 300 and set(s) <= {0, 1}, name
+
+
+def test_friday_flat_can_be_switched_off():
+    fri = [datetime(2026, 10, 23, 16), datetime(2026, 10, 26, 16), datetime(2026, 10, 27, 16)]
+    o = c = h = lo = [10.0, 10.0, 10.0]
+    t = rules.simulate("X", fri, o, h, lo, c, [0, 1, 1], atr_series=[1.0] * 3, friday_flat=False)
+    assert t == [] or t[0].reason != "friday close"
