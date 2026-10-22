@@ -28,6 +28,12 @@
 # 2026-10-22 10:40 AK: operator 'find the best 4, buy them, Gemma monitors the ATR selling point'.
 # From the day's top-gainers list, only 3 of 18 passed: price >= $5, liquid, above the 50d and 200d.
 # EGBN removed 2026-10-22 10:46 AK by the market monitor (peak-sell: in profit, >= 4 of 6 peak checks, Gemma said sell)
+# 2026-10-22 12:50 AK (operator: "look for mid cap and smaller stocks" -> "lets buy all those, have Gemma monitor them"):
+# S&P 400/600 by 12-1 momentum (WORKLIST §31 rule), above the 50d and 200d, no earnings in the next 30 days.
+# OKTA + ANF mid caps, RNG small cap. Section 1 sizing (1% risk, 2.5 ATR stop).
+OKTA
+ANF
+RNG
 # [fast]
 # 2026-10-21 20:50 AK: Section 2 test (operator: "test one tomorrow, buy one, see how it moves until friday").
 # Bought at the first pass Thu 10-22; sold Fri 10-23 10:30-11:00 AK near the high (data/oneshot/fast_exit_1023.py).
