@@ -1,0 +1,31 @@
+//@version=5
+// RSI dip-buy, the year-1 pick of TRIALS #82 (fast movers, 15m): RSI(5), buy under 20, sell over 70.
+// NOT A PROVEN EDGE: on year 2, which the search never saw, it averaged -0.04% a trade vs simply
+// holding (t 1.8, wins 55%). Exported so the operator can watch it on TradingView charts.
+// Same rules as the Python test: long only, next-bar fills, 3 x ATR(22) stop, flat at Friday's close,
+// 0.05% commission a side. Optional trend filter: only buy above the 200-bar EMA.
+strategy("RSI dip-buy (TRIALS #82 pick)", overlay = true, initial_capital = 1000,
+     default_qty_type = strategy.cash, default_qty_value = 1000,
+     commission_type = strategy.commission.percent, commission_value = 0.05,
+     process_orders_on_close = false)
+
+rsiLen   = input.int(5, "RSI length", minval = 2)
+buyBelow = input.int(20, "Buy when RSI closes below")
+sellAbove = input.int(70, "Sell when RSI closes above")
+useTrend = input.bool(false, "Only buy above EMA(200)")
+stopAtr  = input.float(3.0, "Stop, x ATR(22)")
+
+r     = ta.rsi(close, rsiLen)
+atr22 = ta.atr(22)
+trendOk = not useTrend or close > ta.ema(close, 200)
+
+lastBarFriday = dayofweek == dayofweek.friday and hour >= 15 and minute >= 45
+
+if strategy.position_size == 0 and r < buyBelow and trendOk and not lastBarFriday
+    strategy.entry("dip", strategy.long)
+    strategy.exit("stop", "dip", stop = close - stopAtr * atr22)
+if strategy.position_size > 0 and (r > sellAbove or lastBarFriday)
+    strategy.close("dip")
+
+plot(useTrend ? ta.ema(close, 200) : na, "EMA 200", color = color.orange)
+plotshape(r < buyBelow and strategy.position_size == 0, "RSI low", shape.triangleup, location.belowbar, color.green, size = size.tiny)
