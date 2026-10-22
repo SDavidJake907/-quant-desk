@@ -162,7 +162,16 @@ async def sell(broker, symbol: str, open_orders, *, strategy: str, reason: str,
     """Cancel the symbol's working orders (its bracket legs), then close the
     position once the shares are released. Logged either way. Outside regular
     hours the close is a limit order a little under the live price (market
-    orders are not accepted then)."""
+    orders are not accepted then). Outside regular hours the price is checked
+    BEFORE the stop is cancelled: with no fresh price the sale cannot be sent,
+    and the position keeps its stop (2026-10-22 -- it used to be left naked)."""
+    live = None
+    if session != REGULAR:
+        live = await extended.price(symbol, client, session) if client is not None else None
+        if live is None:
+            log(f"{strategy}_exit", symbol, f"{reason}; {session} CLOSE FAILED: no fresh price "
+                "(stop kept)", policy)
+            return False
     for order in open_orders:
         if order.get("symbol") == symbol:
             try:
@@ -171,7 +180,7 @@ async def sell(broker, symbol: str, open_orders, *, strategy: str, reason: str,
                 pass
     if session != REGULAR:
         return await _sell_extended(broker, symbol, strategy=strategy, reason=reason,
-                                    policy=policy, session=session, client=client)
+                                    policy=policy, session=session, live=live)
     failed = await close_when_released(broker, (symbol,))
     ok = symbol not in failed
     log(f"{strategy}_exit", symbol,
@@ -181,8 +190,7 @@ async def sell(broker, symbol: str, open_orders, *, strategy: str, reason: str,
 
 
 async def _sell_extended(broker, symbol: str, *, strategy: str, reason: str,
-                         policy: TradingPolicy, session: str, client) -> bool:
-    live = await extended.price(symbol, client, session) if client is not None else None
+                         policy: TradingPolicy, session: str, live: float) -> bool:
     qty = 0
     for _ in range(10):                              # wait for cancelled legs to release
         held = {p["symbol"]: p for p in await broker._get("/v2/positions")}

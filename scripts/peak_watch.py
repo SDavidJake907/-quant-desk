@@ -37,7 +37,7 @@ import gemma_review as grv  # scripts/ is on the path when this script runs
 import gemma_trade as gtr
 
 from scanner.config import settings
-from scanner.execution import bookorders, ownership, profit_lock, sessions
+from scanner.execution import bookorders, ownership, profit_lock, sell_queue, sessions
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.ownership import GEMMA, PICKS
 from scanner.features.bars import fetch_many
@@ -49,6 +49,7 @@ from scanner.signals.candles24 import yahoo_5m
 
 MARKS = Path("data/monitor/peak_marks.json")
 LOCKS = Path("data/monitor/profit_lock.json")
+SELL_QUEUE = Path(sell_queue.PATH)
 OUT = Path("logs/peak_watch")
 
 
@@ -114,6 +115,29 @@ def load_locks() -> dict:
         return json.loads(LOCKS.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+
+
+async def queue_pass(broker, client, positions, book_of, open_orders, session: str,
+                     dry: bool, log) -> list[str]:
+    """The operator's queued sells (execution/sell_queue.py): retried each pass until sold."""
+    try:
+        queue = json.loads(SELL_QUEUE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    held = {p["symbol"] for p in positions}
+    alerts: list[str] = []
+    for s in sell_queue.due(queue, held=held, open_orders=open_orders):
+        if dry:
+            log(f"  WOULD SELL (queued) {book_of[s]} {s}: {queue[s]}")
+            continue
+        ok = await sell_position(broker, client, s, book_of[s], queue[s], open_orders, session)
+        log(f"  {'SELL SENT' if ok else 'SELL WAITING'} (queued) {book_of[s]} {s}: {queue[s]}"
+            + ("" if ok else " -- no fresh price yet, stop kept; retried in 5 min"))
+        if ok:
+            alerts.append(f"Sell sent for {s} ({book_of[s]}): {queue[s]}")
+    if not dry:
+        SELL_QUEUE.write_text(json.dumps(sell_queue.prune(queue, held=held), indent=1), encoding="utf-8")
+    return alerts
 
 
 async def lock_pass(broker, client, positions, book_of, orders, open_orders, session: str,
@@ -211,6 +235,7 @@ async def main(dry: bool) -> int:
                 alerts.append(f"Sold {s} ({book_of[s]}) -- took profit, trend turned after READY")
                 marks.pop(s, None)
         gone = set(sell) if not dry else set()
+        alerts += await queue_pass(broker, client, positions, book_of, open_orders, session, dry, log)
         alerts += await lock_pass(broker, client, [p for p in watched if p["symbol"] not in gone],
                                   book_of, orders, open_orders, session, dry, log)
         if alerts and not dry:
