@@ -199,13 +199,11 @@ def nrtr(c, pct: float = 2.0) -> list[int]:
     dirs = []
     for x in c:
         if trend >= 0:
-            if x > hp:
-                hp = x
+            hp = max(hp, x)
             if x <= hp * (1 - k):
                 trend, lp = -1, x
         else:
-            if x < lp:
-                lp = x
+            lp = min(lp, x)
             if x > lp * (1 + k):
                 trend, hp = 1, x
         dirs.append(1 if trend >= 0 else -1)
