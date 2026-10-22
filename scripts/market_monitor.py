@@ -128,7 +128,8 @@ def run_safety_check() -> dict[str, str]:
     return {r["symbol"]: r["reason"] for r in saved.get("positions", []) if r.get("verdict") == "concern"}
 
 
-async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry: bool) -> list[str]:
+async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry: bool,
+                         alerts: list[str]) -> list[str]:
     mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA]
     if not mine:
         log(lines, "  Gemma holds nothing")
@@ -140,7 +141,7 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
     for p in mine:
         _, day = await quote(client, p["symbol"])
         rows.append((p["symbol"], sell_ifs.get(p["symbol"], ""), float(p["unrealized_plpc"]) * 100, day))
-    text = mm.sell_if_prompt(facts, rows, market=trend)
+    text = mm.sell_if_prompt(facts, rows, market=trend, alerts=alerts)
     try:
         answer, _ = await gtr.think_then_answer(text, mm.sell_if_schema(symbols), client)
     except LLMError as exc:
@@ -221,9 +222,18 @@ async def main(dry: bool) -> int:
                 gone = remove_picks([s for s, _ in to_sell], to_sell[0][1])
                 subprocess.run([sys.executable, "scripts/picks_sync.py", "--submit"], check=False)
                 alerts.append(f"Sold your picks {', '.join(gone)}: {to_sell[0][1]}")
-        # Gemma's own book: her sell-ifs, once an hour.
-        if hourly:
-            sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry)
+        # Gemma's own book: her sell-ifs once an hour, AND whenever a NEW alarm touches her book
+        # (operator 2026-10-22: "lets have the alert go to Gemma") -- each alarm wakes her once a day.
+        hers = [mm.position_alarm(h) for h in books["gemma"]]
+        gemma_alerts = ([f"market: {reason}"] if reason else []) + [a for a in hers if a]
+        told = set(state.get("told_gemma", []))
+        new = [a.split(" ")[0] if not a.startswith("market") else "market" for a in gemma_alerts]
+        fresh = [k for k in new if k not in told]
+        if books["gemma"] and (hourly or fresh):
+            if fresh and not hourly:
+                log(lines, f"  waking Gemma for new alarms: {', '.join(fresh)}")
+            sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, gemma_alerts)
+            state["told_gemma"] = sorted(told | set(new))
             if sold:
                 alerts.append(f"Gemma sold {', '.join(sold)} (her sell-if was met)")
         for a in [x for x in books["other"]]:

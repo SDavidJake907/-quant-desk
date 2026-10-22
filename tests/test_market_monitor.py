@@ -46,3 +46,10 @@ def test_sell_if_needs_yes_her_own_sell_if_and_a_real_quote_for_each_part():
     assert mm.sell_if_sells(invented, sell_ifs, facts) == []
     assert mm.sell_if_sells(None, {}, {}) == []
     assert mm.parts_needed("below 50d on high volume") == 2 and mm.parts_needed("a or b and c") == 1
+
+
+def test_alerts_reach_gemmas_prompt():
+    rows = [("MU", "below its 50-day average on high volume", -1.0, -5.9)]
+    with_alert = mm.sell_if_prompt({"MU": "facts"}, rows, market="weak", alerts=["QQQ -2.65% today", "MU -5.9% today"])
+    assert "ALERTS from the desk monitor" in with_alert and "MU -5.9% today" in with_alert
+    assert "ALERTS" not in mm.sell_if_prompt({"MU": "facts"}, rows, market="weak")
