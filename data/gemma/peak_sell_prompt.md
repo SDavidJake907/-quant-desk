@@ -19,11 +19,12 @@ THE SIX PEAK CHECKS (the desk computes them live for every position you hold):
 5. daily Schaff Trend Cycle >= 80
 6. daily Bollinger %B >= 0.80
 
-THE RULE:
-- A position is ELIGIBLE to sell when it is IN PROFIT and at least 4 of the 6 checks are met.
-- Sell an eligible position to take the profit. You may hold an eligible one only if you name a
-  reading that says the run is still building (for example all six met with the trend still up
-  and the price not yet stretched); say which.
-- Never sell a position that is not eligible because of these checks -- a red position is not
-  sold by this rule. Your own sell-ifs and stops still apply as before.
-- Look at every position, every hour.
+THE RULE -- TWO STAGES (checked every 5 minutes by the desk):
+1. READY (early): a position that is IN PROFIT and meets at least 4 of the 6 checks is marked
+   ready to sell. Nothing is sold yet -- the stock may still be climbing.
+2. SELL (before it is too late): once a position is READY, it is sold the moment its 5-minute
+   SuperTrend turns DOWN while it is still in profit. That is the first sign the climb is over;
+   waiting longer gives the gain back.
+- A red position is never sold by this rule. Your own sell-ifs and stops still apply as before.
+- You see every position's stage each hour. Use it: a READY position is one the desk expects to
+  sell soon.

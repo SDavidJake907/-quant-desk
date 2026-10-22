@@ -81,3 +81,34 @@ def test_stop_note_shows_distance_in_atr():
 def test_table_shows_the_atr_stop():
     r = ps.Readings("A", 1.0, HOT, stop_note="$90.00, 11.1% below")
     assert "ATR stop: $90.00" in ps.table(r)
+
+
+def test_ready_then_sell_on_trend_turn():
+    hot = ps.Readings("A", 2.0, HOT)
+    marks, ready, sell = ps.update_marks({}, [hot], now="t1", prices={"A": 10.0})
+    assert ready == ["A"] and sell == [] and marks["A"]["ready_price"] == 10.0
+    # still climbing: no sale
+    _, ready, sell = ps.update_marks(marks, [hot], now="t2", prices={})
+    assert ready == [] and sell == []
+    # the 5-minute trend turns down while in profit: sell
+    turned = ps.Readings("A", 1.5, dict(HOT, trend_5m=0.0, stc_1h=10))
+    _, _, sell = ps.update_marks(marks, [turned], now="t3", prices={})
+    assert sell == ["A"]
+
+
+def test_no_sell_when_red_or_not_marked():
+    down = dict(HOT, trend_5m=0.0)
+    assert not ps.should_sell(ps.Readings("A", -0.5, down), True)
+    assert not ps.should_sell(ps.Readings("A", 2.0, down), False)
+    assert not ps.should_sell(ps.Readings("A", 2.0, dict(HOT, trend_5m=None)), True)
+
+
+def test_marks_dropped_when_position_gone():
+    marks, _, _ = ps.update_marks({"OLD": {"ready_at": "x"}}, [ps.Readings("A", 1.0, HOT)], now="t", prices={})
+    assert "OLD" not in marks
+
+
+def test_status_text_shows_stage():
+    rs = [ps.Readings("A", 1.0, HOT), ps.Readings("B", -1.0, HOT)]
+    text = ps.status_text(rs, {"A": {"ready_at": "10-22 14:00 ET", "ready_price": 10.0}})
+    assert "A:" in text and "READY since 10-22 14:00 ET at $10.00" in text and "B:" in text and "not ready" in text

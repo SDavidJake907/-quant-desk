@@ -11,9 +11,9 @@ Every pass in regular hours (task stock-scanner-monitor, :15 and :45 past the ho
      check now and sell any picks position she calls a "concern"
   4  Gemma's book, hourly (the :45 pass): she re-reads her own sell-ifs against live
      facts; a met sell-if with a quote found in the facts is sold
-  5  Gemma's book, hourly: the PEAK-SELL readings (scanner/ops/peak_sell.py, operator
-     2026-10-22) -- six indicator checks per position; she may sell one that is in profit
-     and meets at least 4
+  5  hourly: the PEAK-SELL readings and stage of every position (scanner/ops/peak_sell.py,
+     operator 2026-10-22), shown to Gemma in her sell-if check -- information only; the
+     5-minute peak watch (scripts/peak_watch.py) marks READY and does the selling
 Picks sells go through picks.txt + picks_sync (the list stays the record); Gemma's
 through bookorders.sell. Everything is logged (logs/monitor/DATE.md, the audit log)
 and alerted (Windows toast; phone when SCANNER_NTFY_TOPIC is set).
@@ -23,12 +23,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import dataclasses
 import functools
 import json
 import subprocess
 import sys
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from pathlib import Path
 
 import httpx
@@ -52,7 +51,6 @@ from scanner.llm.ollama import LLMError
 from scanner.ops import market_monitor as mm
 from scanner.ops import notify
 from scanner.ops import peak_sell as ps
-from scanner.signals.candles24 import yahoo_5m
 
 STATE = Path("data/monitor/state.json")
 OUT = Path("logs/monitor")
@@ -135,7 +133,7 @@ def run_safety_check() -> dict[str, str]:
 
 
 async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry: bool,
-                         alerts: list[str]) -> list[str]:
+                         alerts: list[str], peak: str = "") -> list[str]:
     mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA]
     if not mine:
         log(lines, "  Gemma holds nothing")
@@ -147,7 +145,7 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
     for p in mine:
         _, day = await quote(client, p["symbol"])
         rows.append((p["symbol"], sell_ifs.get(p["symbol"], ""), float(p["unrealized_plpc"]) * 100, day))
-    text = mm.sell_if_prompt(facts, rows, market=trend, alerts=alerts)
+    text = mm.sell_if_prompt(facts, rows, market=trend, alerts=alerts, peak=peak)
     try:
         answer, _ = await gtr.think_then_answer(text, mm.sell_if_schema(symbols), client)
     except LLMError as exc:
@@ -172,72 +170,19 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
     return sold
 
 
-async def gemma_peak_sell(client, broker, positions, owner_map, open_orders, lines, dry: bool,
-                          skip: set[str], *, book: str = GEMMA, stops: dict | None = None) -> list[str]:
-    """Show Gemma the six peak checks and the ATR stop for each position of `book` (her own, or the
-    operator's picks -- operator 2026-10-22: "have gemma monitor atr sellig point"); sell what she
-    picks AND the code allows (in profit, >= 4 of 6)."""
-    mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == book and p["symbol"] not in skip]
-    who = "Gemma" if book == GEMMA else "picks"
-    stops = stops or {}
+async def peak_status(client, positions, owner_map, stops, lines, book: str) -> str:
+    """Hourly: log every position's peak readings and stage (READY marks come from the 5-minute
+    peak watch, scripts/peak_watch.py, which also does the selling). Returns the text Gemma is shown."""
+    import peak_watch
+    mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == book]
     if not mine:
-        return []
-    symbols = tuple(p["symbol"] for p in mine)
-    daily, _ = await fetch_many(symbols, client, range_="1y")
-    now = datetime.now(EXCHANGE_TZ).replace(tzinfo=None)
-    rs = []
-    for p in mine:
-        s = p["symbol"]
-        try:
-            raw = await yahoo_5m(s, client, range_="1mo")
-        except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
-            log(lines, f"  peak-sell: no 5m candles for {s} ({exc})")
-            raw = []
-        five = [(t.astimezone(EXCHANGE_TZ).replace(tzinfo=None), *rest) for t, *rest in raw]
-        five = [x for x in ps.session(five) if x[0] <= now.replace(second=0, microsecond=0) - timedelta(minutes=5)]
-        closes = list(daily[s].closes) if s in daily else []
-        price = float(p["current_price"])
-        if closes and daily[s].dates[-1] == now.date():
-            closes[-1] = price
-        elif closes:
-            closes.append(price)
-        r = ps.readings(s, float(p["unrealized_plpc"]) * 100, five, closes)
-        atr = average_true_range_pct(daily[s]) if s in daily else None
-        rs.append(dataclasses.replace(r, stop_note=ps.stop_note(price, stops.get(s), atr)))
+        return ""
+    rs = await peak_watch.readings_for(client, mine, stops, lambda s: log(lines, s))
+    marks = peak_watch.load_marks()
+    who = "Gemma" if book == GEMMA else "picks"
     for r in rs:
-        log(lines, f"  peak-sell ({who}) " + ps.table(r).replace("\n", "\n  "))
-    if not any(r.may_sell() for r in rs):
-        log(lines, "  peak-sell: no position eligible -- Gemma not asked")
-        return []
-    _, trend, _ = await gtr.facts_for(list(symbols), client)
-    try:
-        answer, _ = await gtr.think_then_answer(ps.prompt(rs, market=trend), ps.schema(list(symbols)), client)
-    except LLMError as exc:
-        log(lines, f"  Gemma unavailable for peak-sell ({exc}) -- nothing sold")
-        return []
-    for a in (answer or {}).get("positions", []):
-        log(lines, f"  Gemma peak-sell {a.get('symbol'):<6} {a.get('action'):<5} {str(a.get('why'))[:160]}")
-    sold = []
-    approved = ps.approved(answer, rs)
-    if dry:
-        for s, why in approved:
-            log(lines, f"  WOULD SELL {who} {s}: peak-sell: {why}")
-        return []
-    if book == PICKS:
-        if approved:
-            gone = remove_picks([s for s, _ in approved], "peak-sell: in profit, >= 4 of 6 peak checks, Gemma said sell")
-            subprocess.run([sys.executable, "scripts/picks_sync.py", "--submit"], check=False)
-            for s, why in approved:
-                log(lines, f"  SOLD picks {s}: peak-sell: {why}")
-            sold.extend(gone)
-        return sold
-    for s, why in approved:
-        reason = f"peak-sell: {why}"
-        ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA, reason=reason, policy=gtr.POLICY, client=client)
-        log(lines, f"  {'SOLD' if ok else 'SELL FAILED'} Gemma {s}: {reason}")
-        if ok:
-            sold.append(s)
-    return sold
+        log(lines, f"  peak ({who}) " + ps.table(r).replace("\n", "\n  "))
+    return ps.status_text(rs, marks)
 
 
 async def main(dry: bool) -> int:
@@ -307,20 +252,13 @@ async def main(dry: bool) -> int:
         if books["gemma"] and (hourly or fresh):
             if fresh and not hourly:
                 log(lines, f"  waking Gemma for new alarms: {', '.join(fresh)}")
-            sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, gemma_alerts)
+            peak = await peak_status(client, positions, owner_map, stops, lines, GEMMA) if books["gemma"] and hourly else ""
+            sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, gemma_alerts, peak)
             state["told_gemma"] = sorted(told | set(new))
             if sold:
                 alerts.append(f"Gemma sold {', '.join(sold)} (her sell-if was met)")
-        if books["gemma"] and hourly:
-            taken = await gemma_peak_sell(client, broker, positions, owner_map, open_orders, lines, dry,
-                                          skip=set(sold), stops=stops)
-            if taken:
-                alerts.append(f"Gemma took profit on {', '.join(taken)} (peak-sell checks)")
         if books["picks"] and hourly:
-            taken = await gemma_peak_sell(client, broker, positions, owner_map, open_orders, lines, dry,
-                                          skip={s for s, _ in to_sell}, book=PICKS, stops=stops)
-            if taken:
-                alerts.append(f"Took profit on your picks {', '.join(taken)} (peak-sell checks, Gemma said sell)")
+            await peak_status(client, positions, owner_map, stops, lines, PICKS)
         for a in [x for x in books["other"]]:
             log(lines, f"  note: {a.symbol} is held outside both books (hand trade) -- alerts only")
         if alerts and not dry:

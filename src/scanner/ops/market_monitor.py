@@ -68,7 +68,7 @@ def picks_to_sell(holdings: Sequence[Holding], *, alarm_started: datetime | None
 
 
 def sell_if_prompt(facts: Mapping[str, str], rows: Iterable[tuple[str, str, float, float | None]],
-                   *, market: str, alerts: Sequence[str] = ()) -> str:
+                   *, market: str, alerts: Sequence[str] = (), peak: str = "") -> str:
     """rows: (symbol, her sell-if, P/L %, today %). `alerts`: the monitor's alarms that
     woke her (operator 2026-10-22: "lets have the alert go to Gemma")."""
     rows = list(rows)
@@ -85,6 +85,9 @@ def sell_if_prompt(facts: Mapping[str, str], rows: Iterable[tuple[str, str, floa
            "An alert is a reason to look closely, not a reason to sell by itself.", "") if alerts else ()),
         "Your holdings:",
         *lines,
+        *(("", "PEAK-SELL status (the desk's take-profit rule, run every 5 minutes -- information for you;",
+           "it sells a READY position on its own when the 5-minute trend turns down while in profit):", peak)
+          if peak else ()),
         "",
         "Facts per stock:",
         *(f"[{s}]\n{facts[s]}\n" for s, *_ in rows if s in facts),

@@ -182,3 +182,48 @@ def stop_note(price: float, stop: float | None, atr_pct: float | None) -> str:
     gap = (price / stop - 1) * 100
     atrs = f" = {gap / atr_pct:.1f} ATR away" if atr_pct else ""
     return f"${stop:.2f}, {gap:.1f}% below the price{atrs} (sells automatically if hit)"
+
+
+# --- Two stages (operator 2026-10-22: "the frist one should be mark ready to sell, and befor it to late
+# sell it"; chose a 5-minute check that sells automatically) -----------------------------------------
+# READY: in profit and >= MIN_MET of the six checks -> the position is marked (kept until it is sold
+#        or no longer held).
+# SELL:  a marked position whose 5-minute SuperTrend has turned DOWN while it is still in profit.
+#        On the 10-21 replay this exit kept DDOG to 14:45 at 274.70 (high 277.26) where the faster
+#        signals (score < 4, 1h Connors < 63) sold at 10:30, three hours before the top.
+
+
+def becomes_ready(r: Readings) -> bool:
+    return r.may_sell()
+
+
+def should_sell(r: Readings, marked: bool) -> bool:
+    return marked and r.pl_pct > 0 and r.values.get("trend_5m") == 0.0
+
+
+def update_marks(marks: Mapping[str, Mapping], rs: Sequence[Readings], *, now: str,
+                 prices: Mapping[str, float]) -> tuple[dict[str, dict], list[str], list[str]]:
+    """-> (new marks, newly READY, to SELL). Marks of positions no longer held are dropped."""
+    held = {r.symbol for r in rs}
+    out = {s: dict(m) for s, m in marks.items() if s in held}
+    new_ready, sell = [], []
+    for r in rs:
+        if r.symbol in out:
+            if should_sell(r, True):
+                sell.append(r.symbol)
+        elif becomes_ready(r):
+            out[r.symbol] = {"ready_at": now, "ready_price": prices.get(r.symbol), "ready_pl_pct": round(r.pl_pct, 2)}
+            new_ready.append(r.symbol)
+    return out, new_ready, sell
+
+
+def status_text(rs: Sequence[Readings], marks: Mapping[str, Mapping]) -> str:
+    """What Gemma is shown each hour: each position's stage."""
+    lines = []
+    for r in rs:
+        m = marks.get(r.symbol)
+        px = f" at ${m['ready_price']:.2f}" if m and m.get("ready_price") else ""
+        stage = (f"READY since {m['ready_at']}{px} -- sells automatically when the 5-minute "
+                 f"trend turns down while in profit" if m else "not ready")
+        lines.append(f"- {r.symbol}: {r.score()} of {len(CHECKS)} peak checks, P/L {r.pl_pct:+.2f}%, {stage}")
+    return "\n".join(lines)
