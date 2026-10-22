@@ -139,7 +139,9 @@ model take/skip and model exits. They are counted, not re-listed.
 | 97 | GEMMA'S experiment C, corrected to the morning and run 24/5 (operator: 'its open 24/5'): buy every Mon-Thu evening at {16:00 close, 16:30, 20:00}, sell next morning at {04:00, 08:00, 09:30 open}; equal-weight book of FAST_UP (Lotto rule, daily) / ALL (collected sample) / BIG; 0.10%/side in extended and overnight sessions, 0.05% at the close/open; window picked on half 1, judged on half 2 (research_gpu/around_clock.py) | RULES FIXED in the commit that adds this row, before the first run | SIP extended 30m + BOATS overnight 30m, 2024-09-16 -> 2026-10 | pending | PASS: selected window, half 2 mean > 0, t >= 3 |
 | 98 | GEMMA'S experiment B on 24/5 hourly candles: 1h sweep (#87) only when the prior day closed above its 50-day average; her exits +1% target or 1 week (120 hourly candles), stop under the wick; vs plain sweep and FAIR random; FAST and ALL (research_gpu/around_clock.py) | RULES FIXED in the commit that adds this row, before the first run | as #97 | pending | PASS: > 0, t >= 3 both halves, above plain sweep and random |
 
-**Running total: ~1,010 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 99 | operator's session idea: do US stocks drift down in the ASIA (20:00-03:00 ET) or LONDON (03:00-09:30) session? Mean return per session (AFTER / ASIA / LONDON / US) for OURS (the 10 names held 10-22), BIG, FAST_UP, ALL; rule U = sit out the half-1 weakest overnight session every night; rule C = sit out ASIA only after a red after-hours; both less 0.20% for two extended-hours fills (research_gpu/session_split.py) | RULES FIXED in the commit that adds this row, before the first run | 24/5 SIP + BOATS 30m, 2024-09-16 -> 2026-10 | pending | PASS: half-2 mean gain > 0, t >= 3 (8 rule x group cells) |
+
+**Running total: ~1,018 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
