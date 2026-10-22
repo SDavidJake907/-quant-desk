@@ -136,7 +136,10 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 96 | GEMMA'S experiment A (her review, data/gemma/ask_strategy_review_2026-10-22.txt): weekly Connors RSI < 10 AND weekly close > 40-week SMA (= 200-day), sell Connors > 70 (#94's exit -- the trend filter is the only change), 3 ATR stop, holds weekends; ALL / BIG / FAST; daily-P&L t; cheat and random checks (research_gpu/gemma_a_weekly.py) | RULES FIXED in the commit that adds this row, before the first run | Yahoo daily 10y -> weekly | **0 of 3 pass** (checks OK). The uptrend filter removes most trades and the 2016-20 half turns negative: ALL -1.48% (162 trades) then +1.75% (360, t 2.1) vs plain weekly Connors +0.55% / +1.61% (t 0.2 / 3.5); BIG and FAST have 4 trades in 2016-20. Win rates rise (67-89%) but the filter skips the dips that paid most in 2016-20 | **FAIL** -- the plain weekly Connors (#95 forward books) stays the better version |
 
-**Running total: ~996 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 97 | GEMMA'S experiment C, corrected to the morning and run 24/5 (operator: 'its open 24/5'): buy every Mon-Thu evening at {16:00 close, 16:30, 20:00}, sell next morning at {04:00, 08:00, 09:30 open}; equal-weight book of FAST_UP (Lotto rule, daily) / ALL (collected sample) / BIG; 0.10%/side in extended and overnight sessions, 0.05% at the close/open; window picked on half 1, judged on half 2 (research_gpu/around_clock.py) | RULES FIXED in the commit that adds this row, before the first run | SIP extended 30m + BOATS overnight 30m, 2024-09-16 -> 2026-10 | pending | PASS: selected window, half 2 mean > 0, t >= 3 |
+| 98 | GEMMA'S experiment B on 24/5 hourly candles: 1h sweep (#87) only when the prior day closed above its 50-day average; her exits +1% target or 1 week (120 hourly candles), stop under the wick; vs plain sweep and FAIR random; FAST and ALL (research_gpu/around_clock.py) | RULES FIXED in the commit that adds this row, before the first run | as #97 | pending | PASS: > 0, t >= 3 both halves, above plain sweep and random |
+
+**Running total: ~1,010 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
