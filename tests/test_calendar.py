@@ -180,8 +180,19 @@ def _earnings_payload(symbols: list[tuple[str, str]]) -> dict:
     return {"data": {"rows": [{"symbol": s, "time": t} for s, t in symbols]}}
 
 
+async def test_upcoming_earnings_asks_for_the_day_itself():
+    """date=D returns D's reports (checked 2026-10-22: date=10-22 listed RNG, which reported
+    10-22 after the close; date=10-21 listed TSLA/IBM/T). Today's reports must be seen."""
+    target = date(2026, 10, 22)
+    client = _FakeClient({target: _earnings_payload([("RNG", "after-hours")])})
+    found, failed = await upcoming_earnings(frozenset({"RNG"}), client, horizon=1, today=target)
+    assert failed == ()
+    assert target in client.queried_dates
+    assert found["RNG"].on == target
+
+
 async def test_upcoming_earnings_applies_offset():
-    """Queries Nasdaq for D+1 to get D's earnings (D-1 offset like economic calendar)."""
+    """Stores D's earnings under D whatever the query offset is."""
     target = date(2026, 10, 15)
     client = _FakeClient({target + EARNINGS_DATE_OFFSET: _earnings_payload([("NVDA", "after-hours")])})
     found, failed = await upcoming_earnings(frozenset({"NVDA"}), client, horizon=1, today=target)
@@ -226,9 +237,10 @@ async def test_upcoming_earnings_filters_to_wanted_symbols():
     assert "ZZZZ" not in found
 
 
-def test_economic_and_earnings_offsets_are_same():
-    """Both Nasdaq calendars share the D-1 offset behavior."""
-    assert EARNINGS_DATE_OFFSET == ECONOMIC_DATE_OFFSET == timedelta(days=1)
+def test_earnings_offset_is_zero():
+    """The earnings calendar is NOT shifted like the economic one (fixed 2026-10-22)."""
+    assert EARNINGS_DATE_OFFSET == timedelta(0)
+    assert ECONOMIC_DATE_OFFSET == timedelta(days=1)
 
 
 async def test_upcoming_earnings_with_horizon_queries_each_session_day():

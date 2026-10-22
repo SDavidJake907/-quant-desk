@@ -1,5 +1,5 @@
 @echo off
-REM Market-hours monitor (scripts/market_monitor.py): every 30 min 06:15-11:45 AK (10:15-15:45 ET).
+REM Market monitor (scripts/market_monitor.py): every 30 min, 24/5 (operator 2026-10-22). Outside regular hours only the :45 pass runs (Gemma's sell-ifs).
 REM Market alarm sells the operator's picks; Gemma's concern sells that pick; hourly (:45) Gemma
 REM re-checks her own sell-ifs and may sell. Operator's choices 2026-10-22, logged in FREEZE.
 cd /d "%~dp0.."

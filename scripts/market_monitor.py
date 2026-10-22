@@ -17,6 +17,10 @@ Every pass in regular hours (task stock-scanner-monitor, :15 and :45 past the ho
 Picks sells go through picks.txt + picks_sync (the list stays the record); Gemma's
 through bookorders.sell. Everything is logged (logs/monitor/DATE.md, the audit log)
 and alerted (Windows toast; phone when SCANNER_NTFY_TOPIC is set).
+
+24/5 (operator 2026-10-22): outside regular hours (premarket, after-hours, overnight) only
+step 4 runs, on the :45 pass, and her sells go out as limit orders. Steps 1-3 stay
+regular-hours only: their Yahoo quotes are the regular session's, frozen at the close.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ import functools
 import json
 import subprocess
 import sys
-from datetime import date, datetime, time
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
@@ -40,7 +44,7 @@ import gemma_trade as gtr
 
 from scanner.advisor import gemma_memory as gm
 from scanner.config import settings
-from scanner.execution import bookorders, ownership
+from scanner.execution import bookorders, ownership, sessions
 from scanner.execution.alpaca import Alpaca
 from scanner.execution.ownership import GEMMA, PICKS
 from scanner.execution.scorecard import read_rows
@@ -56,7 +60,6 @@ STATE = Path("data/monitor/state.json")
 OUT = Path("logs/monitor")
 PICKS_FILE = Path("watchlists/picks.txt")
 WATCH_FILE = Path("data/gemma/operator_watch")
-OPEN, CLOSE = time(9, 30), time(16, 0)
 INDEXES = ("SPY", "QQQ")
 
 
@@ -133,7 +136,7 @@ def run_safety_check() -> dict[str, str]:
 
 
 async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry: bool,
-                         alerts: list[str], peak: str = "") -> list[str]:
+                         alerts: list[str], peak: str = "", session: str = sessions.REGULAR) -> list[str]:
     mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA]
     if not mine:
         log(lines, "  Gemma holds nothing")
@@ -164,20 +167,22 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
         if dry:
             log(lines, f"  WOULD SELL Gemma {s}: {reason}")
             continue
-        ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA, reason=reason, policy=gtr.POLICY, client=client)
+        ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA, reason=reason, policy=gtr.POLICY,
+                                   session=session, client=client)
         log(lines, f"  {'SOLD' if ok else 'SELL FAILED'} Gemma {s}: {reason}")
         sold.append(s)
     return sold
 
 
-async def peak_status(client, positions, owner_map, stops, lines, book: str) -> str:
+async def peak_status(client, positions, owner_map, stops, lines, book: str,
+                      session: str = sessions.REGULAR) -> str:
     """Hourly: log every position's peak readings and stage (READY marks come from the 5-minute
     peak watch, scripts/peak_watch.py, which also does the selling). Returns the text Gemma is shown."""
     import peak_watch
     mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == book]
     if not mine:
         return ""
-    rs = await peak_watch.readings_for(client, mine, stops, lambda s: log(lines, s))
+    rs = await peak_watch.readings_for(client, mine, stops, lambda s: log(lines, s), session)
     marks = peak_watch.load_marks()
     who = "Gemma" if book == GEMMA else "picks"
     for r in rs:
@@ -185,15 +190,52 @@ async def peak_status(client, positions, owner_map, stops, lines, book: str) -> 
     return ps.status_text(rs, marks)
 
 
+def write_log(now: datetime, lines: list[str]) -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    with (OUT / f"{now.date().isoformat()}.md").open("a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+async def extended_pass(dry: bool, now: datetime, session: str) -> int:
+    """Outside regular hours: Gemma's sell-if check on her own book, sells as limit orders."""
+    lines: list[str] = []
+    log(lines, f"\n## {now:%H:%M} ET [{session}] (hourly){' DRY RUN' if dry else ''}")
+    async with httpx.AsyncClient(timeout=120) as client:
+        broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
+        positions = await broker._get("/v2/positions")
+        orders = await broker._get("/v2/orders", status="all", limit=500, nested="true")
+        open_orders = await broker._get("/v2/orders", status="open", nested="true")
+        owner_map = ownership.owners(orders)
+        stops = grv.live_stops(orders)
+        peak = await peak_status(client, positions, owner_map, stops, lines, GEMMA, session)
+        sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, [],
+                                    peak, session)
+        if sold and not dry:
+            body = f"Gemma sold {', '.join(sold)} ({session}, her sell-if was met)"
+            await notify.send(client, server=settings.ntfy_server, topic=settings.ntfy_topic,
+                              title="Quant-desk monitor", message=body, priority="high", tags=("warning",))
+            notify.toast("Quant-desk monitor", body)
+    if not dry:
+        write_log(now, lines)
+    return 0
+
+
 async def main(dry: bool) -> int:
     gtr.fetch_many = functools.partial(fetch_many, ttl_seconds=grv.BARS_TTL_S)
     gtr.fetch_bars = functools.partial(fetch_bars, ttl_seconds=grv.BARS_TTL_S)
     now = datetime.now(EXCHANGE_TZ)
-    if now.weekday() > 4 or not (OPEN <= now.time() < CLOSE):
+    async with httpx.AsyncClient(timeout=60) as client:
+        session = await sessions.current(Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client))
+    if session == sessions.CLOSED:
         print(f"{now:%H:%M} ET: market closed -- nothing to monitor")
         return 0
-    state = load_state(now.date())
     hourly = datetime.now().minute >= 40            # the :45 AK pass also runs the hourly checks
+    if session != sessions.REGULAR:
+        if not hourly:
+            print(f"{now:%H:%M} ET [{session}]: outside regular hours only the :45 pass runs")
+            return 0
+        return await extended_pass(dry, now, session)
+    state = load_state(now.date())
     lines: list[str] = []
     log(lines, f"\n## {now:%H:%M} ET{' (hourly)' if hourly else ''}{' DRY RUN' if dry else ''}")
     alerts: list[str] = []
@@ -268,9 +310,7 @@ async def main(dry: bool) -> int:
             notify.toast("Quant-desk monitor", body)
     if not dry:
         save_state(state)
-        OUT.mkdir(parents=True, exist_ok=True)
-        with (OUT / f"{now.date().isoformat()}.md").open("a", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
+        write_log(now, lines)
     return 0
 
 

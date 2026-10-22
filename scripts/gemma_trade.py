@@ -63,7 +63,7 @@ from scanner.features.technicals import compute, relative_strength
 from scanner.llm.ollama import LLMError, chat_json, chat_text
 from scanner.sources import calendar as event_calendar
 from scanner.sources import composite
-from scanner.sources.index_history import COMPOSITE_1500, SP400, SP500
+from scanner.sources.index_history import COMPOSITE_1500, SP400, SP500, SP600
 from scanner.sources import yahoo_rss
 from pathlib import Path
 
@@ -360,15 +360,16 @@ async def think_then_answer(text: str, answer_schema: dict, client,
 
 
 async def midcap_rows(client, exclude: set[str], caps, mom_picks: Sequence[str]) -> list:
-    """The MidCap 400 rows for round 1 (gemma_pool.MIDCAP_FROM): same floors, the
-    strongest gemma_pool.MIDCAP_MAX by 12-1. A failure adds none, never blocks."""
+    """The MidCap 400 + SmallCap 600 rows for round 1 (gemma_pool.MIDCAP_FROM): same
+    floors, the strongest gemma_pool.MIDCAP_MAX by 12-1 across both. A failure adds
+    none, never blocks."""
     try:
-        members = await composite.load_universe(client, (SP400,))
+        members = await composite.load_universe(client, (SP400, SP600))
         sectors = {m.symbol: m.sector for m in members if m.symbol not in exclude
                    and gp.large_enough(m.symbol, caps)}
         daily, _ = await fetch_many(tuple(sectors), client, range_="2y")
     except Exception as exc:                             # noqa: BLE001
-        print(f"  {YELLOW}MidCap 400 unavailable ({type(exc).__name__}) -- S&P 500 only{RESET}")
+        print(f"  {YELLOW}MidCap 400 + SmallCap 600 unavailable ({type(exc).__name__}) -- S&P 500 only{RESET}")
         return []
     bars = {s: b for s, b in daily.items()
             if b is not None and len(b.closes) >= 30 and gp.tradeable(
@@ -382,7 +383,7 @@ async def midcap_rows(client, exclude: set[str], caps, mom_picks: Sequence[str])
 
 async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
                          mom_picks: Sequence[str]) -> tuple[list[str], int]:
-    """Round 1 (advisor/gemma_pool.py): the S&P 500 (plus the strongest MidCap 400
+    """Round 1 (advisor/gemma_pool.py): the S&P 500 (plus the strongest MidCap 400 + SmallCap 600
     from gemma_pool.MIDCAP_FROM) through the scanner's floor, shortlisted by Gemma. (shortlist, pool size); an empty shortlist means fall back."""
     mine = set(mine)
     members = await composite.load_universe(client, (SP500,))
@@ -405,10 +406,10 @@ async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
     universe = "S&P 500 stocks"
     if gp.midcap_on(date.today()):
         mid = await midcap_rows(client, taken | mine | set(sectors), caps, mom_picks)
-        print(f"  {DIM}MidCap 400: the strongest {len(mid)} join the pool{RESET}")
+        print(f"  {DIM}MidCap 400 + SmallCap 600: the strongest {len(mid)} join the pool{RESET}")
         if mid:
             rows = sorted(rows + mid, key=lambda r: (r.mom_12_1 is None, -(r.mom_12_1 or 0.0), r.symbol))
-            universe = (f"S&P 500 stocks plus the {len(mid)} strongest S&P MidCap 400 stocks "
+            universe = (f"S&P 500 stocks plus the {len(mid)} strongest S&P MidCap 400 and SmallCap 600 stocks "
                         "by 12-1 momentum")
     spx = await fetch_bars("^GSPC", client, range_="2y")
     sma = sum(spx.closes[-210:]) / 210
@@ -446,7 +447,7 @@ MENU_TEXT = "\n".join((
 ))
 
 
-async def main(submit: bool) -> int:
+async def main(submit: bool, only_when_tradable: bool = False) -> int:
     async with httpx.AsyncClient(timeout=120) as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
         raw = await broker._get("/v2/account")
@@ -461,6 +462,10 @@ async def main(submit: bool) -> int:
         market_open = session == sessions.REGULAR
         tradable = session == sessions.REGULAR or (
             session in sessions.EXTENDED and POLICY.extended_hours_trading)
+        if only_when_tradable and not tradable:
+            # The 24/5 passes (operator 2026-10-22) also fire Friday night and weekends.
+            print(f"  {DIM}{session} -- not a trading session, Gemma not asked{RESET}")
+            return 0
 
         if submit and tradable:
             for order in picks.stale_entries(open_orders, datetime.now(timezone.utc),
@@ -666,4 +671,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--submit", action="store_true", help="actually trade the decision")
-    raise SystemExit(asyncio.run(main(p.parse_args().submit)))
+    p.add_argument("--only-when-tradable", action="store_true",
+                   help="exit before asking Gemma when no session is open (the 24/5 passes)")
+    a = p.parse_args()
+    raise SystemExit(asyncio.run(main(a.submit, a.only_when_tradable)))

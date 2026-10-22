@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 from scanner.signals import indicators as ind
@@ -22,6 +22,7 @@ from scanner.signals import indicators as ind
 PLAN_FILE = Path("data/gemma/peak_sell_prompt.md")
 MIN_MET = 4                       # of the 6 checks
 SESSION_OPEN, SESSION_CLOSE = time(9, 30), time(16, 0)
+EXTENDED_STALE = timedelta(minutes=30)    # newest after-hours candle older than this = no trend
 
 # name -> (label shown to Gemma, threshold, the highest readings it sits under)
 CHECKS: dict[str, tuple[str, float, str]] = {
@@ -88,14 +89,31 @@ def hourly(candles: Sequence[Candle]) -> list[Candle]:
     return [x for _, x in out]
 
 
+def trend_5m(five: Sequence[Candle]) -> float | None:
+    """1.0 = the 5-minute SuperTrend (10, 3) is UP, 0.0 = DOWN, None = too few candles."""
+    if len(five) < 60:
+        return None
+    o, h, lo, c = ([x[k] for x in five] for k in (1, 2, 3, 4))
+    return 1.0 if ind.supertrend(o, h, lo, c, 10, 3)[-1] == 1 else 0.0
+
+
+def extended_trend(candles: Sequence[Candle], now: datetime) -> float | None:
+    """The 5-minute trend outside regular hours (24/5, operator 2026-10-22): every completed
+    candle, pre/post-market included. None when the newest one is older than EXTENDED_STALE --
+    overnight Yahoo has no candles, and a sell is never triggered off a stale tape."""
+    done = [x for x in candles if x[0] <= now - timedelta(minutes=5)]
+    if not done or now - done[-1][0] > EXTENDED_STALE:
+        return None
+    return trend_5m(done)
+
+
 def readings(symbol: str, pl_pct: float, five: Sequence[Candle], daily_closes: Sequence[float]) -> Readings:
     """five: completed regular-session 5m candles (a few weeks); daily_closes: daily closes with
     today's price as the last one."""
     vals: dict[str, float | None] = dict.fromkeys(CHECKS)
     if len(five) >= 60:
-        o, h, lo, c = ([x[k] for x in five] for k in (1, 2, 3, 4))
-        st = ind.supertrend(o, h, lo, c, 10, 3)
-        vals["trend_5m"] = 1.0 if st[-1] == 1 else 0.0
+        c = [x[4] for x in five]
+        vals["trend_5m"] = trend_5m(five)
         today = [x for x in five if x[0].date() == five[-1][0].date()]
         vol = sum(x[5] for x in today)
         if vol:

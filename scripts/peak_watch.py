@@ -1,4 +1,4 @@
-"""Peak watch: every 5 minutes in market hours, mark READY and sell before it is too late.
+"""Peak watch: every 5 minutes, 24/5, mark READY and sell before it is too late.
 
     python scripts/peak_watch.py            # one pass (task stock-scanner-peakwatch, every 5 min)
     python scripts/peak_watch.py --dry-run  # show what it would do, send nothing
@@ -10,6 +10,11 @@ chose "5-min check, auto-sell". For every position in Gemma's book and the opera
 Gemma's sells go through bookorders.sell (audit log, her memory sees the reason); picks through
 picks.txt + picks_sync. Marks: data/monitor/peak_marks.json. Log: logs/peak_watch/DATE.md.
 An operator rule, not a tested edge (FREEZE.md).
+
+24/5 (operator 2026-10-22): runs in every session the broker's clock says is open -- premarket,
+regular, after-hours, overnight. Outside regular hours the 5-minute trend reads the pre/post-market
+candles and must be fresh (ps.extended_trend); overnight Yahoo has none, so nothing sells on trend
+then. Sells outside regular hours are limit orders (bookorders.sell with the session).
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ import dataclasses
 import json
 import subprocess
 import sys
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -32,7 +37,7 @@ import gemma_review as grv  # scripts/ is on the path when this script runs
 import gemma_trade as gtr
 
 from scanner.config import settings
-from scanner.execution import bookorders, ownership
+from scanner.execution import bookorders, ownership, sessions
 from scanner.execution.alpaca import Alpaca
 from scanner.execution.ownership import GEMMA, PICKS
 from scanner.features.bars import fetch_many
@@ -44,11 +49,12 @@ from scanner.signals.candles24 import yahoo_5m
 
 MARKS = Path("data/monitor/peak_marks.json")
 OUT = Path("logs/peak_watch")
-OPEN, CLOSE = time(9, 30), time(16, 0)
 
 
-async def readings_for(client, positions, stops: dict, log) -> list[ps.Readings]:
-    """Live peak readings (with the ATR stop note) for the given Alpaca positions."""
+async def readings_for(client, positions, stops: dict, log,
+                       session: str = sessions.REGULAR) -> list[ps.Readings]:
+    """Live peak readings (with the ATR stop note) for the given Alpaca positions. Outside
+    regular hours the 5-minute trend comes from the extended-hours candles (None if stale)."""
     if not positions:
         return []
     symbols = tuple(p["symbol"] for p in positions)
@@ -62,8 +68,8 @@ async def readings_for(client, positions, stops: dict, log) -> list[ps.Readings]
         except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
             log(f"  no 5m candles for {s} ({exc})")
             raw = []
-        five = [(t.astimezone(EXCHANGE_TZ).replace(tzinfo=None), *rest) for t, *rest in raw]
-        five = [x for x in ps.session(five) if x[0] <= now - timedelta(minutes=5)]     # completed candles only
+        every = [(t.astimezone(EXCHANGE_TZ).replace(tzinfo=None), *rest) for t, *rest in raw]
+        five = [x for x in ps.session(every) if x[0] <= now - timedelta(minutes=5)]    # completed candles only
         price = float(p["current_price"])
         closes = list(daily[s].closes) if s in daily else []
         if closes and daily[s].dates[-1] == now.date():
@@ -71,6 +77,8 @@ async def readings_for(client, positions, stops: dict, log) -> list[ps.Readings]
         elif closes:
             closes.append(price)
         r = ps.readings(s, float(p["unrealized_plpc"]) * 100, five, closes)
+        if session != sessions.REGULAR:
+            r = dataclasses.replace(r, values={**r.values, "trend_5m": ps.extended_trend(every, now)})
         atr = average_true_range_pct(daily[s]) if s in daily else None
         out.append(dataclasses.replace(r, stop_note=ps.stop_note(price, stops.get(s), atr)))
     return out
@@ -90,7 +98,9 @@ def remove_picks(symbols: list[str], why: str) -> list[str]:
 
 async def main(dry: bool) -> int:
     now = datetime.now(EXCHANGE_TZ)
-    if now.weekday() > 4 or not (OPEN <= now.time() < CLOSE):
+    async with httpx.AsyncClient(timeout=60) as client:
+        session = await sessions.current(Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client))
+    if session == sessions.CLOSED:
         print(f"{now:%H:%M} ET: market closed -- nothing to watch")
         return 0
     lines: list[str] = []
@@ -99,7 +109,7 @@ async def main(dry: bool) -> int:
         print(text, flush=True)
         lines.append(text)
 
-    log(f"\n## {now:%H:%M} ET{' DRY RUN' if dry else ''}")
+    log(f"\n## {now:%H:%M} ET [{session}]{' DRY RUN' if dry else ''}")
     alerts = []
     async with httpx.AsyncClient(timeout=120) as client:
         broker = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
@@ -110,7 +120,7 @@ async def main(dry: bool) -> int:
         stops = grv.live_stops(orders)
         book_of = {p["symbol"]: ownership.owner(p["symbol"], owner_map) for p in positions}
         watched = [p for p in positions if book_of[p["symbol"]] in (GEMMA, PICKS)]
-        rs = await readings_for(client, watched, stops, log)
+        rs = await readings_for(client, watched, stops, log, session)
         prices = {p["symbol"]: float(p["current_price"]) for p in watched}
         marks, ready, sell = ps.update_marks(load_marks(), rs, now=f"{now:%m-%d %H:%M} ET", prices=prices)
         for r in rs:
@@ -134,7 +144,7 @@ async def main(dry: bool) -> int:
                 ok = True
             else:
                 ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA, reason=why,
-                                           policy=gtr.POLICY, client=client)
+                                           policy=gtr.POLICY, session=session, client=client)
             log(f"  {'SOLD' if ok else 'SELL FAILED'} {book_of[s]} {s}: {why}")
             if ok:
                 alerts.append(f"Sold {s} ({book_of[s]}) -- took profit, trend turned after READY")

@@ -69,10 +69,12 @@ def test_market_cap_floor_drops_small_and_keeps_unknown():
     assert gp.MIN_MARKET_CAP == 2_000_000_000.0
 
 
-def test_midcap_switches_on_after_the_october_verdict():
+def test_midcap_switches_on_from_10_22():
+    """Brought forward from 11-02 (operator 2026-10-22: widen her pool with mid/small caps now)."""
     from datetime import date
-    assert not gp.midcap_on(date(2026, 10, 30))
-    assert gp.midcap_on(date(2026, 11, 2))
+    assert not gp.midcap_on(date(2026, 10, 21))
+    assert gp.midcap_on(date(2026, 10, 22))
+    assert gp.MIDCAP_MAX == 120
 
 
 def test_strongest_keeps_positive_momentum_capped():

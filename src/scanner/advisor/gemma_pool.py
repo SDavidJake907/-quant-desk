@@ -41,7 +41,10 @@ MIN_MARKET_CAP = 2_000_000_000.0
 #: floor and the cap floor. Capped so round 1 stays inside her 32k context
 #: (~35 tokens a line: 488 S&P lines measured 17,152 tokens; +120 is ~+4,200).
 #: Before MIDCAP_FROM her pool and prompt are exactly as they were.
-MIDCAP_FROM = date(2026, 11, 2)
+#: Brought forward from 11-02 to 10-22 and widened to the SmallCap 600 too
+#: (operator 2026-10-22, "widen Gemma stock pool" -> "add 120 mid/small now"):
+#: the 120 strongest across both indexes, same floors, same $2B cap floor.
+MIDCAP_FROM = date(2026, 10, 22)
 MIDCAP_MAX = 120
 
 

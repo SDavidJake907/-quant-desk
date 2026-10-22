@@ -48,11 +48,12 @@ DEFAULT_HORIZON = 7
 #: showed YESTERDAY's releases as today's (Gemma's market line, the weekly
 #: report). Ask for the next day.
 ECONOMIC_DATE_OFFSET = timedelta(days=1)
-#: Nasdaq's earnings calendar behaves the same way as its economic calendar:
-#: `date=D` returns D-1's reports. Checked 2026-10-15: date=10-15 returned
-#: 10-14's after-hours earnings (ALLY, PRGO). Query for D+1 to get D's
-#: earnings. If this is ever wrong, set to timedelta(0) and update this note.
-EARNINGS_DATE_OFFSET = timedelta(days=1)
+#: Nasdaq's earnings calendar is NOT shifted: `date=D` returns D's reports.
+#: Checked 2026-10-22: date=10-22 listed RNG (reported 10-22 after the close),
+#: date=10-21 listed TSLA, IBM, T. The 10-15 note that set this to one day
+#: (ALLY, PRGO) was wrong or Nasdaq changed -- with it, every date came back a
+#: day early and a report due TODAY was never seen (RNG was bought into its pop).
+EARNINGS_DATE_OFFSET = timedelta(0)
 #: Only US releases: the feed carries German and Chinese CPI under the same names.
 US = "United States"
 

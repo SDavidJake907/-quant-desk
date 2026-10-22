@@ -35,7 +35,10 @@ $tasks = @(
     "stock-scanner-monday",
     "stock-scanner-weekahead",
     "stock-scanner-extsync",
-    "stock-scanner-gemma-sunday"
+    "stock-scanner-gemma-sunday",
+    "stock-scanner-peakwatch",
+    "stock-scanner-monitor",
+    "stock-scanner-gemma-ext"
 )
 
 # Retired 2026-10-06 (WORKLIST §37). Unregistered on every run so a machine
@@ -306,3 +309,28 @@ $gsSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLim
 $gsAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_gemma.bat" -WorkingDirectory $root
 Register-ScheduledTask -TaskName "stock-scanner-gemma-sunday" -Trigger $gsTrigger -Action $gsAction -Settings $gsSettings -Description "Gemma's Sunday-evening decision (16:45 AK)" -Force | Out-Null
 Write-Output "registered stock-scanner-gemma-sunday  Sundays 16:45 AK"
+
+# --- 24/5 (operator 2026-10-22) ------------------------------------------------
+# Around the clock; each script asks the broker's clock which session it is and
+# exits when none is open (Friday night, weekends before Sunday 16:00 AK).
+#   peakwatch  every 5 min: READY / SELL, limit orders outside regular hours
+#   monitor    :15 and :45; outside regular hours only the :45 pass (Gemma's sell-ifs)
+#   gemma-ext  Gemma's decision every 2 hours 13:15-03:15 AK (after-hours, overnight, premarket)
+$pwTrigger = New-ScheduledTaskTrigger -Daily -At 12:00AM
+$pwTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 12:00AM -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
+$pwSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
+$pwAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_peak_watch.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-peakwatch" -Trigger $pwTrigger -Action $pwAction -Settings $pwSettings -Description "Peak watch: READY/SELL every 5 min, 24/5 (exits when no session is open)" -Force | Out-Null
+Write-Output "registered stock-scanner-peakwatch  every 5 min, 24/5"
+$mnTrigger = New-ScheduledTaskTrigger -Daily -At 12:15AM
+$mnTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 12:15AM -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
+$mnSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$mnAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_monitor.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-monitor" -Trigger $mnTrigger -Action $mnAction -Settings $mnSettings -Description "Market monitor every 30 min, 24/5; outside regular hours Gemma's sell-ifs on the :45 pass" -Force | Out-Null
+Write-Output "registered stock-scanner-monitor  every 30 min, 24/5"
+$geTrigger = New-ScheduledTaskTrigger -Daily -At 1:15PM
+$geTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 1:15PM -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Hours 14 -Minutes 5)).Repetition
+$geSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+$geAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_gemma_ext.bat" -WorkingDirectory $root
+Register-ScheduledTask -TaskName "stock-scanner-gemma-ext" -Trigger $geTrigger -Action $geAction -Settings $geSettings -Description "Gemma's book outside regular hours: every 2 h 13:15-03:15 AK, limit orders, skips closed sessions" -Force | Out-Null
+Write-Output "registered stock-scanner-gemma-ext  every 2 h 13:15-03:15 AK"

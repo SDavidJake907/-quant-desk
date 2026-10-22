@@ -1,5 +1,5 @@
 @echo off
-REM Peak watch (scripts/peak_watch.py): every 5 min 05:30-12:00 AK (09:30-16:00 ET).
+REM Peak watch (scripts/peak_watch.py): every 5 min, 24/5 (operator 2026-10-22); exits when no session is open.
 REM READY = in profit + >= 4 of 6 peak checks; SELL = a READY position whose 5-minute trend
 REM turns down while still in profit. Operator's choice 2026-10-22, logged in FREEZE.
 cd /d "%~dp0.."

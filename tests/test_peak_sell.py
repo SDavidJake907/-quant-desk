@@ -112,3 +112,42 @@ def test_status_text_shows_stage():
     rs = [ps.Readings("A", 1.0, HOT), ps.Readings("B", -1.0, HOT)]
     text = ps.status_text(rs, {"A": {"ready_at": "10-22 14:00 ET", "ready_price": 10.0}})
     assert "A:" in text and "READY since 10-22 14:00 ET at $10.00" in text and "B:" in text and "not ready" in text
+
+
+# --- 24/5: the 5-minute trend outside regular hours (operator 2026-10-22) ----
+
+def _candles(end: datetime, n: int, step: float) -> list:
+    """n 5-minute candles ending at `end`, closes moving by `step` each bar."""
+    out = []
+    for i in range(n):
+        t = end - timedelta(minutes=5 * (n - 1 - i))
+        c = 100 + step * i
+        out.append((t, c, c + 0.1, c - 0.1, c, 1000.0))
+    return out
+
+
+def test_extended_trend_reads_a_fresh_after_hours_tape():
+    now = datetime(2026, 10, 22, 17, 0)
+    up = _candles(now - timedelta(minutes=5), 80, 0.05)
+    down = up[:-1] + [(up[-1][0], 90, 90.1, 89.9, 90, 1000.0)]     # the last bar breaks hard
+    assert ps.extended_trend(up, now) == 1.0
+    assert ps.extended_trend(down, now) == 0.0
+
+
+def test_extended_trend_refuses_a_stale_tape():
+    """Overnight there are no Yahoo candles: the last one is hours old -> no trend, no sell."""
+    now = datetime(2026, 10, 22, 23, 0)
+    stale = _candles(datetime(2026, 10, 22, 19, 55), 80, 0.05)
+    assert ps.extended_trend(stale, now) is None
+
+
+def test_extended_trend_ignores_the_candle_still_forming():
+    now = datetime(2026, 10, 22, 17, 2)
+    tape = _candles(datetime(2026, 10, 22, 16, 55), 80, 0.05)
+    forming = tape + [(datetime(2026, 10, 22, 17, 0), 50, 50.1, 49.9, 50, 1000.0)]
+    assert ps.extended_trend(forming, now) == 1.0
+
+
+def test_extended_trend_needs_enough_candles():
+    now = datetime(2026, 10, 22, 17, 0)
+    assert ps.extended_trend(_candles(now - timedelta(minutes=5), 20, 0.05), now) is None
