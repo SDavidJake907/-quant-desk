@@ -1,15 +1,12 @@
 """Peak-sell readings for Gemma (operator, 2026-10-22).
 
-The account's highest point was Wed 10-21, 2:30 PM ET ($101,683). The operator: "create a promt
-for Gemma using those indicators % when to sell for each postion that is open., maybe a little
-lower" -- then "lets not use names. just indicators that are close to that, a little bit lower,
-and include in the promts what the plan is, to sell and create profit at this point. tie in Gemma
-to the indicators so she can view it during each postion that open".
+The operator: sell at the high and take the profit. The rule uses only the indicators -- no dates,
+days of the week or stock names ("stocks prices change, like today its at the lowest"). The six
+checks are the pattern indicators show at a high, each threshold set a little LOWER than the
+highest readings so it triggers just before the top.
 
-At that moment (data/research_peak_10-21_1430.json) 7 of the 9 open positions met at least 4 of
-the 6 checks below; the thresholds sit about 10% under the peak readings. NOT a tested edge -- an
-operator rule, logged in FREEZE.md. The code computes every reading; Gemma sees them and decides;
-she can only sell a position that is in profit and scores at least MIN_MET.
+NOT a tested edge -- an operator rule, logged in FREEZE.md. The code computes every reading; Gemma
+sees them and decides; she can only sell a position that is in profit and scores at least MIN_MET.
 """
 
 from __future__ import annotations
@@ -26,14 +23,14 @@ PLAN_FILE = Path("data/gemma/peak_sell_prompt.md")
 MIN_MET = 4                       # of the 6 checks
 SESSION_OPEN, SESSION_CLOSE = time(9, 30), time(16, 0)
 
-# name -> (label shown to Gemma, threshold, the range at the peak)
+# name -> (label shown to Gemma, threshold, the highest readings it sits under)
 CHECKS: dict[str, tuple[str, float, str]] = {
-    "trend_5m": ("5-minute SuperTrend is UP", 1, "up on 9 of 9"),
-    "vwap_5m": ("price is at least +0.20% above today's VWAP", 0.20, "+0.25% to +1.63% on the 7 above VWAP"),
-    "crsi_1h": ("1-hour Connors RSI >= 63", 63, "70-88"),
-    "stc_1h": ("1-hour Schaff Trend Cycle >= 85", 85, "94-100 on 6 of 9"),
-    "stc_1d": ("daily Schaff Trend Cycle >= 80", 80, "90-100 on 5 of 9"),
-    "pctb_1d": ("daily Bollinger %B >= 0.80", 0.80, "0.88-0.94 on 4 of 9"),
+    "trend_5m": ("5-minute SuperTrend is UP", 1, "up"),
+    "vwap_5m": ("price is at least +0.20% above today's VWAP", 0.20, "+0.25% and higher"),
+    "crsi_1h": ("1-hour Connors RSI >= 63", 63, "70 and higher"),
+    "stc_1h": ("1-hour Schaff Trend Cycle >= 85", 85, "94 and higher"),
+    "stc_1d": ("daily Schaff Trend Cycle >= 80", 80, "90 and higher"),
+    "pctb_1d": ("daily Bollinger %B >= 0.80", 0.80, "0.88 and higher"),
 }
 
 Candle = tuple[datetime, float, float, float, float, float]    # exchange-time start, o, h, l, c, v
