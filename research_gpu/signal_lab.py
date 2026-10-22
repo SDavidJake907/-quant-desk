@@ -24,6 +24,11 @@ RULES -- FIXED 2026-10-21 IN THE COMMIT THAT ADDS THE TRIALS ROW, BEFORE THE FIR
   PASS        excess > 0 with t >= 2 in BOTH halves. 66 versions are tested at
               once: a single-half t of 2 is expected by luck about 1-2 times, both
               halves together much less.
+BIG CAPS (TRIALS #81, operator 2026-10-22: "can we backtest this on a big cap
+stock?"), --bigcap: everything above unchanged except the universe -- the 20
+largest US companies with intraday data here, FIXED before the run (BIGCAP),
+tradeable every month (5m: the 5 of them in that store). Same PASS.
+
 READ-ONLY research. Changes nothing live.
 """
 
@@ -50,6 +55,8 @@ from scanner.signals import rules  # noqa: E402
 ET = ZoneInfo("America/New_York")
 SPLIT = date(2025, 9, 1)
 FAST_N = {"15m": 30, "1h": 30, "5m": 20}
+BIGCAP = ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "JPM", "LLY",
+          "BRK.B", "V", "WMT", "XOM", "UNH", "MA", "COST", "ORCL", "JNJ", "HD")
 OPEN, CLOSE = time(9, 30), time(16, 0)
 
 
@@ -114,9 +121,13 @@ def tstat(xs):
     return statistics.mean(xs) / sd * math.sqrt(len(xs)) if sd else float("nan")
 
 
-def run_store(tf: str, series: dict[str, list]) -> dict[str, list[tuple[date, float, float, int]]]:
-    """variant -> [(exit day, net %, excess %, bars)]."""
-    fast = fast_months({s: daily(b) for s, b in series.items()}, FAST_N[tf])
+def run_store(tf: str, series: dict[str, list], fixed: tuple[str, ...] = ()) -> dict[str, list[tuple[date, float, float, int]]]:
+    """variant -> [(exit day, net %, excess %, bars)]. `fixed`: trade these names every month."""
+    if fixed:
+        months = {(d.year, d.month) for b in series.values() for d in (x[0] for x in b)}
+        fast = {m: set(fixed) & set(series) for m in months}
+    else:
+        fast = fast_months({s: daily(b) for s, b in series.items()}, FAST_N[tf])
     ever = set().union(*fast.values()) if fast else set()
     res: dict[str, list] = defaultdict(list)
     for s in sorted(ever):
@@ -157,6 +168,7 @@ def summarize(rows, half):
 
 
 def main() -> int:
+    big = "--bigcap" in sys.argv
     stores = {}
     s15 = {p.name.split("__")[0]: load_15m(p) for p in sorted((ROOT / "data/intraday_alpaca").glob("*__15m__session.json"))}
     stores["15m"] = s15
@@ -165,7 +177,7 @@ def main() -> int:
     results = {}
     for tf, series in stores.items():
         t0 = datetime.now()
-        results.update(run_store(tf, series))
+        results.update(run_store(tf, series, BIGCAP if big else ()))
         print(f"{tf}: {len(series)} names, {(datetime.now() - t0).seconds}s", flush=True)
     print(f"\n{'version':24} | {'H1 n':>5} {'excess':>7} {'t':>5} {'net':>6} {'win':>4} | "
           f"{'H2 n':>5} {'excess':>7} {'t':>5} {'net':>6} {'win':>4} | bars  PASS")
