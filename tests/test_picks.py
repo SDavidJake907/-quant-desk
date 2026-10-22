@@ -74,3 +74,25 @@ def test_stale_entries_filter_by_the_strategy_asked_for():
     ]
     assert [o["id"] for o in picks.stale_entries(orders, NOW, minutes=25, strategy="gemma")] == ["g"]
     assert [o["id"] for o in picks.stale_entries(orders, NOW, minutes=25)] == ["p"]
+
+
+def test_sections_split_big_caps_and_fast_movers(tmp_path):
+    f = tmp_path / "picks.txt"
+    f.write_text("# header\nAAPL\nAMZN  # note\n# [fast]\nTWLO\nmrvl\n# [big]\nMET\n", encoding="utf-8")
+    big, fast = picks.read_sections(f)
+    assert big == ("AAPL", "AMZN", "MET") and fast == ("TWLO", "MRVL")
+    assert picks.read_list(f)[0] == ("AAPL", "AMZN", "TWLO", "MRVL", "MET")   # old readers unchanged
+
+
+def test_no_marker_means_everything_is_big_caps(tmp_path):
+    f = tmp_path / "picks.txt"
+    f.write_text("AAPL\nNVDA\n", encoding="utf-8")
+    assert picks.read_sections(f) == (("AAPL", "NVDA"), ())
+
+
+def test_fast_buys_respect_the_slot_limit_and_earnings():
+    ok, refused = picks.fast_buys(("TWLO", "MRVL", "HIMS"), held_fast=("MRNA",), max_names=2,
+                                  earnings_soon={"TWLO"})
+    assert ok == ("MRVL",)
+    assert dict(refused) == {"TWLO": "earnings within the guard window",
+                             "HIMS": "fast-mover slots full (2)"}

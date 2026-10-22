@@ -1,6 +1,9 @@
 # PICKS -- traded automatically (scripts/picks_sync.py, every 30 min in market hours).
 # Add a name: bought on the next run. Remove a name: sold on the next run.
 # One ticker per line, '#' starts a comment. Commit every edit. Stocks only.
+# SECTIONS (2026-10-21): names below a line '# [fast]' are Section 2, fast movers --
+# 0.5% risk, at most 2 held, never bought with earnings within 7 days. '# [big]' (or no
+# marker) is Section 1, big caps -- 1% risk, as before. Same 2.5 ATR stop, no profit target.
 # 2026-10-06: the operator's 1-month leaders. MSTR left out (bitcoin proxy).
 # 2026-10-08: added from the morning global scan (one-year momentum, near highs,
 # no earnings within 3 weeks); XOM and ABBV spread the book beyond chips.

@@ -153,6 +153,15 @@ once silently stopped overlapping tasks from running at all (WORKLIST §40).
 7. From then on: protect.py re-arms the stop if it is ever lost; the stop or
    your removing NVDA closes it; every evening the competition scores it.
 
+**Two sections (from 2026-10-21).** Names under a line `# [fast]` are
+**Section 2, fast movers**. They get the same 2.5-ATR stop and no target, but
+**0.5% risk** instead of 1%, **at most 2** held at once, and they are **never
+bought with earnings today or within 7 days** (a stop cannot protect an
+earnings gap). Everything above the marker, or below a `# [big]` line, is
+**Section 1, big caps**, unchanged. Settings: `picks_fast_*` in
+`execution/policy.py`. Gemma is offered the same Section 2 rules after the
+Oct 31 verdict.
+
 An unfilled buy older than 25 minutes is cancelled and re-sent at the new price.
 
 ### What happens in Gemma's book

@@ -408,6 +408,18 @@ class TradingPolicy(Frozen):
     #: An unfilled list buy older than this is cancelled and re-sent at the
     #: current price on the next run.
     picks_stale_entry_minutes: float = 25.0
+    #: SECTION 2, FAST MOVERS (operator 2026-10-21: "big caps-section 1,
+    #: fast-movers-section2"): names under `# [fast]` in picks.txt. Same stop
+    #: (2.5 ATR was the middle of the 1.5/2.5/3.5 grid on the Lotto trials
+    #: names; tighter stopped out ~half the time), half the risk (operator
+    #: chose 0.5%: gaps run through 17-29% stops), at most 2 at once, no buy
+    #: with earnings today or in the next 7 calendar days. No profit target (targets cut the
+    #: average in every row of that grid). CHOSEN, not measured: Lotto trials
+    #: (TRIALS #79) grades fast movers forward.
+    picks_fast_risk_pct: float = 0.5
+    picks_fast_stop_atr_multiple: float = 2.5
+    picks_fast_max_names: int = 2
+    picks_fast_earnings_days: int = 7
     #: Sector cap for the list. 0 = off: the operator's list is a deliberate
     #: chip/AI bet and they chose to lift the cap for it (2026-10-06).
     picks_max_per_sector: int = 0

@@ -18,6 +18,12 @@ THE EXITS
   `picks_target_ceiling` x the entry, a price these names will not reach in a
   normal hold; it exists for the order shape and so protect.py can re-arm.
 
+TWO SECTIONS (operator 2026-10-21). Names under a `# [fast]` line are
+Section 2, fast movers: half the risk (`picks_fast_risk_pct`), at most
+`picks_fast_max_names` at once, never bought with earnings inside
+`picks_fast_earnings_days`. Everything else is Section 1, big caps, as before.
+Removing a name sells it in either section.
+
 NEVER SHARES A POSITION. A listed name held or ordered by another strategy
 (momentum, a one-off manual trade) is skipped and reported, not bought on
 top. A position the list no longer names is sold only if picks owns it.
@@ -38,6 +44,9 @@ from scanner.execution.ownership import PICKS, UNKNOWN, owner, prefix_for, strat
 from scanner.models import Frozen
 
 LIST_PATH = Path("watchlists/picks.txt")
+#: Section markers (operator 2026-10-21): "big caps -- section 1, fast movers -- section 2".
+FAST_MARKER = "#[fast]"
+BIG_MARKER = "#[big]"
 _TICKER = re.compile(r"^[A-Z]{1,5}(\.[A-Z])?$")
 
 
@@ -63,6 +72,50 @@ def read_list(path: Path = LIST_PATH) -> tuple[tuple[str, ...], tuple[str, ...]]
         elif raw not in names:
             names.append(raw)
     return tuple(names), tuple(rejected)
+
+
+def read_sections(path: Path = LIST_PATH) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(big caps, fast movers). A comment line `# [fast]` starts Section 2 and
+    `# [big]` returns to Section 1; with no marker everything is Section 1.
+    The markers are comments, so read_list and every tool that edits the file
+    by removing ticker lines keep working unchanged."""
+    if not path.exists():
+        return (), ()
+    names, _ = read_list(path)
+    big: list[str] = []
+    fast: list[str] = []
+    section = big
+    for line in path.read_text(encoding="utf-8").splitlines():
+        marker = line.strip().lower().replace(" ", "")
+        if marker.startswith(FAST_MARKER):
+            section = fast
+            continue
+        if marker.startswith(BIG_MARKER):
+            section = big
+            continue
+        raw = line.split("#", 1)[0].strip().upper()
+        if raw in names and raw not in big and raw not in fast:
+            section.append(raw)
+    return tuple(big), tuple(fast)
+
+
+def fast_buys(wanted: Iterable[str], *, held_fast: Iterable[str], max_names: int,
+              earnings_soon: Iterable[str]) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+    """Which Section 2 buys may go: (allowed, refused with a reason). Held or
+    pending fast names count against the slots; an earnings report inside the
+    guard window refuses the buy (a stop cannot protect a gap)."""
+    soon = set(earnings_soon)
+    used = len(set(held_fast))
+    ok, refused = [], []
+    for symbol in wanted:
+        if symbol in soon:
+            refused.append((symbol, "earnings within the guard window"))
+        elif used >= max_names:
+            refused.append((symbol, f"fast-mover slots full ({max_names})"))
+        else:
+            ok.append(symbol)
+            used += 1
+    return tuple(ok), tuple(refused)
 
 
 def plan(listed: Iterable[str], owner_map: Mapping[str, str],
