@@ -143,7 +143,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 100 | operator's ROTATION book: 5 slots; sell a holding when it is 'at its high' (RSI(14) > 70 / Connors > 70 / above the upper Bollinger band, plus a 3 ATR stop), refill with the best 'ready to rise' (RSI(2) < 10 above the 200-day) or 'starting to rise' (crossed above the 50-day, 63-day return > 0) S&P 500 stock; next-open fills, 0.05%/side; daily book return minus SPY (research_gpu/rotation_test.py) | RULES FIXED in the commit that adds this row, before the first run | Yahoo daily 10y, S&P 500 | **FAIL, and VOID by its own check.** All 6 versions sit near the S&P 500: -10.0% to +2.8% a year vs SPY, |t| <= 1.2; the half-1 pick (sell Connors>70, buy RSI(2)<10 above the 200-day) -> half 2 +0.2%/yr, t 0.0. The RANDOM check FAILED: random entries with the same exits beat SPY by +14.2%/yr in 2016-20 (t 2.2) -- survivorship (today's S&P members bought back in 2016 are the survivors) -- so every version is flattered there, and the rotation rules did WORSE than random picks of the same stocks. CHEAT +31.1% / +8.9%/yr (a weak cheat: it only knows the entry day) | **FAIL** -- selling 'at the high' and rotating did not beat buying the index |
 
-**Running total: ~1,024 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 101 | overnight overreaction fade on mega-caps (from a strategy text the operator shared): a BIGCAP name closes a 20:00-21:30 ET candle >= 4% (or 6%) below its 16:00 close -> buy the next candle's open, software stop -2%, target +3%, else out at the next 16:00 close; 0.10%/side overnight; vs ordinary nights with the same exits (research_gpu/overnight_fade.py) | RULES FIXED in the commit that adds this row, before the first run | 24/5 SIP + BOATS 30m, 2024-09-16 -> now | pending | PASS (4%): >= 30 trades, mean > 0, above control, t >= 3 |
+
+**Running total: ~1,026 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
