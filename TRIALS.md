@@ -101,7 +101,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 78 | operator's sister stocks (lead-lag): a leader's +3% day vs the S&P -> its 3-5 smaller sisters (suppliers, customers, peers; 9 leaders, list in the script) open t+1 to close t+5 vs the S&P, minus each sister's own average (research_gpu/sister_stocks.py) | RULES FIXED in the commit that adds this row, before the first run (8fb6b21; a report-only crash on a sister with no data was guarded after the first run, primary unchanged) | Yahoo daily 2016-10 -> 2026-10; 39 of 41 sisters priced (QRVO, CMA none) | UP lift after cost -0.24%, t -1.2 (731 shock days); halves -0.66% (t -2.0) / +0.02%; 6 of 9 leaders positive. Secondary all ~0: DOWN +0.10% t 0.4, not-caught-up +0.01%, reverse +0.03%. Same-day co-move high (refiners 0.85-1.34, oil 1.1-1.5, banks ~0.9): sisters move WITH the leader the same day, nothing left to catch up | **FAIL** tests 1 and 2. Per-pair standouts (WAL +4.8% n=37, XOM DOWN -> oil producers +2%) are 40 pairs of noise, not tested |
 
-**Running total: ~110 trials + #75's ~70 slices. Passes that survive everything: 0.**
+| 79 | operator's fast movers, FORWARD shadow pool: daily, the 4 fastest liquid S&P 500 + MidCap names (20-day ATR %, $20M+/day) above their 50-day (fast_up) and the 4 fastest regardless of trend (fast_all, control), graded vs the S&P at 5/21/60 sessions (scanner/ops/ideas.py, morning ideas report) | RULES FIXED in the commit that adds this row, before the first list. History already ran in #46-55 (MAX and high vol BEAT, likely survivorship), so this is forward only | live from 2026-10-22 | PASS once 60 list days have 21-session grades: fast_up excess > 0, t >= 2 (overlap overstates t) | pending |
+
+**Running total: ~111 trials + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
@@ -119,5 +121,5 @@ publication.
 | #45 Gemma red flags on held positions (monitor v2) | Lopez-Lira & Tang: LLM headline reads predict returns, strongest after bad news; Gemma's own exit judgement measured WORSE (p=0.021) | live reviews from the first monitor-v2 run, forward only | RULE FIXED 2026-10-06 before the first live review: once 30+ red flags (f2 with a verbatim quote and a material event type) exist on held positions, flagged positions must do WORSE than unflagged ones -- swing: remaining-hold R from the review; momentum: next 20 trading days vs ^GSPC -- with t >= 2. PASS unlocks level 3 only: tighten the stop (breakeven or 0.5 x 30m ATR under price) or sell half, never a full exit on Gemma alone, and only through FREEZE.md. Until then: record and report |
 | Gemma news-sentiment factor | Lopez-Lira & Tang: LLM headline scores predict returns, strongest after bad news; profits fall as LLM use spreads | news 2024->, gemma4 local | queued; start daily score logging |
 | same-month seasonality | Heston & Sadka 2008 | 30y daily | queued, low priority |
-| MAX / lottery stocks | Bali, Cakici & Whitelaw 2011; weaker among past winners | daily | queued, low priority |
+| MAX / lottery stocks | Bali, Cakici & Whitelaw 2011; weaker among past winners | daily | history run in #46-55 (wrong way, survivorship); forward shadow is #79 |
 | RSI(2) pullback in an uptrend (separate short-term engine) | practitioner (Connors), not peer-reviewed; cost-sensitive | daily | low priority |

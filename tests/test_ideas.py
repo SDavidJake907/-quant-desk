@@ -51,3 +51,22 @@ def test_grade_excess_per_list():
     assert round(g.excess["earnings"].mean, 2) == 9.0           # +10% vs +1%
     assert round(g.excess["estimates"].mean, 2) == 4.0          # +5% vs +1%
     assert ideas.symbols_needed(recs) == {"A", "B"}
+
+
+def test_fast_movers_rule():
+    s = lambda atr, dv, up: ideas.FastStats(atr_pct=atr, dollar_vol=dv, above_50d=up)
+    stats = {"A": s(9.0, 50e6, False), "B": s(8.0, 50e6, True), "C": s(7.0, 10e6, True),
+             "D": s(6.0, 30e6, True), "E": s(5.0, 30e6, False), "F": s(4.0, 30e6, True),
+             "G": s(3.0, 30e6, True), "H": s(2.0, 30e6, True)}
+    up, every = ideas.fast_movers(stats)
+    assert [p.symbol for p in every] == ["A", "B", "D", "E", "F", "G", "H"]   # C too thin
+    assert [p.symbol for p in up] == ["B", "D", "F", "G", "H"]                # uptrend only
+    assert up[0].atr_pct == 8.0
+
+
+def test_old_records_without_fast_lists_still_grade():
+    days = [date(2026, 10, d) for d in (19, 20, 21, 22, 23)]
+    bars = {"A": [(d, 10.0, 11.0) for d in days]}
+    bench = [(d, 100.0, 101.0) for d in days]
+    g = ideas.grade([{"day": "2026-10-19", "lists": {"earnings": ["A"]}}], bars, bench, 5)
+    assert g.excess["fast_up"].days == 0 and g.excess["earnings"].days == 1

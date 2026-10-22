@@ -1,11 +1,12 @@
-"""Morning ideas: earnings winners and estimates rising (rules in scanner/ops/ideas.py).
+"""Morning ideas: earnings winners, estimates rising, and the fast-mover shadow
+pool (rules in scanner/ops/ideas.py).
 
     python scripts/morning_ideas.py            # write logs/ideas/YYYY-MM-DD.md, record the lists
     python scripts/morning_ideas.py --no-write # print only, record nothing
 
 Weekdays 04:40 AK (stock-scanner-ideas), before the leaders list and Gemma.
 REPORT ONLY: it never edits picks.txt, never sends an order, and Gemma does
-not see it. Both lists are graded forward vs the S&P 500 at 5, 21 and 60
+not see it. Every list is graded forward vs the S&P 500 at 5, 21 and 60
 sessions from data/ideas/picks.jsonl.
 """
 
@@ -101,16 +102,31 @@ async def earnings_list(client, universe: set[str], spx, today: date) -> list[id
     return ideas.earnings_winners(events, ears, spx.dates[-1])
 
 
-async def estimates_list(client, universe: list[str], today: date) -> list[ideas.EstimatePick]:
+def fast_stats(b) -> ideas.FastStats | None:
+    """Speed (20-day ATR % of the last close), 20-day dollar volume, trend."""
+    n = ideas.FAST_ATR_DAYS
+    if len(b.closes) < max(50, n + 1):
+        return None
+    c, h, lo, v = b.closes, b.highs, b.lows, b.volumes
+    tr = [max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1]))
+          for i in range(len(c) - n, len(c))]
+    return ideas.FastStats(atr_pct=sum(tr) / n / c[-1] * 100,
+                           dollar_vol=sum(c[i] * v[i] for i in range(len(c) - n, len(c))) / n,
+                           above_50d=c[-1] > sum(c[-50:]) / 50)
+
+
+async def daily_lists(client, universe: list[str], today: date):
+    """(estimates rising, fast up, fast all) from one fetch of the universe."""
     bars, _ = await fetch_many(tuple(universe), client, range_="1y")
-    above = {}
+    stats = {}
     for s, b in bars.items():
-        b = completed(b, today)
-        if b is not None and len(b.closes) >= 50:
-            above[s] = b.closes[-1] > sum(b.closes[-50:]) / 50
-    candidates = [s for s in universe if above.get(s)]
-    funds = await yahoo_fundamentals.fetch_many(candidates)
-    return ideas.estimates_rising(funds, above)
+        got = fast_stats(completed(b, today))
+        if got is not None:
+            stats[s] = got
+    above = {s: f.above_50d for s, f in stats.items()}
+    funds = await yahoo_fundamentals.fetch_many([s for s in universe if above.get(s)])
+    fast_up, fast_all = ideas.fast_movers(stats)
+    return ideas.estimates_rising(funds, above), fast_up, fast_all
 
 
 async def grades(client, records: list[dict]) -> list[ideas.Grade]:
@@ -123,7 +139,7 @@ async def grades(client, records: list[dict]) -> list[ideas.Grade]:
     return [ideas.grade(records, tb, triples(spx), h) for h in ideas.HORIZONS]
 
 
-def render(today: date, last: date, winners, rising, held: dict[str, str], graded) -> str:
+def render(today: date, last: date, winners, rising, fast, held: dict[str, str], graded) -> str:
     def owner(s):
         return f" (held: {held[s]})" if s in held else ""
 
@@ -146,7 +162,16 @@ def render(today: date, last: date, winners, rising, held: dict[str, str], grade
                   for i, p in enumerate(rising[:SHOW], 1)]
     else:
         lines.append("None today.")
-    lines += ["", f"The first {ideas.PICK_N} of each list are recorded and graded.", "", "## Track record", ""]
+    fast_up, fast_all = fast
+    lines += ["", f"## Fast movers -- shadow pool, TRIALS #79 (20-day daily range, "
+                  f"${ideas.FAST_MIN_DOLLAR_VOL / 1e6:.0f}M+/day)", "",
+              "Fast AND above the 50-day (fast_up) vs fastest regardless of trend (fast_all, the control).", ""]
+    for name, picks in (("fast_up", fast_up), ("fast_all", fast_all)):
+        lines.append(f"**{name}:** " + (", ".join(
+            f"{p.symbol}{owner(p.symbol)} {p.atr_pct:.1f}%/day" + ("" if p.above_50d else " (downtrend)")
+            for p in picks[:SHOW]) or "none today."))
+        lines.append("")
+    lines += [f"The first {ideas.PICK_N} of each list are recorded and graded.", "", "## Track record", ""]
     if not any(g.excess[n].days for g in graded for n in ideas.LISTS):
         lines.append("Nothing graded yet: the first grades land 5 sessions after the first list.")
     for g in graded:
@@ -164,19 +189,21 @@ async def main(write: bool) -> int:
         universe = sorted({m.symbol for m in members})
         spx = completed(await fetch_bars("^GSPC", client, range_="3mo"), today)
         winners = await earnings_list(client, set(universe), spx, today)
-        rising = await estimates_list(client, universe, today)
+        rising, fast_up, fast_all = await daily_lists(client, universe, today)
         held = await held_by_book(client)
         records = load_records()
         if write and not any(r["day"] == today.isoformat() for r in records):
             rec = {"day": today.isoformat(), "at": datetime.now().astimezone().isoformat(),
                    "lists": {"earnings": [p.symbol for p in winners[:ideas.PICK_N]],
-                             "estimates": [p.symbol for p in rising[:ideas.PICK_N]]}}
+                             "estimates": [p.symbol for p in rising[:ideas.PICK_N]],
+                             "fast_up": [p.symbol for p in fast_up[:ideas.PICK_N]],
+                             "fast_all": [p.symbol for p in fast_all[:ideas.PICK_N]]}}
             RECORD.parent.mkdir(parents=True, exist_ok=True)
             with RECORD.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(rec) + "\n")
             records.append(rec)
         graded = await grades(client, records)
-    text = render(today, spx.dates[-1], winners, rising, held, graded)
+    text = render(today, spx.dates[-1], winners, rising, (fast_up, fast_all), held, graded)
     print(text)
     if write:
         OUT.mkdir(parents=True, exist_ok=True)

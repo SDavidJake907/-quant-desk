@@ -1,7 +1,7 @@
-"""Morning ideas: two more ways to find stocks, reported and graded (operator 2026-10-21).
+"""Morning ideas: more ways to find stocks, reported and graded (operator 2026-10-21).
 
 Operator: "what other ways we can help find more stocks? beside yahoo?" -- "lets do all 3".
-REPORT ONLY: nothing trades on either list, Gemma does not see them (the
+REPORT ONLY: nothing trades on any list, Gemma does not see them (the
 quiet period until the Oct 31 verdict); the operator may use them for picks.
 
 RULES, FIXED 2026-10-21 BEFORE THE FIRST LIST WAS MADE OR GRADED
@@ -26,7 +26,23 @@ ESTIMATES RISING -- analysts raising this fiscal year's EPS estimate
             above its 50-day average
   ranked    by the 90-day estimate change; the first PICK_N are recorded
 
-GRADING (both lists, as leaders_grade): equal-weight return from the open of
+FAST MOVERS -- a shadow pool (operator 2026-10-21: "find some that moves fast
+... a small pool shadowing, with results, that doesnt show or effect gemma").
+TRIALS #79, rules fixed 2026-10-21 before the first list. The history test
+already ran (#46-55: MAX and high volatility BEAT, likely survivorship), so
+this is the forward, survivorship-free answer:
+  universe  S&P 500 + MidCap 400 members today, 20-day average dollar volume
+            >= FAST_MIN_DOLLAR_VOL
+  speed     20-day average true range as % of the last close
+  FAST_UP   the fastest names whose last close is above the 50-day average
+            (the operator's version: fast AND trending up)
+  FAST_ALL  the fastest names, trend ignored (pure lottery, the control)
+  ranked    by speed; the first PICK_N of each are recorded
+  PASS (#79), judged once 60 list days have 21-session grades: FAST_UP's
+            21-session excess vs the S&P > 0 with t >= 2. Overlapping days
+            overstate t, so a pass is a reason to look closer, not to trade.
+
+GRADING (all lists, as leaders_grade): equal-weight return from the open of
 the list day to the close h-1 sessions later, minus the S&P 500 over the same
 sessions, at h = 5, 21 and 60 (the PEAD test's hold). A day with an empty
 list is skipped. Overlapping horizons overstate t: orientation only.
@@ -43,12 +59,14 @@ from scanner.models import Frozen
 from scanner.ops.leaders_grade import list_return
 from scanner.ops.selection import Bars, Summary, forward_return, summarize
 
-LISTS = ("earnings", "estimates")
+LISTS = ("earnings", "estimates", "fast_up", "fast_all")
 HORIZONS = (5, 21, 60)
 PICK_N = 4
 MIN_SURPRISE_PCT = 5.0
 MIN_REVISION_PCT = 3.0
 MIN_UP = 2
+FAST_ATR_DAYS = 20
+FAST_MIN_DOLLAR_VOL = 20e6
 
 
 class EarningsPick(Frozen):
@@ -121,6 +139,26 @@ def estimates_rising(funds: Mapping[str, object], above_50d: Mapping[str, bool])
         if rev >= MIN_REVISION_PCT and up >= MIN_UP and down == 0:
             out.append(EstimatePick(symbol=s, revision_pct=rev, up_30d=up, down_30d=down))
     return sorted(out, key=lambda p: (-p.revision_pct, p.symbol))
+
+
+class FastStats(Frozen):
+    atr_pct: float
+    dollar_vol: float
+    above_50d: bool
+
+
+class FastPick(Frozen):
+    symbol: str
+    atr_pct: float
+    above_50d: bool
+
+
+def fast_movers(stats: Mapping[str, FastStats]) -> tuple[list[FastPick], list[FastPick]]:
+    """(FAST_UP, FAST_ALL): liquid names, fastest first."""
+    every = sorted((FastPick(symbol=s, atr_pct=f.atr_pct, above_50d=f.above_50d)
+                    for s, f in stats.items() if f.dollar_vol >= FAST_MIN_DOLLAR_VOL),
+                   key=lambda p: (-p.atr_pct, p.symbol))
+    return [p for p in every if p.above_50d], every
 
 
 class Grade(Frozen):
