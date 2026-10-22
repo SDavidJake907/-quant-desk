@@ -38,6 +38,7 @@ from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
 from scanner.advisor import hindsight_memory
+from scanner.advisor import operator_notes
 from scanner.advisor import memory_feed
 from scanner.advisor import stock_context
 from scanner.sources import yahoo_fundamentals
@@ -554,7 +555,10 @@ async def main(submit: bool) -> int:
                                          now=datetime.now().astimezone())
         print(f"  {DIM}hindsight lessons: "
               f"{f'{len(lessons):,} chars' if lessons else 'none (missing or stale)'}{RESET}")
-        text = text.replace("The list:", (f"{memory}\n\n" if memory else "")
+        # Notes from the operator (2026-10-21): information only, never a rule.
+        told = operator_notes.block(operator_notes.read(), date.today())
+        text = text.replace("The list:", (f"{told}\n\n" if told else "")
+                            + (f"{memory}\n\n" if memory else "")
                             + (f"{lessons}\n\n" if lessons else "")
                             + f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
@@ -583,6 +587,7 @@ async def main(submit: bool) -> int:
             "pool_size": pool_size, "thinking": notes,
             "memory": memory,
             "hindsight": lessons,
+            "operator_notes": told,
             # WORKLIST §65: her 5-day probabilities (graded by advisor/forecast_grade.py)
             # and the observable exit she names for each holding.
             "forecasts": dict(decision.forecasts), "sell_if": dict(decision.sell_if)}), POLICY)

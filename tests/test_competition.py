@@ -100,3 +100,27 @@ def test_each_quarter_moves_25_points_from_loser_to_winner_within_75_25():
     assert c.split_after([G, G]) == (25.0, 75.0)          # floor: never below 25
     assert c.split_after([G, P]) == (50.0, 50.0)          # a comeback is one quarter away
     assert c.split_after([P, P, G, None]) == (50.0, 50.0) # an undecided quarter moves nothing
+
+
+EXCL = c.Exclusion(book=c.PICKS, symbol="MRVL", start=D(2026, 10, 22), until=D(2026, 10, 23),
+                   reason="Section 2 test")
+
+
+def test_exclusions_read_and_match_only_their_book_symbol_and_window():
+    text = ('[{"book": "picks", "symbol": "MRVL", "from": "2026-10-22", "until": "2026-10-23",'
+            ' "reason": "Section 2 test"}, {"broken": 1}]')
+    assert c.read_exclusions(text) == [EXCL]
+    assert c.read_exclusions("{nope") == []
+    assert c.is_excluded(c.PICKS, "MRVL", D(2026, 10, 23), [EXCL])
+    assert not c.is_excluded(c.GEMMA, "MRVL", D(2026, 10, 23), [EXCL])
+    assert not c.is_excluded(c.PICKS, "MRVL", D(2026, 10, 26), [EXCL])
+    assert not c.is_excluded(c.PICKS, "AAPL", D(2026, 10, 23), [EXCL])
+
+
+def test_excluded_outcomes_are_dropped_by_entry_day():
+    ts = int(__import__("datetime").datetime(2026, 10, 22, 14, 0).timestamp())
+    keep = {"event": "trade_outcome", "outcome": {"client_order_id": f"pck-AAPL-{ts}", "symbol": "AAPL"}}
+    drop = {"event": "trade_outcome", "outcome": {"client_order_id": f"pck-MRVL-{ts}", "symbol": "MRVL"}}
+    later = {"event": "trade_outcome", "outcome": {"client_order_id": "pck-MRVL-1800000000", "symbol": "MRVL"}}
+    other = {"event": "gemma_decision"}
+    assert c.without_excluded([keep, drop, later, other], [EXCL]) == [keep, later, other]

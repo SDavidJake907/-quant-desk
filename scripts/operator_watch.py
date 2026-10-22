@@ -31,6 +31,7 @@ import gemma_review as grv  # scripts/ is on the path when this script runs
 import gemma_trade as gtr
 
 from scanner.advisor import gemma_review as rv
+from scanner.advisor import operator_notes
 from scanner.advisor import operator_watch as ow
 from scanner.config import settings
 from scanner.execution import ownership
@@ -126,7 +127,8 @@ async def main() -> int:
                      earnings=earnings[v.symbol].label if v.symbol in earnings else None)
                  for v in views}
         facts, trend, _ = await gtr.facts_for(symbols, client)
-        text = ow.prompt(facts, views, flags, market=trend)
+        text = ow.prompt(facts, views, flags, market=trend,
+                         notes=operator_notes.block(operator_notes.read(), date.today()))
         notes = ""
         try:
             answer, notes = await gtr.think_then_answer(text, ow.schema(symbols), client)

@@ -63,7 +63,7 @@ def _line(v: PositionView, flags: Sequence[str]) -> str:
 
 
 def prompt(facts: Mapping[str, str], views: Sequence[PositionView],
-           flags: Mapping[str, Sequence[str]], *, market: str) -> str:
+           flags: Mapping[str, Sequence[str]], *, market: str, notes: str = "") -> str:
     return "\n".join((
         "You are the desk's junior trader, asked to look over the OPERATOR's own positions "
         "as a safety net. They are not yours. Your only job is to protect the operator's "
@@ -72,6 +72,7 @@ def prompt(facts: Mapping[str, str], views: Sequence[PositionView],
         "",
         f"Market: {market}",
         "",
+        *((notes, "") if notes else ()),
         "The operator's positions:",
         *(_line(v, flags.get(v.symbol, ())) for v in views),
         "",

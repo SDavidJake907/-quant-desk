@@ -15,14 +15,21 @@ RULES, SET 2026-10-07 BEFORE ANY MONTH WAS SCORED
   the higher season return. REWARD: +10 percentage points of the account for
   the next season, taken from the other book, applied as a new window.
 
+EXCLUSIONS (operator 2026-10-21: "this test shouldnt be counted as a challenge"):
+data/competition/excluded.json names a book, a symbol and a window; a position
+of that book in that symbol inside the window, and any closed trade of it
+ENTERED inside the window, is left out of the score. For declared tests only.
+
 PURE. The script takes snapshots and fetches prices.
 """
 
 from __future__ import annotations
 
+import json
 import random
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date
+from datetime import date, datetime
+from typing import Any
 
 from scanner.models import Frozen
 
@@ -226,3 +233,53 @@ def prob_better(a: Mapping[date, float], b: Mapping[date, float], *, draws: int 
     n = len(diffs)
     wins = sum(1 for _ in range(draws) if sum(rng.choice(diffs) for _ in range(n)) > 0)
     return wins / draws
+
+
+class Exclusion(Frozen):
+    """A declared test the challenge does not count."""
+    book: str
+    symbol: str
+    start: date
+    until: date
+    reason: str
+
+
+def read_exclusions(text: str) -> list[Exclusion]:
+    try:
+        raw = json.loads(text)
+    except ValueError:
+        return []
+    out = []
+    for r in raw if isinstance(raw, list) else []:
+        try:
+            out.append(Exclusion(book=str(r["book"]), symbol=str(r["symbol"]).upper(),
+                                 start=date.fromisoformat(r["from"]),
+                                 until=date.fromisoformat(r["until"]), reason=str(r["reason"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+def is_excluded(book: str, symbol: str, day: date, rules: Iterable[Exclusion]) -> bool:
+    return any(r.book == book and r.symbol == symbol and r.start <= day <= r.until for r in rules)
+
+
+def without_excluded(rows: Iterable[Mapping[str, Any]],
+                     rules: Sequence[Exclusion]) -> list[Mapping[str, Any]]:
+    """Audit rows minus the closed trades of a declared test, matched by book
+    (client-id prefix), symbol and ENTRY day (the client id's timestamp)."""
+    from scanner.execution.ownership import strategy_of
+
+    out = []
+    for row in rows:
+        o = row.get("outcome") or {} if row.get("event") == "trade_outcome" else {}
+        coid = str(o.get("client_order_id") or "")
+        if coid and rules:
+            try:
+                entered = datetime.fromtimestamp(int(coid.rsplit("-", 1)[1])).date()
+            except (IndexError, ValueError):
+                entered = None
+            if entered and is_excluded(strategy_of(coid), str(o.get("symbol") or ""), entered, rules):
+                continue
+        out.append(row)
+    return out

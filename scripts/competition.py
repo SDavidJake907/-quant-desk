@@ -37,6 +37,7 @@ from scanner.sources.index_history import SP500
 
 DATA = Path("data/competition")
 SNAPS, PAPER = DATA / "snapshots.jsonl", DATA / "paper_books.json"
+EXCLUDED = DATA / "excluded.json"
 OUT = Path("logs/competition")
 GHOST_SCANNER = "ghost_scanner"
 GHOST_FILE = DATA / "ghost_scanner.json"
@@ -118,11 +119,18 @@ async def snapshot() -> int:
         b = Alpaca(settings.alpaca_key_id, settings.alpaca_secret_key, client)
         positions = await b._get("/v2/positions")
         owners = ownership.owners(await b._get("/v2/orders", status="all", limit=500, nested="true"))
-        realized = scorecard.by_strategy(scorecard.read_rows(settings.audit_log_path))
+        # Declared tests the challenge does not count (operator 2026-10-21).
+        rules = c.read_exclusions(EXCLUDED.read_text(encoding="utf-8")) if EXCLUDED.exists() else []
+        realized = scorecard.by_strategy(c.without_excluded(
+            scorecard.read_rows(settings.audit_log_path), rules))
         DATA.mkdir(parents=True, exist_ok=True)
         with SNAPS.open("a", encoding="utf-8") as f:
             for book in (c.PICKS, c.GEMMA):
-                held = [p for p in positions if ownership.owner(p["symbol"], owners) == book]
+                held = [p for p in positions if ownership.owner(p["symbol"], owners) == book
+                        and not c.is_excluded(book, p["symbol"], today, rules)]
+                for r in rules:
+                    if r.book == book and r.start <= today <= r.until:
+                        print(f"  not counted ({book}): {r.symbol} -- {r.reason}")
                 done = realized.get(book)
                 snap = c.Snapshot(day=today, book=book,
                                   pl_total=(done.total_dollars if done else 0.0)

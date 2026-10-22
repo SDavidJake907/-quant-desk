@@ -14,6 +14,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.advisor import hindsight_memory as hm
+from scanner.advisor import operator_notes
 from scanner.config import settings
 from scanner.execution.scorecard import read_rows
 
@@ -28,6 +29,8 @@ def main() -> int:
         except (OSError, ValueError):
             print(f"  skipped unreadable review {f.name}")
     mem = hm.memories(read_rows(settings.audit_log_path), reviews)
+    # The operator's notes to her (advisor/operator_notes.py) stay in her long-term record.
+    mem = sorted(mem + operator_notes.memories(operator_notes.read()), key=lambda m: m["at"])
     hm.DIR.mkdir(parents=True, exist_ok=True)
     tmp = hm.FEED.with_suffix(".tmp")
     tmp.write_text(json.dumps(mem, indent=1), encoding="utf-8")
