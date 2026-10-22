@@ -34,6 +34,7 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from scanner.advisor import after_hours
 from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
@@ -97,8 +98,10 @@ def _ret(closes, back: int) -> str:
     return f"{(closes[-1] / closes[-back - 1] - 1) * 100:+.1f}%" if len(closes) > back else "n/a"
 
 
-async def facts_for(symbols, client) -> tuple[dict[str, str], str, bool]:
-    """(facts per stock, the market line, whether the S&P 500 is above its 210-day average)."""
+async def facts_for(symbols, client, session: str = sessions.REGULAR) -> tuple[dict[str, str], str, bool]:
+    """(facts per stock, the market line, whether the S&P 500 is above its 210-day average).
+    Outside regular hours each stock also gets its after-hours trade and the market line
+    the index futures (advisor/after_hours.py) -- the daily bars stop at the close."""
     daily, _ = await fetch_many(tuple(symbols), client, range_="2y")
     spx = await fetch_bars("^GSPC", client, range_="2y")
     sma = sum(spx.closes[-210:]) / 210
@@ -186,7 +189,13 @@ async def facts_for(symbols, client) -> tuple[dict[str, str], str, bool]:
                 lines.append(f"headline: {item.title[:HEADLINE_CHARS]}")
         except Exception:                                # noqa: BLE001
             lines.append("headlines: unavailable")
+        if session != sessions.REGULAR:
+            lines.append(after_hours.stock_line(await after_hours.quote(s, client),
+                                                datetime.now(timezone.utc)))
         out[s] = "\n".join(lines)
+    if session != sessions.REGULAR:
+        fut = after_hours.futures_text(await after_hours.futures(client), datetime.now(timezone.utc))
+        trend += f". Since the close ({session} session): " + (fut or "futures unavailable")
     return out, trend, spx.closes[-1] > sma
 
 
@@ -518,7 +527,7 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             print("  nothing on the list is free -- no decision today")
             return 0
 
-        facts, trend, uptrend = await facts_for(allowed, client)
+        facts, trend, uptrend = await facts_for(allowed, client, session)
         least = gt.MIN_IN_UPTREND if uptrend else 0
         if not POLICY.momentum_trades:
             for rank, s in enumerate(mom_picks, 1):

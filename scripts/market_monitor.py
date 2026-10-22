@@ -143,7 +143,7 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
         return []
     sell_ifs = gm.sell_ifs(read_rows(settings.audit_log_path))
     symbols = [p["symbol"] for p in mine]
-    facts, trend, _ = await gtr.facts_for(symbols, client)
+    facts, trend, _ = await gtr.facts_for(symbols, client, session)
     rows = []
     for p in mine:
         _, day = await quote(client, p["symbol"])
