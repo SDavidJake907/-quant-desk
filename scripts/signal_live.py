@@ -11,12 +11,16 @@ test is TRIALS #80 (research_gpu/signal_lab.py).
 VIRTUAL MONEY: $1,000 a trade, never an order -- the Alpaca account, the picks
 and Gemma's book are untouched, and Gemma does not see this yet.
 
-Each pass, in regular hours (9:30-16:00 ET):
+Each pass (the task runs every 5 minutes, around the clock):
   1  universe: the 30 fastest liquid S&P 500 + MidCap names by 20-day ATR %,
      fixed once a day (data/signals/universe/DATE.json)
-  2  live 5m / 15m / 60m candles from Yahoo (consolidated), the forming candle
-     dropped; the live price is the newest 5-minute close
-  3  every version (11 signals x plain/+ADX x 3 timeframes) steps its book
+  2  REGULAR books, 9:30-16:00 ET: live 5m / 15m / 60m regular-session candles
+     from Yahoo, the forming candle dropped; 66 versions; flat Friday 15:45
+  3  24h BOOKS, every session Sunday 20:00 -> Friday 20:00 ET (operator:
+     "remember 24/5"): one 5-minute stream from Yahoo pre/regular/after-hours
+     plus Alpaca BOATS overnight (signals/candles24.py), and its 15m grouping;
+     44 versions named "24h ..."; flat Friday 19:45. Overnight candles are thin,
+     so these books are scored apart and never mixed with the regular ones.
 Files: data/signals/paper_state.json, paper_trades.jsonl; logs/signals/DATE.md.
 """
 
@@ -26,7 +30,7 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 import httpx
@@ -39,6 +43,7 @@ import morning_ideas  # scripts/ is on the path when this script runs
 from scanner.features.bars import fetch_many
 from scanner.features.intraday import EXCHANGE_TZ, drop_incomplete, fetch_intraday
 from scanner.ops import ideas
+from scanner.signals import candles24 as c24
 from scanner.signals import indicators as ind
 from scanner.signals import paper, rules
 from scanner.sources import composite
@@ -50,6 +55,25 @@ OUT = Path("logs/signals")
 UNIVERSE_N = 30
 TIMEFRAMES = {5: "5d", 15: "1mo", 60: "3mo"}
 OPEN, CLOSE, FRIDAY_FLAT = time(9, 30), time(16, 0), time(15, 45)
+EXT_START, EXT_END, FRIDAY_FLAT_24H = time(4, 0), time(20, 0), time(19, 45)
+FRAMES_24H = (5, 15)
+#: Minutes past a candle's close it may still trigger an entry (feed delay).
+STALE_GRACE = 20
+
+
+def session(now: datetime) -> str:
+    """regular / pre / after / overnight / closed, from the Eastern clock (24/5:
+    Sunday 20:00 to Friday 20:00). Holidays read as open and simply see no new candles."""
+    wd, t = now.weekday(), now.time()
+    if wd == 5 or (wd == 4 and t >= EXT_END) or (wd == 6 and t < EXT_END):
+        return "closed"
+    if OPEN <= t < CLOSE and wd < 5:
+        return "regular"
+    if EXT_START <= t < OPEN:
+        return "pre"
+    if CLOSE <= t < EXT_END:
+        return "after"
+    return "overnight"
 CONCURRENCY = 8
 
 
@@ -103,28 +127,52 @@ async def candles(client, symbol: str, sem) -> dict[int, object]:
         return out
 
 
-def step_symbol(symbol: str, bars: dict, state: dict, now: datetime, friday: bool) -> list[paper.Closed]:
+def regular_frames(bars: dict, now: datetime) -> tuple[dict, float | None]:
+    """label -> (times, o, h, l, c, v) of completed regular-session candles; live price."""
     five = bars.get(5)
     if five is None or len(five) < 2:
-        return []
-    price = five.closes[-1]
-    closed = []
+        return {}, None
+    frames = {}
     for minutes, raw in bars.items():
         b = drop_incomplete(raw, minutes=minutes, now=now)
-        if len(b) < 150:
+        frames[label(minutes)] = (list(b.times), *(list(x) for x in (b.opens, b.highs, b.lows, b.closes, b.volumes)))
+    return frames, five.closes[-1]
+
+
+def frames_24h(five: list, now: datetime) -> tuple[dict, float | None]:
+    if len(five) < 2:
+        return {}, None
+    frames = {}
+    for minutes in FRAMES_24H:
+        rows = c24.completed(five if minutes == 5 else c24.group(five, minutes), minutes, now)
+        frames[f"24h {label(minutes)}"] = ([r[0] for r in rows], *([r[k] for r in rows] for k in range(1, 6)))
+    return frames, five[-1][4]
+
+
+def step_symbol(symbol: str, frames: dict, price: float | None, state: dict, now: datetime,
+                friday: bool) -> list[paper.Closed]:
+    if price is None:
+        return []
+    closed = []
+    for tf, (times, o, h, lo, c, v) in frames.items():
+        if len(c) < 150:
             continue
-        o, h, lo, c, v = (list(x) for x in (b.opens, b.highs, b.lows, b.closes, b.volumes))
         a = ind.atr(h, lo, c, 22)[-1]
         adx = ind.adx(h, lo, c)[-1]
+        # FRESH OR NOTHING (2026-10-22, first overnight pass): a thin name can go an
+        # hour without a trade, and BOATS candles arrive ~15-20 min late on this
+        # plan. An entry needs a signal candle that closed within STALE_GRACE.
+        minutes = int(tf.split()[-1].rstrip("mh")) * (60 if tf.endswith("h") else 1)
+        fresh = (now - times[-1].astimezone(EXCHANGE_TZ)).total_seconds() / 60 <= minutes + STALE_GRACE
         for name, (_, rule) in rules.RULES.items():
             st = rule(o, h, lo, c, v)
-            for suffix, gate in (("", True), ("+adx", adx is not None and adx > rules.ADX_MIN)):
-                version = f"{label(minutes)} {name}{suffix}"
+            for suffix, gate in (("", fresh), ("+adx", fresh and adx is not None and adx > rules.ADX_MIN)):
+                version = f"{tf} {name}{suffix}"
                 book = state["positions"].setdefault(version, {})
                 key = f"{version}|{symbol}"
                 seen = state["seen"].get(key)
                 pos, done, newest = paper.step(
-                    version, symbol, times=list(b.times), lows=lo, state=st, gate_ok=gate, atr_now=a,
+                    version, symbol, times=times, lows=lo, state=st, gate_ok=gate, atr_now=a,
                     price=price, now=now, position=book.get(symbol),
                     last_seen=datetime.fromisoformat(seen) if seen else None, friday_flat=friday)
                 if pos is None:
@@ -161,7 +209,13 @@ def report(today, names: list[str], state: dict) -> str:
              "VIRTUAL money, $1,000 a trade -- no orders, Gemma does not see this. "
              "Rules: scanner/signals/rules.py; history: TRIALS #80.", "",
              f"Fast movers today ({len(names)}): {', '.join(names)}", ""]
-    for title, rows in (("Today", [t for t in trades if t.exit_at.date() == today]), ("Since the start", trades)):
+    regular = [t for t in trades if not t.version.startswith("24h")]
+    ext = [t for t in trades if t.version.startswith("24h")]
+    for title, rows in (("Regular hours -- today", [t for t in regular if t.exit_at.date() == today]),
+                        ("Regular hours -- since the start", regular),
+                        ("24h books (pre-market, after-hours, overnight) -- today",
+                         [t for t in ext if t.exit_at.date() == today]),
+                        ("24h books -- since the start", ext)):
         board = paper.leaderboard(rows)
         lines += [f"## {title}", ""]
         if not board:
@@ -180,30 +234,50 @@ async def main(report_only: bool) -> int:
     now = datetime.now(EXCHANGE_TZ)
     today = now.date()
     state = load_state()
+    where = session(now)
     async with httpx.AsyncClient(timeout=60) as client:
         names = await universe(client, today)
-        in_hours = now.weekday() < 5 and OPEN <= now.time() < CLOSE
-        if in_hours and not report_only:
+        if where != "closed" and not report_only:
+            held = sorted({s for b in state["positions"].values() for s in b} - set(names))
+            symbols = [*names, *held]          # names that left the universe still close their trades
             sem = asyncio.Semaphore(CONCURRENCY)
-            got = await asyncio.gather(*(candles(client, s, sem) for s in names))
-            friday = now.weekday() == 4 and now.time() >= FRIDAY_FLAT
-            # Names that left today's universe still close their open trades.
-            held = {s for b in state["positions"].values() for s in b} - set(names)
-            if held:
-                got += await asyncio.gather(*(candles(client, s, sem) for s in sorted(held)))
-            closed = []
-            for symbol, bars in zip([*names, *sorted(held)], got):
-                closed += step_symbol(symbol, bars, state, now, friday)
+            closed: list[paper.Closed] = []
+            if where == "regular":
+                got = await asyncio.gather(*(candles(client, s, sem) for s in symbols))
+                friday = now.weekday() == 4 and now.time() >= FRIDAY_FLAT
+                for symbol, bars in zip(symbols, got):
+                    frames, price = regular_frames(bars, now)
+                    closed += step_symbol(symbol, frames, price, state, now, friday)
+
+            async def ext(s):
+                async with sem:
+                    try:
+                        return await c24.yahoo_5m(s, client)
+                    except Exception as exc:                  # noqa: BLE001 -- one name, not the run
+                        print(f"  {s} 24h: {exc}")
+                        return []
+
+            # The 24h books run in every session.
+            yahoo = await asyncio.gather(*(ext(s) for s in symbols))
+            try:
+                boats = await c24.boats_5m(symbols, client, now - timedelta(days=6))
+            except Exception as exc:                          # noqa: BLE001
+                print(f"  BOATS overnight candles unavailable: {exc}")
+                boats = {}
+            friday24 = now.weekday() == 4 and now.time() >= FRIDAY_FLAT_24H
+            for symbol, y in zip(symbols, yahoo):
+                frames, price = frames_24h(c24.merge(y, boats.get(symbol, [])), now)
+                closed += step_symbol(symbol, frames, price, state, now, friday24)
             if closed:
                 DATA.mkdir(parents=True, exist_ok=True)
                 with TRADES.open("a", encoding="utf-8") as f:
-                    for t in closed:
-                        f.write(t.model_dump_json() + "\n")
+                    for tr in closed:
+                        f.write(tr.model_dump_json() + "\n")
             save_state(state)
             opened = sum(len(b) for b in state["positions"].values())
-            print(f"{now:%H:%M} ET: {len(names)} names, {len(closed)} closed, {opened} open")
+            print(f"{now:%H:%M} ET [{where}]: {len(names)} names, {len(closed)} closed, {opened} open")
         elif not report_only:
-            print(f"{now:%H:%M} ET: outside regular hours -- report only")
+            print(f"{now:%H:%M} ET: market closed (weekend) -- report only")
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / f"{today.isoformat()}.md").write_text(report(today, names, state), encoding="utf-8")
     return 0
