@@ -21,6 +21,11 @@ Each pass (the task runs every 5 minutes, around the clock):
      plus Alpaca BOATS overnight (signals/candles24.py), and its 15m grouping;
      44 versions named "24h ..."; flat Friday 19:45. Overnight candles are thin,
      so these books are scored apart and never mixed with the regular ones.
+  4  SWEEP books, regular hours, 5m and 15m (operator 2026-10-22, from the ITI
+     liquidity-sweep article): signals/sweep.py -- a prior-day or 20-candle
+     low swept, closed back inside on 2x volume; half at VWAP, rest at the range
+     high, stop under the wick, out by 15:55. "+scalp" takes all at VWAP.
+     Universe: the fast movers plus the 20 largest companies.
 Files: data/signals/paper_state.json, paper_trades.jsonl; logs/signals/DATE.md.
 """
 
@@ -45,7 +50,7 @@ from scanner.features.intraday import EXCHANGE_TZ, drop_incomplete, fetch_intrad
 from scanner.ops import ideas
 from scanner.signals import candles24 as c24
 from scanner.signals import indicators as ind
-from scanner.signals import paper, rules
+from scanner.signals import paper, rules, sweep
 from scanner.sources import composite
 from scanner.sources.index_history import SP400, SP500
 
@@ -59,6 +64,9 @@ EXT_START, EXT_END, FRIDAY_FLAT_24H = time(4, 0), time(20, 0), time(19, 45)
 FRAMES_24H = (5, 15)
 #: Minutes past a candle's close it may still trigger an entry (feed delay).
 STALE_GRACE = 20
+SWEEP_FRAMES = ("5m", "15m")
+BIGCAP = ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "JPM", "LLY",
+          "BRK.B", "V", "WMT", "XOM", "UNH", "MA", "COST", "ORCL", "JNJ", "HD")
 
 
 def session(now: datetime) -> str:
@@ -103,6 +111,8 @@ def load_state() -> dict:
         return {"positions": {}, "seen": {}}
     raw["positions"] = {v: {s: paper.Position.model_validate(p) for s, p in book.items()}
                         for v, book in raw.get("positions", {}).items()}
+    raw["sweep"] = {v: {s: sweep.Open.model_validate(p) for s, p in book.items()}
+                    for v, book in raw.get("sweep", {}).items()}
     return raw
 
 
@@ -110,6 +120,8 @@ def save_state(state: dict) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     out = {"positions": {v: {s: json.loads(p.model_dump_json()) for s, p in book.items()}
                          for v, book in state["positions"].items() if book},
+           "sweep": {v: {s: json.loads(p.model_dump_json()) for s, p in book.items()}
+                     for v, book in state.get("sweep", {}).items() if book},
            "seen": state["seen"]}
     tmp = STATE.with_suffix(".tmp")
     tmp.write_text(json.dumps(out, indent=1), encoding="utf-8")
@@ -186,6 +198,41 @@ def step_symbol(symbol: str, frames: dict, price: float | None, state: dict, now
     return closed
 
 
+def step_sweep(symbol: str, frames: dict, price: float | None, state: dict, now: datetime) -> list[paper.Closed]:
+    """The liquidity-sweep books for one symbol, regular hours only."""
+    if price is None:
+        return []
+    closed: list[paper.Closed] = []
+    books = state.setdefault("sweep", {})
+    for tf in SWEEP_FRAMES:
+        if tf not in frames:
+            continue
+        times, o, h, lo, c, v = frames[tf]
+        if len(c) < 60:
+            continue
+        minutes = int(tf.rstrip("m"))
+        fresh = (now - times[-1].astimezone(EXCHANGE_TZ)).total_seconds() / 60 <= minutes + STALE_GRACE
+        key = f"{tf} sweep|{symbol}"
+        new_bar = state["seen"].get(key) != times[-1].isoformat()
+        setup = sweep.detect(times, o, h, lo, c, v, price=price) if (fresh and new_bar) else None
+        state["seen"][key] = times[-1].isoformat()
+        for version, scalp in ((f"{tf} sweep", False), (f"{tf} sweep+scalp", True)):
+            book = books.setdefault(version, {})
+            pos = book.get(symbol)
+            if pos is not None:
+                pos, done = sweep.manage(version, pos, times=times, highs=h, lows=lo, price=price,
+                                         now=now, scalp=scalp)
+                closed += done
+            elif setup is not None:
+                pos = sweep.Open(symbol=symbol, entry=price, entry_at=now, stop=setup.stop,
+                                 target1=setup.target1, target2=setup.target2, signal_bar=setup.signal_bar)
+            if pos is None:
+                book.pop(symbol, None)
+            else:
+                book[symbol] = pos
+    return closed
+
+
 def read_trades() -> list[paper.Closed]:
     if not TRADES.exists():
         return []
@@ -225,7 +272,7 @@ def report(today, names: list[str], state: dict) -> str:
         lines += [f"| {i} | {s.version} | {s.trades} | {s.wins / s.trades * 100:.0f}% | {s.net_pct:+.2f}% | "
                   f"{s.dollars:+,.2f} | {lab.get(s.version, '')} |" for i, s in enumerate(board, 1)]
         lines.append("")
-    held = sum(len(b) for b in state["positions"].values())
+    held = sum(len(b) for b in state["positions"].values()) + sum(len(b) for b in state.get("sweep", {}).values())
     lines += [f"Open paper positions: {held}", ""]
     return "\n".join(lines) + "\n"
 
@@ -238,16 +285,20 @@ async def main(report_only: bool) -> int:
     async with httpx.AsyncClient(timeout=60) as client:
         names = await universe(client, today)
         if where != "closed" and not report_only:
-            held = sorted({s for b in state["positions"].values() for s in b} - set(names))
+            held = sorted(({s for b in state["positions"].values() for s in b}
+                           | {s for b in state.get("sweep", {}).values() for s in b}) - set(names))
             symbols = [*names, *held]          # names that left the universe still close their trades
+            extra = [s for s in BIGCAP if s not in symbols]   # sweep books only
             sem = asyncio.Semaphore(CONCURRENCY)
             closed: list[paper.Closed] = []
             if where == "regular":
-                got = await asyncio.gather(*(candles(client, s, sem) for s in symbols))
+                got = await asyncio.gather(*(candles(client, s, sem) for s in [*symbols, *extra]))
                 friday = now.weekday() == 4 and now.time() >= FRIDAY_FLAT
-                for symbol, bars in zip(symbols, got):
+                for symbol, bars in zip([*symbols, *extra], got):
                     frames, price = regular_frames(bars, now)
-                    closed += step_symbol(symbol, frames, price, state, now, friday)
+                    if symbol in symbols:
+                        closed += step_symbol(symbol, frames, price, state, now, friday)
+                    closed += step_sweep(symbol, frames, price, state, now)
 
             async def ext(s):
                 async with sem:
@@ -274,7 +325,7 @@ async def main(report_only: bool) -> int:
                     for tr in closed:
                         f.write(tr.model_dump_json() + "\n")
             save_state(state)
-            opened = sum(len(b) for b in state["positions"].values())
+            opened = sum(len(b) for b in state["positions"].values()) + sum(len(b) for b in state.get("sweep", {}).values())
             print(f"{now:%H:%M} ET [{where}]: {len(names)} names, {len(closed)} closed, {opened} open")
         elif not report_only:
             print(f"{now:%H:%M} ET: market closed (weekend) -- report only")
