@@ -163,7 +163,7 @@ def render(today: date, last: date, winners, rising, fast, held: dict[str, str],
     else:
         lines.append("None today.")
     fast_up, fast_all = fast
-    lines += ["", f"## Fast movers -- shadow pool, TRIALS #79 (20-day daily range, "
+    lines += ["", f"## Lotto trials -- fast-mover shadow pool, TRIALS #79 (20-day daily range, "
                   f"${ideas.FAST_MIN_DOLLAR_VOL / 1e6:.0f}M+/day)", "",
               "Fast AND above the 50-day (fast_up) vs fastest regardless of trend (fast_all, the control).", ""]
     for name, picks in (("fast_up", fast_up), ("fast_all", fast_all)):

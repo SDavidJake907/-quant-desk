@@ -26,7 +26,7 @@ ESTIMATES RISING -- analysts raising this fiscal year's EPS estimate
             above its 50-day average
   ranked    by the 90-day estimate change; the first PICK_N are recorded
 
-FAST MOVERS -- a shadow pool (operator 2026-10-21: "find some that moves fast
+LOTTO TRIALS -- the fast-mover shadow pool (operator 2026-10-21, named by the operator: "find some that moves fast
 ... a small pool shadowing, with results, that doesnt show or effect gemma").
 TRIALS #79, rules fixed 2026-10-21 before the first list. The history test
 already ran (#46-55: MAX and high volatility BEAT, likely survivorship), so
