@@ -37,7 +37,7 @@ import math
 import random
 import statistics
 import sys
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import date
 from pathlib import Path
 
@@ -66,15 +66,23 @@ def hourly_with_footprint(minutes):
     """-> hourly candles (t, o, h, l, c, v) and, per hour, the minutes' (low, buy share, volume)."""
     ch = [None] + [minutes[k][4] - minutes[k - 1][4] for k in range(1, len(minutes))]
     hours, inside = [], []
-    window: list[float] = []
+    # Running sums give the same population sigma of the last 390 changes as
+    # statistics.pstdev, without re-scanning the window every minute (speed only).
+    window: deque[float] = deque()
+    s1 = s2 = 0.0
     for k, (t, o, h, lo, c, v) in enumerate(minutes):
         d = ch[k]
-        sigma = statistics.pstdev(window) if len(window) >= 30 else None
+        n = len(window)
+        sigma = math.sqrt(max(s2 / n - (s1 / n) ** 2, 0.0)) if n >= 30 else None
         buy = phi(d / sigma) if (d is not None and sigma) else 0.5
         if d is not None:
             window.append(d)
+            s1 += d
+            s2 += d * d
             if len(window) > 390:
-                window.pop(0)
+                x = window.popleft()
+                s1 -= x
+                s2 -= x * x
         key = (t.date(), (t.hour * 60 + t.minute - 570) // 60)
         if hours and hours[-1][0] == key:
             _, (t0, o0, h0, l0, _, v0) = hours[-1]
@@ -105,11 +113,12 @@ async def main() -> int:
         names = set(lab.BIGCAP) | set().union(*fast.values())
         data = await st.candles(client, names)
     groups = {"BIG": lambda s, d: s in lab.BIGCAP, "FAST": lambda s, d: s in fast.get((d.year, d.month), ())}
+    built = {s: hourly_with_footprint(m) for s, m in data.items()}
     passes = 0
     for gname, ok_name in groups.items():
         res: dict[str, list] = defaultdict(list)
         for s, mins in sorted(data.items()):
-            hours, inside = hourly_with_footprint(mins)
+            hours, inside = built[s]
             if len(hours) < 100:
                 continue
             t = [x[0] for x in hours]
