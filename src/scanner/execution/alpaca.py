@@ -356,6 +356,23 @@ class Alpaca:
     async def cancel_order(self, order_id: str) -> None:
         await self._delete(f"/v2/orders/{order_id}")
 
+    async def replace_stop(self, order_id: str, stop_price: float) -> dict[str, Any]:
+        """Move a working stop (a bracket/OCO leg included) to `stop_price` -- the
+        profit lock's raise (execution/profit_lock.py). Alpaca replaces the order:
+        the answer carries the NEW order id."""
+        try:
+            response = await self._client.patch(
+                f"{self.host}/v2/orders/{order_id}", headers=self._headers,
+                json={"stop_price": f"{round_tick(stop_price):.2f}"}, timeout=30.0,
+            )
+            self.last_request_id = response.headers.get("X-Request-ID", "")
+            if response.status_code == 422:
+                raise BrokerError(f"stop replace rejected: {response.text[:200]}")
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise BrokerError(f"PATCH /v2/orders/{order_id} failed: {exc}") from exc
+
     async def account(self) -> Account:
         raw = await self._get("/v2/account")
         return Account(

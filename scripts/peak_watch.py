@@ -37,8 +37,8 @@ import gemma_review as grv  # scripts/ is on the path when this script runs
 import gemma_trade as gtr
 
 from scanner.config import settings
-from scanner.execution import bookorders, ownership, sessions
-from scanner.execution.alpaca import Alpaca
+from scanner.execution import bookorders, ownership, profit_lock, sessions
+from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.ownership import GEMMA, PICKS
 from scanner.features.bars import fetch_many
 from scanner.features.intraday import EXCHANGE_TZ
@@ -48,6 +48,7 @@ from scanner.ops import peak_sell as ps
 from scanner.signals.candles24 import yahoo_5m
 
 MARKS = Path("data/monitor/peak_marks.json")
+LOCKS = Path("data/monitor/profit_lock.json")
 OUT = Path("logs/peak_watch")
 
 
@@ -96,6 +97,72 @@ def remove_picks(symbols: list[str], why: str) -> list[str]:
     return market_monitor.remove_picks(symbols, why)
 
 
+async def sell_position(broker, client, symbol: str, book: str, why: str, open_orders,
+                        session: str) -> bool:
+    """Gemma's through bookorders.sell (limit orders outside regular hours); picks
+    through picks.txt + picks_sync, so the list stays the record."""
+    if book == PICKS:
+        remove_picks([symbol], why)
+        subprocess.run([sys.executable, "scripts/picks_sync.py", "--submit"], check=False)
+        return True
+    return await bookorders.sell(broker, symbol, open_orders, strategy=GEMMA, reason=why,
+                                 policy=gtr.POLICY, session=session, client=client)
+
+
+def load_locks() -> dict:
+    try:
+        return json.loads(LOCKS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+async def lock_pass(broker, client, positions, book_of, orders, open_orders, session: str,
+                    dry: bool, log) -> list[str]:
+    """Profit lock (execution/profit_lock.py): raise each green position's broker stop
+    to the lock/trail level; sell when the price is already at or under it."""
+    state = profit_lock.prune(load_locks(), [p["symbol"] for p in positions])
+    stops = profit_lock.stop_orders(orders)
+    alerts: list[str] = []
+    for p in positions:
+        s, book = p["symbol"], book_of[p["symbol"]]
+        entry, price = float(p["avg_entry_price"]), float(p["current_price"])
+        state = profit_lock.update(state, s, entry=entry, price=price)
+        lock = profit_lock.lock_stop(entry=entry, high=state[s]["high"])
+        order_id, broker_stop = stops.get(s, (None, None))
+        act = profit_lock.action(price=price, lock=lock, broker_stop=broker_stop)
+        if act == "none":
+            continue
+        if act == "sell":
+            why = (f"profit lock: {price:,.2f} at/under the lock {lock:,.2f} (entry {entry:,.2f}, "
+                   f"high {state[s]['high']:,.2f}) -- sold before it turns red")
+            if dry:
+                log(f"  WOULD SELL {book} {s}: {why}")
+                continue
+            ok = await sell_position(broker, client, s, book, why, open_orders, session)
+            log(f"  {'SOLD' if ok else 'SELL FAILED'} {book} {s}: {why}")
+            if ok:
+                alerts.append(f"Sold {s} ({book}) -- profit lock at {lock:,.2f}")
+            continue
+        if order_id is None:
+            log(f"  LOCK {s}: {lock:,.2f} (no working stop to raise -- watched here every 5 min)")
+            continue
+        if dry:
+            log(f"  WOULD RAISE {s} stop {broker_stop:,.2f} -> {lock:,.2f}")
+            continue
+        try:
+            await broker.replace_stop(order_id, lock)
+            log(f"  RAISED {s} stop {broker_stop:,.2f} -> {lock:,.2f} (entry {entry:,.2f}, "
+                f"high {state[s]['high']:,.2f})")
+            bookorders.log(f"{'picks' if book == PICKS else 'gemma'}_stop_raised", s,
+                           f"profit lock: stop {broker_stop:,.2f} -> {lock:,.2f}", gtr.POLICY)
+        except BrokerError as exc:
+            log(f"  RAISE FAILED {s} ({exc}) -- the 5-minute check still sells at {lock:,.2f}")
+    if not dry:
+        LOCKS.parent.mkdir(parents=True, exist_ok=True)
+        LOCKS.write_text(json.dumps(state, indent=1), encoding="utf-8")
+    return alerts
+
+
 async def main(dry: bool) -> int:
     now = datetime.now(EXCHANGE_TZ)
     async with httpx.AsyncClient(timeout=60) as client:
@@ -138,17 +205,14 @@ async def main(dry: bool) -> int:
             if dry:
                 log(f"  WOULD SELL {book_of[s]} {s}: {why}")
                 continue
-            if book_of[s] == PICKS:
-                remove_picks([s], why)
-                subprocess.run([sys.executable, "scripts/picks_sync.py", "--submit"], check=False)
-                ok = True
-            else:
-                ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA, reason=why,
-                                           policy=gtr.POLICY, session=session, client=client)
+            ok = await sell_position(broker, client, s, book_of[s], why, open_orders, session)
             log(f"  {'SOLD' if ok else 'SELL FAILED'} {book_of[s]} {s}: {why}")
             if ok:
                 alerts.append(f"Sold {s} ({book_of[s]}) -- took profit, trend turned after READY")
                 marks.pop(s, None)
+        gone = set(sell) if not dry else set()
+        alerts += await lock_pass(broker, client, [p for p in watched if p["symbol"] not in gone],
+                                  book_of, orders, open_orders, session, dry, log)
         if alerts and not dry:
             body = "; ".join(alerts)
             await notify.send(client, server=settings.ntfy_server, topic=settings.ntfy_topic,
