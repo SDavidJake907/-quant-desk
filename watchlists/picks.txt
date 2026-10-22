@@ -25,3 +25,7 @@ AAPL
 AMZN
 AMGN
 MET
+# [fast]
+# 2026-10-21 20:50 AK: Section 2 test (operator: "test one tomorrow, buy one, see how it moves until friday").
+# Bought at the first pass Thu 10-22; sold Fri 10-23 10:30-11:00 AK near the high (data/oneshot/fast_exit_1023.py).
+MRVL
