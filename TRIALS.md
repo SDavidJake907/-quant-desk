@@ -134,7 +134,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 95 | FORWARD test of #94's one consistent pattern, oversold buying: daily and weekly Connors RSI and MFI, plain and +ADX (8 versions), S&P 500, live virtual paper books (scanner/signals/slow.py in scripts/signal_live.py) from 2026-10-22 | RULES FIXED in the commit that adds this row, before the first live candle: same trades as #94 | live, forward only | pending -- judged 2027-01-29 (about 65 sessions) | PASS: a version's closed trades beat holding the same stocks over the same days (excess > 0) with t >= 2 over daily P&L totals; t 2, not 3, because it is ONE pre-named forward test of a pattern found in history, not a search |
 
-**Running total: ~993 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 96 | GEMMA'S experiment A (her review, data/gemma/ask_strategy_review_2026-10-22.txt): weekly Connors RSI < 10 AND weekly close > 40-week SMA (= 200-day), sell Connors > 70 (#94's exit -- the trend filter is the only change), 3 ATR stop, holds weekends; ALL / BIG / FAST; daily-P&L t; cheat and random checks (research_gpu/gemma_a_weekly.py) | RULES FIXED in the commit that adds this row, before the first run | Yahoo daily 10y -> weekly | pending | PASS: excess > 0, t >= 3 both halves AND above plain weekly Connors in both |
+
+**Running total: ~996 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
