@@ -1,4 +1,4 @@
-"""stock-scanner dashboard -- the competition, and Gemma's review.
+"""Quant-desk dashboard -- the competition, and Gemma's review.
 
 Shows the month's scoreboard (you vs Gemma, ghosts, S&P, momentum), each
 book's open positions, recent trading activity, whether the scheduled jobs
@@ -43,7 +43,7 @@ REVIEWS = GEMMA_DATA / "reviews"
 ASKS = GEMMA_DATA / "asks.jsonl"
 LOCAL_HOSTS = ("127.0.0.1", "localhost")
 
-app = FastAPI(title="stock-scanner", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Quant-desk", docs_url=None, redoc_url=None, openapi_url=None)
 # Refuse requests whose Host is not this PC (blocks DNS-rebinding pages from
 # reading the account through the browser).
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])

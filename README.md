@@ -1,4 +1,4 @@
-# stock-scanner
+# Quant-desk
 
 A paper-trading system for US stocks that runs itself on one Windows PC. It is
 built as a **competition**: the operator's own picks against Gemma, a local AI
@@ -6,6 +6,10 @@ trader, in one Alpaca **paper** account, under the same rules and on the same
 scoreboard. A plain momentum rule and random "ghost" books are scored beside
 them, so a win can be told apart from luck. Rules decide every price, size and
 stop; nothing advisory can trade.
+
+*(Renamed from stock-scanner on 2026-10-21. The folder, the Python package
+`scanner`, and the `stock-scanner-*` scheduled task names keep the old name
+on purpose: every task and path points at them.)*
 
 *(Until 2026-10-06 this README described an intraday "sweep" scanner as the
 system. That scanner tested at −0.041R a trade on data it had never seen and its

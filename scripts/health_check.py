@@ -121,7 +121,7 @@ async def main() -> int:
             f.write(text + "\n\n")
         line = h.summary(findings)
         if line != "ALL OK":
-            title = "Stock scanner: health check"
+            title = "Quant-desk: health check"
             await notify.send(c, server=settings.ntfy_server, topic=settings.ntfy_topic,
                               title=title, message=line, priority="high", tags=("warning",))
             notify.toast(title, line)

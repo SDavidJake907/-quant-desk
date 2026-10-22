@@ -1,1 +1,1 @@
-"""stock-scanner WebUI package."""
+"""Quant-desk WebUI package."""

@@ -1,4 +1,4 @@
-/* stock-scanner dashboard. Every value goes in via textContent,
+/* Quant-desk dashboard. Every value goes in via textContent,
    so nothing from the audit log or the broker can inject markup. */
 "use strict";
 

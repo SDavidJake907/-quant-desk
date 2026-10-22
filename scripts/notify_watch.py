@@ -68,7 +68,7 @@ async def push(client, alert: watch.Alert) -> None:
 async def main(test: bool) -> int:
     async with httpx.AsyncClient(timeout=30) as client:
         if test:
-            await push(client, watch.Alert(title="stock-scanner test",
+            await push(client, watch.Alert(title="Quant-desk test",
                                            message="Alerts reach this phone.", tags=("white_check_mark",)))
             return 0
         state = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else None
