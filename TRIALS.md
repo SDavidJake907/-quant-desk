@@ -103,7 +103,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 79 | "Lotto trials" (operator's name): fast movers, FORWARD shadow pool: daily, the 4 fastest liquid S&P 500 + MidCap names (20-day ATR %, $20M+/day) above their 50-day (fast_up) and the 4 fastest regardless of trend (fast_all, control), graded vs the S&P at 5/21/60 sessions (scanner/ops/ideas.py, morning ideas report) | RULES FIXED in the commit that adds this row, before the first list. History already ran in #46-55 (MAX and high vol BEAT, likely survivorship), so this is forward only | live from 2026-10-22 | PASS once 60 list days have 21-session grades: fast_up excess > 0, t >= 2 (overlap overstates t) | pending |
 
-**Running total: ~111 trials + #75's ~70 slices. Passes that survive everything: 0.**
+| 80 | operator's Pine signals on FAST movers: 11 signals from the Downloads Pine scripts (SuperTrend, Chandelier, HalfTrend, PSAR, NRTR, Schaff, EMA 9/21, Connors RSI, MFI, PVT, OBV), each plain and +ADX>25, on 15m / 1h / 5m = 66 versions; the 30 fastest names each month, point in time; next-open fills, 3 ATR stop, flat Friday, 0.05%/side; excess over the name's own drift (research_gpu/signal_lab.py) | RULES FIXED in the commit that adds this row, before the first run | 15m+1h: 501 S&P 2024-09 -> 2026-09; 5m: 107 names 2024-10 -> 2026-10 | pending | PASS: excess > 0, t >= 2 in BOTH halves |
+
+**Running total: ~177 trials (#80 adds 66 versions) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
