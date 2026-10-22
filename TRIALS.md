@@ -124,7 +124,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 91 | five strategies from github.com/Alorse/pinescript-strategies, their buy/sell conditions RUN BY PINETS from the original Pine (tools/pinets/alorse_signals.pine; v4 ones converted to v6 mechanically): TTM Squeeze, BB Winner PRO, Williams Vix Fix, QQE signals, Range Filter; long only, desk-standard trades (next-open, 3 ATR stop, flat Friday, 0.05%/side), excess over drift; 1h (2y) and daily (10y), big and fast (research_gpu/alorse_batch.py) | RULES FIXED in the commit that adds this row, before the first run | 15m store -> 1h; Yahoo daily 10y | **0 of 20 pass.** QQE and Range Filter lose to holding everywhere (t -3 to -10). BB Winner, VIX Fix and TTM Squeeze flip sign between halves: best looking -- 1h fast TTM Squeeze +0.34% / +1.66% excess (t -0.3 / 0.6, 74 / 87 trades) and daily fast BB Winner -1.55% / +1.43% (t -3.3 / 2.1). Matches the author's own BACKTEST.md (every strategy negative Sharpe on 2025-26 BTC) | **FAIL** all |
 
-**Running total: ~842 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 92 | the example scalper on GOLD (operator: 'scalping with XAUUSD'; spot XAUUSD is not on Alpaca, so GLD + IAU, the physical-gold ETFs): #83 entry, original +1c exit and #84's 12 dollar pairs; pair picked on the first half, judged on the second (research_gpu/gold_scalper.py) | RULES FIXED in the commit that adds this row, before the first run | Alpaca SIP 1-min 2025-10 -> 2026-10 | pending | PASS: second half mean > 0, t >= 3 |
+
+**Running total: ~855 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
