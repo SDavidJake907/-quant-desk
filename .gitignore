@@ -14,3 +14,6 @@ tmp/*.log
 
 # research scratch output (results are recorded in WORKLIST.md / TRIALS.md)
 tmp/
+
+# PineTS install (tools/pinets)
+node_modules/

@@ -1,0 +1,87 @@
+//@version=6
+// Buy/sell conditions of five strategies from github.com/Alorse/pinescript-strategies
+// (read 2026-10-22; no license file -- private local testing only, not redistributed).
+// v5 originals (TTM Squeeze, BB Winner PRO, Range Filter) copied as written; v4 originals
+// (Williams Vix Fix, QQE signals) converted to v6 mechanically: ta./math. prefixes and
+// inputs replaced by their default values. No logic changed except where noted.
+// Each plots 1 on a buy/sell candle, 0 otherwise. Used by research_gpu/alorse_batch.py (TRIALS #91).
+indicator("alorse signals")
+
+rsi14 = ta.rsi(close, 14)
+
+// 1. TTM Squeeze [Alorse] (strategies/momentum/TTM Squeeze.pine)
+length = 20
+e1 = (ta.highest(high, length) + ta.lowest(low, length)) / 2 + ta.sma(close, length)
+osc = ta.linreg(close - e1 / 2, length, 0)
+ttmBuy = osc < 0 and osc[1] < osc[0] and osc[2] < osc[0] and ta.crossover(rsi14, 30)
+ttmSell = osc > 0 and osc[1] > osc[0] and osc[2] > osc[0] and ta.crossunder(rsi14, 70)
+
+// 2. BB Winner PRO [Alorse] defaults: RSI filter on (45), 200 EMA filter on, Aroon off, candle 30%,
+// long only. Exit = its strategy.close condition (buyExit); its "close early at the upper band when
+// in profit" and 7% stop need the entry price and are replaced by the batch's standard stop.
+basis = ta.sma(close, 20)
+dev = 2.0 * ta.stdev(close, 20)
+upper = basis + dev
+lower = basis - dev
+ma200 = ta.ema(close, 200)
+candle_size = close > open ? close - open : open - close
+buyzone = candle_size * 0.30 + low
+bbBuy = buyzone < lower and close < open and rsi14 < 45 and close > ma200
+bbSell = buyzone > upper
+
+// 3. Williams Vix Fix [Alorse] (v4 -> v6)
+wvf = (ta.highest(close, 20) - low) / ta.highest(close, 20) * 100
+upperBand = ta.sma(wvf, 20) + 2.0 * ta.stdev(wvf, 20)
+rangeHigh = ta.highest(wvf, 50) * 0.85
+wvfInv = (high - ta.lowest(close, 20)) / ta.lowest(close, 20) * 100
+upperBandInv = ta.sma(wvfInv, 20) + 2.0 * ta.stdev(wvfInv, 20)
+rangeHighInv = ta.lowest(wvfInv, 50) * 0.99
+sellCond = (wvfInv <= upperBandInv or wvfInv <= rangeHighInv) and (wvfInv[1] <= upperBandInv[1] or wvfInv[1] <= rangeHighInv[1]) and close < upper ? false : true
+vixBuy = (wvf >= upperBand or wvf >= rangeHigh) and (wvf[1] >= upperBand[1] or wvf[1] >= rangeHigh[1]) and close < lower
+vixSell = sellCond and close > upper
+
+// 4. QQE signals [Alorse] (v4 -> v6)
+RsiMa = ta.ema(rsi14, 5)
+AtrRsi = math.abs(RsiMa[1] - RsiMa)
+MaAtrRsi = ta.ema(AtrRsi, 27)
+dar = ta.ema(MaAtrRsi, 27) * 4.238
+longband = 0.0
+shortband = 0.0
+trend = 0
+newshortband = RsiMa + dar
+newlongband = RsiMa - dar
+longband := RsiMa[1] > longband[1] and RsiMa > longband[1] ? math.max(longband[1], newlongband) : newlongband
+shortband := RsiMa[1] < shortband[1] and RsiMa < shortband[1] ? math.min(shortband[1], newshortband) : newshortband
+trend := ta.cross(RsiMa, shortband[1]) ? 1 : ta.cross(longband[1], RsiMa) ? -1 : nz(trend[1], 1)
+FastAtrRsiTL = trend == 1 ? longband : shortband
+QQExlong = 0
+QQExlong := nz(QQExlong[1])
+QQExshort = 0
+QQExshort := nz(QQExshort[1])
+QQExlong := FastAtrRsiTL < RsiMa ? QQExlong + 1 : 0
+QQExshort := FastAtrRsiTL > RsiMa ? QQExshort + 1 : 0
+qqeBuy = QQExlong == 1
+qqeSell = QQExshort == 1
+
+// 5. Range Filter [Alorse] (indicator; buy/sell = the usual Range Filter long/short conditions)
+avrng = ta.ema(math.abs(close - close[1]), 100)
+smrng = ta.ema(avrng, 199) * 3.0
+filt = close
+filt := close > nz(filt[1]) ? (close - smrng < nz(filt[1]) ? nz(filt[1]) : close - smrng) : (close + smrng > nz(filt[1]) ? nz(filt[1]) : close + smrng)
+upward = 0.0
+upward := filt > filt[1] ? nz(upward[1]) + 1 : filt < filt[1] ? 0 : nz(upward[1])
+downward = 0.0
+downward := filt < filt[1] ? nz(downward[1]) + 1 : filt > filt[1] ? 0 : nz(downward[1])
+rfBuy = close > filt and upward > 0
+rfSell = close < filt and downward > 0
+
+plot(ttmBuy ? 1 : 0, "ttm_B")
+plot(ttmSell ? 1 : 0, "ttm_S")
+plot(bbBuy ? 1 : 0, "bbwin_B")
+plot(bbSell ? 1 : 0, "bbwin_S")
+plot(vixBuy ? 1 : 0, "vixfix_B")
+plot(vixSell ? 1 : 0, "vixfix_S")
+plot(qqeBuy ? 1 : 0, "qqe_B")
+plot(qqeSell ? 1 : 0, "qqe_S")
+plot(rfBuy ? 1 : 0, "rangefilter_B")
+plot(rfSell ? 1 : 0, "rangefilter_S")

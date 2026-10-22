@@ -1,0 +1,25 @@
+//@version=6
+// Reference values from Pine's own built-ins, to check scanner/signals/indicators.py.
+// STC and Connors RSI follow everget's stc_schaff_trend_cycle.pine (23/50/10/3/3) and
+// stochastic_connors_rsi.pine's CRSI (3/2/100), written in v6 because PineTS does not run v4.
+indicator("builtins check")
+plot(ta.ema(close, 9), "EMA9")
+plot(ta.ema(close, 21), "EMA21")
+plot(ta.rsi(close, 14), "RSI14")
+plot(ta.atr(22), "ATR22")
+plot(ta.mfi(hlc3, 14), "MFI14")
+plot(ta.pvt, "PVT")
+plot(ta.obv, "OBV")
+[diplus, diminus, adx] = ta.dmi(14, 14)
+plot(adx, "ADX")
+plot(ta.sar(0.02, 0.02, 0.2), "SAR")
+macd = ta.ema(close, 23) - ta.ema(close, 50)
+k = nz(fixnan(ta.stoch(macd, macd, macd, 10)))
+d = ta.ema(k, 3)
+kd = nz(fixnan(ta.stoch(d, d, d, 10)))
+stc = math.max(math.min(ta.ema(kd, 3), 100), 0)
+plot(stc, "STC")
+var float ud = 0.0
+ud := close > close[1] ? (nz(ud[1]) >= 0 ? nz(ud[1]) + 1 : 1) : close < close[1] ? (nz(ud[1]) <= 0 ? nz(ud[1]) - 1 : -1) : 0
+crsi = math.avg(ta.rsi(close, 3), ta.rsi(ud, 2), ta.percentrank(ta.roc(close, 1), 100))
+plot(crsi, "CRSI")

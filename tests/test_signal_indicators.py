@@ -36,7 +36,7 @@ ALL = {
     "supertrend": lambda o, h, lo, c, v: ind.supertrend(o, h, lo, c),
     "chandelier": lambda o, h, lo, c, v: ind.chandelier(h, lo, c),
     "halftrend": lambda o, h, lo, c, v: ind.halftrend(h, lo, c),
-    "psar": lambda o, h, lo, c, v: ind.psar(h, lo),
+    "psar": lambda o, h, lo, c, v: ind.psar(h, lo, c=c),
     "nrtr": lambda o, h, lo, c, v: ind.nrtr(c),
     "stc": lambda o, h, lo, c, v: ind.stc(c),
     "connors": lambda o, h, lo, c, v: ind.connors_rsi(c),
@@ -66,7 +66,7 @@ def test_trend_followers_go_up_in_a_rally_and_down_in_a_crash():
     for name in ("supertrend", "chandelier", "halftrend", "nrtr"):
         d = ALL[name](o, h, lo, c, v + v2)
         assert d[280] == 1 and d[-1] == -1, name
-    s = ind.psar(h, lo)
+    s = ind.psar(h, lo, c=c)
     assert s[280] < c[280] and s[-1] > c[-1]
 
 

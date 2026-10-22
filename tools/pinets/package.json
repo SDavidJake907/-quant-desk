@@ -1,0 +1,9 @@
+{
+  "name": "quant-desk-pinets",
+  "private": true,
+  "description": "Runs the operator's Pine scripts locally with PineTS (AGPL-3.0, personal local use only) -- checks scanner/signals translations and runs Pine strategies on our candles.",
+  "type": "module",
+  "dependencies": {
+    "pinets": "0.12.1"
+  }
+}

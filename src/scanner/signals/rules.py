@@ -79,7 +79,7 @@ RULES: dict[str, tuple[str, Callable[..., list[int]]]] = {
     "supertrend": ("SuperTrend(22, 3) up", lambda o, h, lo, c, v: _flag([d == 1 for d in ind.supertrend(o, h, lo, c)])),
     "chandelier": ("Chandelier Exit(22, 3) long", lambda o, h, lo, c, v: _flag([d == 1 for d in ind.chandelier(h, lo, c)])),
     "halftrend": ("HalfTrend(2, 2) up", lambda o, h, lo, c, v: _flag([d == 1 for d in ind.halftrend(h, lo, c)])),
-    "psar": ("Parabolic SAR under price", lambda o, h, lo, c, v: _flag(_above(c, ind.psar(h, lo)))),
+    "psar": ("Parabolic SAR under price", lambda o, h, lo, c, v: _flag(_above(c, ind.psar(h, lo, c=c)))),
     "nrtr": ("NRTR 2% up", lambda o, h, lo, c, v: _flag([d == 1 for d in ind.nrtr(c)])),
     "stc": ("Schaff Trend Cycle: in above 25, out under 75", _stc),
     "ema_cross": ("EMA 9 over EMA 21", lambda o, h, lo, c, v: _flag(_above(ind.ema(c, 9), ind.ema(c, 21)))),

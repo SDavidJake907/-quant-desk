@@ -163,32 +163,47 @@ def halftrend(h, lo, c, amplitude: int = 2, channel_dev: int = 2) -> list[int]:
     return dirs
 
 
-def psar(h, lo, start: float = 0.02, inc: float = 0.02, maximum: float = 0.2) -> Series:
-    """Parabolic SAR (ta.sar, Wilder)."""
+def psar(h, lo, start: float = 0.02, inc: float = 0.02, maximum: float = 0.2,
+         c: Sequence[float] | None = None) -> Series:
+    """Parabolic SAR exactly as Pine's ta.sar (TradingView's published pine_sar).
+    The first trend is set by close vs the prior close (falls back to highs when
+    closes are not given). 2026-10-22: the earlier textbook Wilder version agreed
+    with ta.sar on only 76% of MRVL 15m candles (tools/pinets/check_translations.py)."""
     n = len(h)
     out: Series = [None] * n
     if n < 2:
         return out
-    up = h[1] >= h[0]
-    sar = lo[0] if up else h[0]
-    ep = h[1] if up else lo[1]
-    af = start
+    closes = c if c is not None else h
+    result = max_min = accel = 0.0
+    below = False
     for i in range(1, n):
-        if i > 1:
-            sar = sar + af * (ep - sar)
-            if up:
-                sar = min(sar, lo[i - 1], lo[i - 2])
-                if lo[i] < sar:
-                    up, sar, ep, af = False, ep, lo[i], start
-                elif h[i] > ep:
-                    ep, af = h[i], min(af + inc, maximum)
+        first = False
+        if i == 1:
+            if closes[1] > closes[0]:
+                below, max_min, result = True, h[1], lo[0]
             else:
-                sar = max(sar, h[i - 1], h[i - 2])
-                if h[i] > sar:
-                    up, sar, ep, af = True, ep, h[i], start
-                elif lo[i] < ep:
-                    ep, af = lo[i], min(af + inc, maximum)
-        out[i] = sar
+                below, max_min, result = False, lo[1], h[0]
+            first, accel = True, start
+        result = result + accel * (max_min - result)
+        if below:
+            if result > lo[i]:
+                first, below = True, False
+                result, max_min, accel = max(h[i], max_min), lo[i], start
+        else:
+            if result < h[i]:
+                first, below = True, True
+                result, max_min, accel = min(lo[i], max_min), h[i], start
+        if not first:
+            if below:
+                if h[i] > max_min:
+                    max_min, accel = h[i], min(accel + inc, maximum)
+            elif lo[i] < max_min:
+                max_min, accel = lo[i], min(accel + inc, maximum)
+        if below:
+            result = min(result, lo[i - 1], lo[i - 2]) if i > 1 else min(result, lo[i - 1])
+        else:
+            result = max(result, h[i - 1], h[i - 2]) if i > 1 else max(result, h[i - 1])
+        out[i] = result
     return out
 
 
