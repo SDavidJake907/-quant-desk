@@ -183,10 +183,10 @@ async def main() -> int:
     print(f"  {'leader':6} {'sister':6} {'co-move':>8} {'UP n':>5} {'UP lift':>8} {'DOWN n':>6} {'DOWN lift':>9}  why")
     for L, sisters in LINKS.items():
         for s, why in sisters.items():
-            if s not in D or L not in D:
+            common = [d for d in D.get(L, {}) if d in D.get(s, {})]
+            if len(common) < 2:
                 print(f"  {L:6} {s:6} {'no data':>8}")
                 continue
-            common = [d for d in D[L] if d in D[s]]
             x = [D[L][d] for d in common]
             y = [D[s][d] for d in common]
             mx, my = statistics.mean(x), statistics.mean(y)
