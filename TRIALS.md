@@ -145,7 +145,12 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 101 | overnight overreaction fade on mega-caps (from a strategy text the operator shared): a BIGCAP name closes a 20:00-21:30 ET candle >= 4% (or 6%) below its 16:00 close -> buy the next candle's open, software stop -2%, target +3%, else out at the next 16:00 close; 0.10%/side overnight; vs ordinary nights with the same exits (research_gpu/overnight_fade.py) | RULES FIXED in the commit that adds this row, before the first run | 24/5 SIP + BOATS 30m, 2024-09-16 -> now | **FAIL.** 4%: 31 trades, mean -0.67% a trade, 29% wins, t -1.7 (worse than ordinary nights, -0.13%); 6%: 19 trades, -0.67%, 32% wins. Big overnight drops in mega-caps (ORCL, META, AVGO, UNH, MSFT, AAPL after reports) mostly KEPT falling through the 2% stop; the bounce came in about 1 in 3. Matches the earnings-drift evidence: news moves tend to continue, not reverse | **FAIL** -- fading overnight drops lost money |
 
-**Running total: ~1,026 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 102 | TURN OF THE MONTH (Ariel 1987; Lakonishok & Smidt 1988; McConnell & Xu 2008): SPY only on the last trading day of a month + the first 3 of the next, 0.10% a month (research_gpu/anomaly_batch.py) | RULES FIXED in the commit that adds this row, before the first run | SPY daily 30y | pending | PASS: > other days in both halves (1996-2010 / 2011-26), Welch t >= 3 |
+| 103 | PRE-HOLIDAY (Ariel 1990): SPY only on the day before a market holiday, 0.10% round trip | as #102 | SPY daily 30y | pending | as #102 |
+| 104 | EARNINGS ANNOUNCEMENT PREMIUM (Frazzini & Lamont 2007): buy 6 sessions before a listed earnings date, sell the session after; excess vs SPY and the name's drift, 0.10%; random-date check | as #102 | data/earnings 2016-26, S&P 500 daily | pending | PASS: > 0 both halves, t >= 3 over exit days |
+| 105 | SECTOR MOMENTUM (Moskowitz & Grinblatt 1999; Faber 2010): top 3 of the 11 SPDR sector ETFs by 12-1 month return, monthly, vs SPY | as #102 | Yahoo monthly 1999-2026 | pending | PASS: > 0 both halves (1999-2012 / 2013-26), t >= 3 over months |
+
+**Running total: ~1,030 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
