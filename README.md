@@ -159,7 +159,8 @@ once silently stopped overlapping tasks from running at all (WORKLIST §40).
 bought with earnings today or within 7 days** (a stop cannot protect an
 earnings gap). Everything above the marker, or below a `# [big]` line, is
 **Section 1, big caps**, unchanged. Settings: `picks_fast_*` in
-`execution/policy.py`. Gemma is offered the same Section 2 rules after the
+`execution/policy.py`. Section 2 trades count in the challenge (operator
+2026-10-21; the first, MRVL, was an uncounted test). Gemma is offered the same Section 2 rules after the
 Oct 31 verdict.
 
 An unfilled buy older than 25 minutes is cancelled and re-sent at the new price.
