@@ -128,7 +128,10 @@ def save_state(state: dict) -> None:
                          for v, book in state["positions"].items() if book},
            "sweep": {v: {s: json.loads(p.model_dump_json()) for s, p in book.items()}
                      for v, book in state.get("sweep", {}).items() if book},
-           "seen": state["seen"]}
+           "seen": state["seen"],
+           # 2026-10-22: these two were not saved, so the oversold books re-ran every pass.
+           "slow_daily_done": state.get("slow_daily_done"),
+           "slow_weekly_done": state.get("slow_weekly_done")}
     tmp = STATE.with_suffix(".tmp")
     tmp.write_text(json.dumps(out, indent=1), encoding="utf-8")
     tmp.replace(STATE)

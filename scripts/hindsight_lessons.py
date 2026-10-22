@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -60,10 +61,21 @@ def ollama(payload: dict, timeout: float) -> None:
         r.read()
 
 
+#: 2026-10-22 05:05: the load failed once with a CUDA "shared object initialization
+#: failed" crash (HTTP 500); her 05:45 load worked. One retry after a pause rides out
+#: a driver hiccup instead of failing the morning's lessons.
+LOAD_RETRY_PAUSE_S = 60
+
+
 def warm_up() -> None:
     """Load Gemma into the GPU before Hindsight's first call (an empty prompt only loads)."""
     t = time.monotonic()
-    ollama({"model": MODEL, "prompt": "", "keep_alive": "30m"}, timeout=600)
+    try:
+        ollama({"model": MODEL, "prompt": "", "keep_alive": "30m"}, timeout=600)
+    except urllib.error.HTTPError as e:
+        print(f"hindsight: load failed ({e}); retrying once in {LOAD_RETRY_PAUSE_S}s")
+        time.sleep(LOAD_RETRY_PAUSE_S)
+        ollama({"model": MODEL, "prompt": "", "keep_alive": "30m"}, timeout=600)
     print(f"hindsight: {MODEL} loaded in {time.monotonic() - t:.0f}s")
 
 
