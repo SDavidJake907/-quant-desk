@@ -35,6 +35,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.advisor import after_hours
+from scanner.advisor import brief_store
 from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
@@ -78,14 +79,6 @@ GHOST_SCANNER = Path("data/competition/ghost_scanner.json")
 QUESTIONS = Path("data/gemma/questions")
 
 
-def daily_brief(day: date) -> dict | None:
-    """Today's brief from scripts/week_ahead.py, or None. A stale or broken file
-    is ignored: yesterday's news must never pass for today's."""
-    try:
-        brief = json.loads((BRIEF_DIR / f"{day.isoformat()}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return brief if brief.get("date") == day.isoformat() and brief.get("market_text") else None
 #: Her briefing, trimmed 2026-10-19 (operator: "trimming down into tokens"):
 #: headlines were 41% of it. Three per stock, each cut to HEADLINE_CHARS.
 HEADLINES_PER_STOCK = 3
@@ -534,11 +527,15 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
                 if s in facts:
                     facts[s] += (f"\nmomentum rule: #{rank} of its 10 picks for this month "
                                  f"(formed {mom_day}) -- the rule you are measured against")
-        # The 03:00 daily brief (WORKLIST §52): coming events, the President, the
-        # news, and which of these stocks each item touches. Facts, not its read.
-        brief = daily_brief(date.today()) if POLICY.gemma_sees_brief else None
+        # The daily brief (WORKLIST §52): coming events, the President, the news, and
+        # which of these stocks each item touches. Facts, not its read. Written
+        # 03:00, 12:50 and 18:50 AK; the newest within 12 h (advisor/brief_store.py).
+        now_local = datetime.now().astimezone()
+        brief = brief_store.latest(BRIEF_DIR, now_local) if POLICY.gemma_sees_brief else None
         if brief:
-            trend += ". " + brief["market_text"]
+            print(f"  {DIM}daily brief: {brief['date']}, "
+                  f"{brief_store.age_text(brief, now_local)}{RESET}")
+            trend += f". Daily brief ({brief_store.age_text(brief, now_local)}): " + brief["market_text"]
             street = wall_street.for_gemma(brief.get("wall_street") or [], facts)
             if street and "Wall Street since" not in brief["market_text"]:
                 trend += (". Wall Street since the last session, your stocks and the Fed: "
@@ -547,7 +544,7 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
                 if s in facts and lines:
                     facts[s] += "\n" + "\n".join(lines)
         elif POLICY.gemma_sees_brief:
-            print(f"  {YELLOW}no daily brief for today -- deciding without it{RESET}")
+            print(f"  {YELLOW}no daily brief within 12 h -- deciding without it{RESET}")
         held_status ={s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
                        for s, p in mine.items()}
         sleeve_dollars = account.equity * POLICY.gemma_allocation_pct / 100
