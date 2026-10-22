@@ -11,6 +11,9 @@ Every pass in regular hours (task stock-scanner-monitor, :15 and :45 past the ho
      check now and sell any picks position she calls a "concern"
   4  Gemma's book, hourly (the :45 pass): she re-reads her own sell-ifs against live
      facts; a met sell-if with a quote found in the facts is sold
+  5  Gemma's book, hourly: the PEAK-SELL readings (scanner/ops/peak_sell.py, operator
+     2026-10-22) -- six indicator checks per position; she may sell one that is in profit
+     and meets at least 4
 Picks sells go through picks.txt + picks_sync (the list stays the record); Gemma's
 through bookorders.sell. Everything is logged (logs/monitor/DATE.md, the audit log)
 and alerted (Windows toast; phone when SCANNER_NTFY_TOPIC is set).
@@ -24,7 +27,7 @@ import functools
 import json
 import subprocess
 import sys
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import httpx
@@ -47,6 +50,8 @@ from scanner.features.technicals import average_true_range_pct
 from scanner.llm.ollama import LLMError
 from scanner.ops import market_monitor as mm
 from scanner.ops import notify
+from scanner.ops import peak_sell as ps
+from scanner.signals.candles24 import yahoo_5m
 
 STATE = Path("data/monitor/state.json")
 OUT = Path("logs/monitor")
@@ -166,6 +171,58 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
     return sold
 
 
+async def gemma_peak_sell(client, broker, positions, owner_map, open_orders, lines, dry: bool,
+                          skip: set[str]) -> list[str]:
+    """Show Gemma the six peak checks for each of her positions; sell what she picks AND the code allows."""
+    mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA and p["symbol"] not in skip]
+    if not mine:
+        return []
+    symbols = tuple(p["symbol"] for p in mine)
+    daily, _ = await fetch_many(symbols, client, range_="1y")
+    now = datetime.now(EXCHANGE_TZ).replace(tzinfo=None)
+    rs = []
+    for p in mine:
+        s = p["symbol"]
+        try:
+            raw = await yahoo_5m(s, client, range_="1mo")
+        except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
+            log(lines, f"  peak-sell: no 5m candles for {s} ({exc})")
+            raw = []
+        five = [(t.astimezone(EXCHANGE_TZ).replace(tzinfo=None), *rest) for t, *rest in raw]
+        five = [x for x in ps.session(five) if x[0] <= now.replace(second=0, microsecond=0) - timedelta(minutes=5)]
+        closes = list(daily[s].closes) if s in daily else []
+        price = float(p["current_price"])
+        if closes and daily[s].dates[-1] == now.date():
+            closes[-1] = price
+        elif closes:
+            closes.append(price)
+        rs.append(ps.readings(s, float(p["unrealized_plpc"]) * 100, five, closes))
+    for r in rs:
+        log(lines, "  peak-sell " + ps.table(r).replace("\n", "\n  "))
+    if not any(r.may_sell() for r in rs):
+        log(lines, "  peak-sell: no position eligible -- Gemma not asked")
+        return []
+    _, trend, _ = await gtr.facts_for(list(symbols), client)
+    try:
+        answer, _ = await gtr.think_then_answer(ps.prompt(rs, market=trend), ps.schema(list(symbols)), client)
+    except LLMError as exc:
+        log(lines, f"  Gemma unavailable for peak-sell ({exc}) -- nothing sold")
+        return []
+    for a in (answer or {}).get("positions", []):
+        log(lines, f"  Gemma peak-sell {a.get('symbol'):<6} {a.get('action'):<5} {str(a.get('why'))[:160]}")
+    sold = []
+    for s, why in ps.approved(answer, rs):
+        reason = f"peak-sell: {why}"
+        if dry:
+            log(lines, f"  WOULD SELL Gemma {s}: {reason}")
+            continue
+        ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA, reason=reason, policy=gtr.POLICY, client=client)
+        log(lines, f"  {'SOLD' if ok else 'SELL FAILED'} Gemma {s}: {reason}")
+        if ok:
+            sold.append(s)
+    return sold
+
+
 async def main(dry: bool) -> int:
     gtr.fetch_many = functools.partial(fetch_many, ttl_seconds=grv.BARS_TTL_S)
     gtr.fetch_bars = functools.partial(fetch_bars, ttl_seconds=grv.BARS_TTL_S)
@@ -229,6 +286,7 @@ async def main(dry: bool) -> int:
         told = set(state.get("told_gemma", []))
         new = [a.split(" ")[0] if not a.startswith("market") else "market" for a in gemma_alerts]
         fresh = [k for k in new if k not in told]
+        sold: list[str] = []
         if books["gemma"] and (hourly or fresh):
             if fresh and not hourly:
                 log(lines, f"  waking Gemma for new alarms: {', '.join(fresh)}")
@@ -236,6 +294,11 @@ async def main(dry: bool) -> int:
             state["told_gemma"] = sorted(told | set(new))
             if sold:
                 alerts.append(f"Gemma sold {', '.join(sold)} (her sell-if was met)")
+        if books["gemma"] and hourly:
+            taken = await gemma_peak_sell(client, broker, positions, owner_map, open_orders, lines, dry,
+                                          skip=set(sold))
+            if taken:
+                alerts.append(f"Gemma took profit on {', '.join(taken)} (peak-sell checks)")
         for a in [x for x in books["other"]]:
             log(lines, f"  note: {a.symbol} is held outside both books (hand trade) -- alerts only")
         if alerts and not dry:
