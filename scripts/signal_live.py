@@ -26,6 +26,10 @@ Each pass (the task runs every 5 minutes, around the clock):
      low swept, closed back inside on 2x volume; half at VWAP, rest at the range
      high, stop under the wick, out by 15:55. "+scalp" takes all at VWAP.
      Universe: the fast movers plus the 20 largest companies.
+  5  OVERSOLD books, daily and weekly (TRIALS #94 -> forward test #95, operator
+     2026-10-22): signals/slow.py -- Connors RSI and MFI, plain and +ADX, on the
+     S&P 500; daily books once a day at the first regular-hours pass, weekly books
+     at the first pass of a new week; hold through weekends.
 Files: data/signals/paper_state.json, paper_trades.jsonl; logs/signals/DATE.md.
 """
 
@@ -50,7 +54,7 @@ from scanner.features.intraday import EXCHANGE_TZ, drop_incomplete, fetch_intrad
 from scanner.ops import ideas
 from scanner.signals import candles24 as c24
 from scanner.signals import indicators as ind
-from scanner.signals import paper, rules, sweep
+from scanner.signals import paper, rules, slow, sweep
 from scanner.sources import composite
 from scanner.sources.index_history import SP400, SP500
 
@@ -64,6 +68,8 @@ EXT_START, EXT_END, FRIDAY_FLAT_24H = time(4, 0), time(20, 0), time(19, 45)
 FRAMES_24H = (5, 15)
 #: Minutes past a candle's close it may still trigger an entry (feed delay).
 STALE_GRACE = 20
+#: The daily/weekly books act at the first regular pass from here (after the open settles).
+SLOW_FROM = time(9, 35)
 SWEEP_FRAMES = ("5m", "15m")
 BIGCAP = ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "JPM", "LLY",
           "BRK.B", "V", "WMT", "XOM", "UNH", "MA", "COST", "ORCL", "JNJ", "HD")
@@ -233,6 +239,56 @@ def step_sweep(symbol: str, frames: dict, price: float | None, state: dict, now:
     return closed
 
 
+async def step_slow(client, state: dict, now: datetime) -> list[paper.Closed]:
+    """Daily and weekly oversold books: once a day / once a week, on completed candles."""
+    today = now.date()
+    week = list(today.isocalendar()[:2])
+    do_daily = state.get("slow_daily_done") != today.isoformat()
+    do_weekly = state.get("slow_weekly_done") != week
+    if not (do_daily or do_weekly):
+        return []
+    members = await composite.load_universe(client, (SP500,))
+    bars, _ = await fetch_many(tuple(sorted({m.symbol for m in members})), client, range_="2y", ttl_seconds=600)
+    closed: list[paper.Closed] = []
+    for s, b in bars.items():
+        rows = list(zip(b.dates, b.opens, b.highs, b.lows, b.closes, b.volumes))
+        if not rows or rows[-1][0] != today:
+            continue                      # no live candle for today yet: no price to trade at
+        price = rows[-1][4]
+        for tf, done, cands in (("daily", do_daily, slow.completed_daily(rows, today)),
+                                ("weekly", do_weekly, slow.completed_weekly(rows, today))):
+            if not done or len(cands) < 60:
+                continue
+            times = [datetime(d.year, d.month, d.day, 16, tzinfo=EXCHANGE_TZ) for d, *_ in cands]
+            o, h, lo, c, v = ([x[k] for x in cands] for k in range(1, 6))
+            a = ind.atr(h, lo, c, 22)[-1]
+            adx = ind.adx(h, lo, c)[-1]
+            for name in slow.SLOW_RULES:
+                st = rules.RULES[name][1](o, h, lo, c, v)
+                for suffix, gate in (("", True), ("+adx", adx is not None and adx > rules.ADX_MIN)):
+                    version = f"{tf} {name}{suffix}"
+                    book = state["positions"].setdefault(version, {})
+                    key = f"{version}|{s}"
+                    seen = state["seen"].get(key)
+                    pos, done_trade, newest = paper.step(
+                        version, s, times=times, lows=lo, state=st, gate_ok=gate, atr_now=a, price=price,
+                        now=now, position=book.get(s),
+                        last_seen=datetime.fromisoformat(seen) if seen else None, friday_flat=False)
+                    if pos is None:
+                        book.pop(s, None)
+                    else:
+                        book[s] = pos
+                    if newest is not None:
+                        state["seen"][key] = newest.isoformat()
+                    if done_trade is not None:
+                        closed.append(done_trade)
+    if do_daily:
+        state["slow_daily_done"] = today.isoformat()
+    if do_weekly:
+        state["slow_weekly_done"] = week
+    return closed
+
+
 def read_trades() -> list[paper.Closed]:
     if not TRADES.exists():
         return []
@@ -256,13 +312,15 @@ def report(today, names: list[str], state: dict) -> str:
              "VIRTUAL money, $1,000 a trade -- no orders, Gemma does not see this. "
              "Rules: scanner/signals/rules.py; history: TRIALS #80.", "",
              f"Fast movers today ({len(names)}): {', '.join(names)}", ""]
-    regular = [t for t in trades if not t.version.startswith("24h")]
+    slow_ = [t for t in trades if t.version.startswith(("daily ", "weekly "))]
+    regular = [t for t in trades if not t.version.startswith(("24h", "daily ", "weekly "))]
     ext = [t for t in trades if t.version.startswith("24h")]
     for title, rows in (("Regular hours -- today", [t for t in regular if t.exit_at.date() == today]),
                         ("Regular hours -- since the start", regular),
                         ("24h books (pre-market, after-hours, overnight) -- today",
                          [t for t in ext if t.exit_at.date() == today]),
-                        ("24h books -- since the start", ext)):
+                        ("24h books -- since the start", ext),
+                        ("Oversold books, daily and weekly (TRIALS #95 forward test) -- since the start", slow_)):
         board = paper.leaderboard(rows)
         lines += [f"## {title}", ""]
         if not board:
@@ -299,6 +357,11 @@ async def main(report_only: bool) -> int:
                     if symbol in symbols:
                         closed += step_symbol(symbol, frames, price, state, now, friday)
                     closed += step_sweep(symbol, frames, price, state, now)
+                if now.time() >= SLOW_FROM:
+                    try:
+                        closed += await step_slow(client, state, now)
+                    except Exception as exc:                  # noqa: BLE001 -- never sink the run
+                        print(f"  oversold books skipped this pass: {exc}")
 
             async def ext(s):
                 async with sem:
