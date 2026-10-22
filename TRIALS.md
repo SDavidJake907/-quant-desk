@@ -130,7 +130,9 @@ model take/skip and model exits. They are counted, not re-listed.
 
 | 93 | Connors' RSI(2) pullback on DAILY candles (queued since 10-05): buy next open when close > SMA200 and RSI(2) < 10, sell next open when close > SMA5; 3 ATR stop; CLASSIC (holds weekends) and DESK (flat Friday); ALL / BIG / FAST; excess over drift, t over DAILY P&L TOTALS; cheat and random checks (research_gpu/rsi2_daily.py) | RULES FIXED in the commit that adds this row, before the first run | Yahoo daily 10y, S&P 500 | pending | PASS: excess > 0, t >= 3, both halves (2016-20 / 2021-26) |
 
-**Running total: ~861 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
+| 94 | the operator's 11 Pine signals (#80) on DAILY and WEEKLY candles (operator: 'run it again on a bigger time frame'): plain and +ADX, holds through weekends, 3 ATR stop, 0.05%/side; ALL / BIG / FAST; excess over drift, t over DAILY P&L TOTALS; cheat and random checks (research_gpu/signals_slow.py) | RULES FIXED in the commit that adds this row, before the first run | Yahoo daily 10y, S&P 500; weekly from daily | pending | PASS: excess > 0, t >= 3, both halves (132 versions) |
+
+**Running total: ~993 trials (#80/#81 add 66 versions each, #82 searches 480) + #75's ~70 slices. Passes that survive everything: 0.**
 **Closest:** momentum with the trend filter (#20, #23), now waiting for forward
 data.
 
