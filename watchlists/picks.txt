@@ -33,7 +33,7 @@
 # OKTA + ANF mid caps, RNG small cap. Section 1 sizing (1% risk, 2.5 ATR stop).
 OKTA
 ANF
-RNG
+# RNG removed 2026-10-22 12:55 AK (operator: cancel -- the buy chased RNG's earnings pop; Q3 reported 10-22 after the close, the calendar missed it; 8 sh filled, sold)
 # [fast]
 # 2026-10-21 20:50 AK: Section 2 test (operator: "test one tomorrow, buy one, see how it moves until friday").
 # Bought at the first pass Thu 10-22; sold Fri 10-23 10:30-11:00 AK near the high (data/oneshot/fast_exit_1023.py).
