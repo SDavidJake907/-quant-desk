@@ -32,13 +32,15 @@ MOMENTUM = "momentum"
 PICKS = "picks"
 #: Gemma's own book: it chooses names from core.txt, the system does the rest.
 GEMMA = "gemma"
+#: The opening-range breakout day book (execution/orb.py): rules, flat by the close.
+ORB = "orb"
 UNKNOWN = "unknown"
 
 #: client_order_id prefix -> strategy. The prefix is the whole contract.
 PREFIXES: dict[str, str] = {"smc-": SMC, "man-": MANUAL, "mom-": MOMENTUM,
-                             "pck-": PICKS, "gem-": GEMMA}
+                             "pck-": PICKS, "gem-": GEMMA, "orb-": ORB}
 
-STRATEGIES = (SMC, MANUAL, MOMENTUM, PICKS, GEMMA)
+STRATEGIES = (SMC, MANUAL, MOMENTUM, PICKS, GEMMA, ORB)
 
 
 def prefix_for(strategy: str) -> str:
@@ -87,7 +89,7 @@ def owners(orders: Iterable[Mapping[str, Any]]) -> dict[str, str]:
 
 #: Books with their own sleeve and slot count: they never use the shared
 #: max_positions slots (manual + picks + smc) and are sized on their own share.
-OWN_SLEEVE = (MOMENTUM, GEMMA)
+OWN_SLEEVE = (MOMENTUM, GEMMA, ORB)
 
 
 def owner(symbol: str, owner_map: Mapping[str, str]) -> str:

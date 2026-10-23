@@ -51,6 +51,19 @@ def read(path: Path = NOTES) -> list[Note]:
     return out
 
 
+def replace_prefixed(prefix: str, note: dict, path: Path = NOTES) -> None:
+    """Write `note` ({"id", "from", "until", "text"}), dropping every earlier note
+    whose id starts with `prefix`. For a rolling desk report (the breakout book's
+    evening line, scripts/orb_trade.py): one live note, never a pile."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = []
+    kept = [r for r in raw if isinstance(r, dict) and not str(r.get("id", "")).startswith(prefix)]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([*kept, note], indent=1), encoding="utf-8")
+
+
 def active(notes: Iterable[Note], today: date) -> list[Note]:
     return [n for n in notes if n.start <= today <= n.until and n.text]
 

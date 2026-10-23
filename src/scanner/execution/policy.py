@@ -370,7 +370,8 @@ class TradingPolicy(Frozen):
     #: strategy not named here is never closed by that rule; a position no
     #: prefix claims (bought by hand in the dashboard) is never closed by any.
     #: Manual picks hold over weekends: the operator's choice, 2026-10-06.
-    flatten_strategies: tuple[str, ...] = ("smc",)
+    #: "orb" closes itself every afternoon; here only as the Friday backstop.
+    flatten_strategies: tuple[str, ...] = ("smc", "orb")
     max_hold_strategies: tuple[str, ...] = ("smc",)
     #: Held without a stop by design: the momentum backtest had none (its
     #: guard is the S&P trend filter), so protect.py must not "re-arm" one.
@@ -439,7 +440,9 @@ class TradingPolicy(Frozen):
     #: 100.0 / 10 names from 2026-10-22 (operator: "Gemma should take my position ... I need
     #: help catching up"): Gemma runs the whole account; the picks sleeve is 0. Slots 5 -> 10
     #: and risk halved, so each position stays ~10% / ~$1k risk -- more names, not bigger bets.
-    gemma_allocation_pct: float = 100.0
+    #: 90.0 from 2026-10-23: 10% to the opening-range breakout book (operator "lets tie this
+    #: in"; Gemma asked and agreed: "the 10% capital reduction is negligible").
+    gemma_allocation_pct: float = 90.0
     gemma_max_positions: int = 10
     #: Risk per Gemma trade, as % of ITS sleeve. 2.0 from 2026-10-07 (operator:
     #: "push Gemma to max out profit"): at 1% with ~10% stops its five positions
@@ -491,6 +494,19 @@ class TradingPolicy(Frozen):
     #: and Gemma may choose them as options. Its 40% went Gemma +20, picks +20.
     momentum_trades: bool = False
 
+    # --- opening-range breakout day book (execution/orb.py, scripts/orb_trade.py) ----
+    #: Operator 2026-10-23 ("lets tie this in, I think it will help"), from Lumibot's ORB
+    #: example, written here. Rules, not Gemma: from her pool, names with 2x their usual
+    #: opening volume break the first 15 minutes' high; stop the range low, target 1.5R,
+    #: everything sold 10 minutes before the close. Its own 10%, taken from Gemma's share
+    #: with her agreement. CHOSEN, not measured: graded forward like every book.
+    orb_allocation_pct: float = 10.0
+    orb_max_positions: int = 3
+    #: Risk per trade as % of the ORB sleeve. The per-name cap (1/3 of the sleeve)
+    #: usually binds first: a 1% stop on $3.3k risks ~$33.
+    orb_risk_pct: float = 1.0
+    orb_reward_risk: float = 1.5
+
     def gemma_menu_value(self, kind: str, label: str) -> float:
         """The number behind one of Gemma's menu names. KeyError if unknown."""
         menu = {"stop": self.gemma_stop_atr_menu, "target": self.gemma_target_r_menu,
@@ -500,7 +516,7 @@ class TradingPolicy(Frozen):
     @property
     def own_sleeves_pct(self) -> float:
         """Equity claimed by the books with their own sleeve."""
-        return self.momentum_allocation_pct + self.gemma_allocation_pct
+        return self.momentum_allocation_pct + self.gemma_allocation_pct + self.orb_allocation_pct
 
     # --- recorded, never enforced ------------------------------------------
     #: Each of these improved the holdout and none has forward evidence. They

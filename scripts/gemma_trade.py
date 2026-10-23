@@ -417,6 +417,10 @@ async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
     sma = sum(spx.closes[-210:]) / 210
     market = (f"S&P 500 {spx.closes[-1]:,.0f} is {'ABOVE' if spx.closes[-1] > sma else 'BELOW'} "
               f"its 210-day average {sma:,.0f}")
+    try:
+        gp.save(rows, date.today())                      # the breakout book trades from it
+    except OSError as exc:
+        print(f"  {YELLOW}pool not saved for the breakout book: {exc}{RESET}")
     text = gp.prompt(rows, held=mine, market=market, universe=universe)
     try:
         # Full thinking budget (operator 2026-10-20, "enable thinking"): at half

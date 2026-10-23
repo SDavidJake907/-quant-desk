@@ -21,8 +21,10 @@ PURE: numbers in, text and validation out.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date
+from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 from scanner.models import Frozen
@@ -46,6 +48,10 @@ MIN_MARKET_CAP = 2_000_000_000.0
 #: the 120 strongest across both indexes, same floors, same $2B cap floor.
 MIDCAP_FROM = date(2026, 10, 22)
 MIDCAP_MAX = 120
+#: Each round 1 saves the pool it showed her, one file a day (the last run that
+#: day wins). The breakout book (execution/orb.py) trades from it, so it never
+#: builds a second universe (operator 2026-10-23: "tie this in" with her pool).
+POOL_DIR = Path("data/gemma/pool")
 
 
 class PoolRow(Frozen):
@@ -166,3 +172,22 @@ def rows_for(bars_by_symbol: Mapping[str, Any], sectors: Mapping[str, str], *,
                    momentum_rank=momentum_rank.get(s))
            for s, b in bars_by_symbol.items()]
     return sorted(out, key=lambda r: (r.mom_12_1 is None, -(r.mom_12_1 or 0.0), r.symbol))
+
+
+def save(rows: Iterable[PoolRow], today: date, *, directory: Path = POOL_DIR) -> Path:
+    """Write today's pool (every row, with its daily ATR) for the breakout book."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{today.isoformat()}.json"
+    path.write_text(json.dumps([r.model_dump(mode="json") for r in rows]), encoding="utf-8")
+    return path
+
+
+def latest(today: date, *, max_age_days: int = 4, directory: Path = POOL_DIR) -> list[PoolRow]:
+    """The newest saved pool no older than `max_age_days` (a weekend is 3), or []."""
+    for back in range(max_age_days + 1):
+        path = directory / f"{(today - timedelta(days=back)).isoformat()}.json"
+        try:
+            return [PoolRow(**r) for r in json.loads(path.read_text(encoding="utf-8"))]
+        except (OSError, ValueError, TypeError):
+            continue
+    return []
