@@ -14,8 +14,8 @@ Every pass in regular hours (task stock-scanner-monitor, :15 and :45 past the ho
   5  hourly: the PEAK-SELL readings and stage of every position (scanner/ops/peak_sell.py,
      operator 2026-10-22), shown to Gemma in her sell-if check -- information only; the
      5-minute peak watch (scripts/peak_watch.py) marks READY and does the selling
-Picks sells go through picks.txt + picks_sync (the list stays the record); Gemma's
-through bookorders.sell. Everything is logged (logs/monitor/DATE.md, the audit log)
+Sells are QUEUED (execution/sell_queue.py) and sent by peak watch within 5 minutes --
+one automatic seller (2026-10-23). Everything is logged (logs/monitor/DATE.md, the audit log)
 and alerted (Windows toast; phone when SCANNER_NTFY_TOPIC is set).
 
 24/5 (operator 2026-10-22): outside regular hours (premarket, after-hours, overnight) only
@@ -44,7 +44,7 @@ import gemma_trade as gtr
 
 from scanner.advisor import gemma_memory as gm
 from scanner.config import settings
-from scanner.execution import bookorders, ownership, sessions
+from scanner.execution import ownership, sell_queue, sessions
 from scanner.execution.alpaca import Alpaca
 from scanner.execution.ownership import GEMMA, PICKS
 from scanner.execution.scorecard import read_rows
@@ -122,6 +122,17 @@ def remove_picks(symbols: list[str], why: str) -> list[str]:
     return gone
 
 
+def queue_sells(items: dict[str, str]) -> None:
+    """Hand sells to peak watch (execution/sell_queue.py): it is the one automatic seller,
+    every 5 minutes, 24/5 -- so two scripts never sell the same position."""
+    path = Path(sell_queue.PATH)
+    try:
+        queue = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        queue = {}
+    path.write_text(json.dumps(sell_queue.add(queue, items), indent=1), encoding="utf-8")
+
+
 def run_safety_check() -> dict[str, str]:
     """Run Gemma's safety check now; return {symbol: reason} for her concerns from THIS run."""
     started = datetime.now().astimezone()
@@ -167,9 +178,8 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
         if dry:
             log(lines, f"  WOULD SELL Gemma {s}: {reason}")
             continue
-        ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA, reason=reason, policy=gtr.POLICY,
-                                   session=session, client=client)
-        log(lines, f"  {'SOLD' if ok else 'SELL FAILED'} Gemma {s}: {reason}")
+        queue_sells({s: reason})
+        log(lines, f"  QUEUED Gemma {s} for peak watch (sells within 5 min): {reason}")
         sold.append(s)
     return sold
 
@@ -211,7 +221,7 @@ async def extended_pass(dry: bool, now: datetime, session: str) -> int:
         sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, [],
                                     peak, session)
         if sold and not dry:
-            body = f"Gemma sold {', '.join(sold)} ({session}, her sell-if was met)"
+            body = f"Gemma's sell-if met for {', '.join(sold)} ({session}) -- queued to sell"
             await notify.send(client, server=settings.ntfy_server, topic=settings.ntfy_topic,
                               title="Quant-desk monitor", message=body, priority="high", tags=("warning",))
             notify.toast("Quant-desk monitor", body)
@@ -280,9 +290,8 @@ async def main(dry: bool) -> int:
             for s, why in to_sell:
                 log(lines, f"  {'WOULD SELL' if dry else 'SELLING'} picks {s}: {why}")
             if not dry:
-                gone = remove_picks([s for s, _ in to_sell], to_sell[0][1])
-                subprocess.run([sys.executable, "scripts/picks_sync.py", "--submit"], check=False)
-                alerts.append(f"Sold your picks {', '.join(gone)}: {to_sell[0][1]}")
+                queue_sells(dict(to_sell))
+                alerts.append(f"Queued your picks {', '.join(s for s, _ in to_sell)} to sell: {to_sell[0][1]}")
         # Gemma's own book: her sell-ifs once an hour, AND whenever a NEW alarm touches her book
         # (operator 2026-10-22: "lets have the alert go to Gemma") -- each alarm wakes her once a day.
         hers = [mm.position_alarm(h) for h in books["gemma"]]
@@ -298,7 +307,7 @@ async def main(dry: bool) -> int:
             sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, gemma_alerts, peak)
             state["told_gemma"] = sorted(told | set(new))
             if sold:
-                alerts.append(f"Gemma sold {', '.join(sold)} (her sell-if was met)")
+                alerts.append(f"Gemma's sell-if met for {', '.join(sold)} -- queued to sell")
         if books["picks"] and hourly:
             await peak_status(client, positions, owner_map, stops, lines, PICKS)
         for a in [x for x in books["other"]]:

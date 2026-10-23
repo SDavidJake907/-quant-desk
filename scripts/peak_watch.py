@@ -126,7 +126,8 @@ def load_locks() -> dict:
 
 async def queue_pass(broker, client, positions, book_of, open_orders, session: str,
                      dry: bool, log) -> list[str]:
-    """The operator's queued sells (execution/sell_queue.py): retried each pass until sold."""
+    """Queued sells (execution/sell_queue.py) -- the operator's, and the market monitor's
+    (Gemma's met sell-ifs, the picks alarm): retried each pass until sold."""
     try:
         queue = json.loads(SELL_QUEUE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -143,7 +144,12 @@ async def queue_pass(broker, client, positions, book_of, open_orders, session: s
         if ok:
             alerts.append(f"Sell sent for {s} ({book_of[s]}): {queue[s]}")
     if not dry:
-        SELL_QUEUE.write_text(json.dumps(sell_queue.prune(queue, held=held), indent=1), encoding="utf-8")
+        # Re-read: the market monitor may have queued a sell during this pass.
+        try:
+            latest = json.loads(SELL_QUEUE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            latest = queue
+        SELL_QUEUE.write_text(json.dumps(sell_queue.prune(latest, held=held), indent=1), encoding="utf-8")
     return alerts
 
 

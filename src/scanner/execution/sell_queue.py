@@ -1,5 +1,10 @@
 """Operator sells that wait for a price (operator 2026-10-22: "sell MU and NUE now / next price").
 
+ONE SELL PATH (2026-10-23, operator: trim the repo): the market monitor's sells
+(Gemma's met sell-ifs, the picks alarm) are queued here too; peak watch is the
+only automatic seller. Gemma's own pass (gemma_trade) and protect.py at the open
+still sell directly.
+
 After hours a sale needs a fresh trade to price its limit order; a thin name can go
 an hour without one. data/monitor/sell_queue.json holds {symbol: reason}; peak
 watch tries every queued symbol each pass (every 5 min, 24/5) until it is no longer
@@ -33,6 +38,11 @@ def due(queue: Mapping[str, str], *, held: Iterable[str],
     """Queued symbols still held with no sale working, in queue order."""
     keep, busy = set(held), _selling(open_orders)
     return [s for s in queue if s in keep and s not in busy]
+
+
+def add(queue: Mapping[str, str], items: Mapping[str, str]) -> dict[str, str]:
+    """New queue with `items` added; a symbol already queued keeps its first reason."""
+    return {**dict(items), **dict(queue)}
 
 
 def prune(queue: Mapping[str, str], *, held: Iterable[str]) -> dict[str, str]:

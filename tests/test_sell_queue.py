@@ -27,3 +27,10 @@ def test_an_oco_or_bracket_target_does_not_count_as_a_sale():
 
 def test_prune_drops_what_is_no_longer_held():
     assert sq.prune(Q, held={"NUE"}) == {"NUE": "operator: sell the red ones"}
+
+
+def test_add_keeps_the_first_reason_and_does_not_mutate():
+    q = {"NUE": "operator"}
+    out = sq.add(q, {"NUE": "monitor", "VLO": "her sell-if met"})
+    assert out == {"NUE": "operator", "VLO": "her sell-if met"}
+    assert q == {"NUE": "operator"}
