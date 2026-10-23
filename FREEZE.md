@@ -1290,3 +1290,6 @@ Operator: "fix that under where we bought this at" (since 10-19: 9 wins +$282, a
 
 ## 2026-10-23 10:05 AK -- exits: lock 3/1/3, peak-sell from +2%, loss limit 3% kept (operator + Gemma)
 Operator: "the last set up was better, holding" but "we still need to monitor the top"; asked Gemma first (she: drop the lock and peak-sell, 2% loss limit; Claude's blend chosen). profit_lock LOCK_AT 1->3, LOCK_ABOVE 0.2->1, TRAIL 2->3; peak_sell MIN_PROFIT_PCT 2.0 (READY only at >= +2%); loss limit 3% unchanged. One-time: MPC stop 454.79->450.15, ZBRA 382.34->370.13 (the lock never lowers stops itself). Gemma note exits-1023.
+
+## 2026-10-23 10:15 AK -- Gemma has full authority (operator)
+Operator: "give her full authority for everything, buy/sell/hold". Asked about the weekend, Gemma sold MPC 458.83 (+188.80), VLO 422.00 (-86.68), DINO 121.97 (-72.80) at market before the close and holds ZBRA. Note authority-1023 (not in git). No code change.
