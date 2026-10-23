@@ -40,4 +40,4 @@ ANF
 # MRVL removed 2026-10-22 08:50 AK (operator: "sell all my postion" after the 10-22 sell-off)
 # 2026-10-22 10:40 AK (operator, same request): today's +12-26% movers in an uptrend.
 # KSS removed 2026-10-22 11:10 AK by the market monitor (peak-sell: READY since 10-22 15:05 ET at 24.815, the 5-minute trend turned down while in profit)
-BHVN
+# BHVN removed 2026-10-22 16:15 AK by the market monitor (profit lock: 14.70 at/under the lock 14.88 (entry 14.85, high 15.06) -- sold before it turns red)
