@@ -99,15 +99,22 @@ def remove_picks(symbols: list[str], why: str) -> list[str]:
 
 
 async def sell_position(broker, client, symbol: str, book: str, why: str, open_orders,
-                        session: str) -> bool:
+                        session: str) -> bool | None:
     """Gemma's through bookorders.sell (limit orders outside regular hours); picks
-    through picks.txt + picks_sync, so the list stays the record."""
+    through picks.txt + picks_sync, so the list stays the record. None: the pick is
+    already off the list, so picks_sync (extsync hourly, scan at the open) is selling
+    it -- not run again here every 5 min (2026-10-22: BHVN was re-sold 23 times)."""
     if book == PICKS:
-        remove_picks([symbol], why)
+        if not remove_picks([symbol], why):
+            return None
         subprocess.run([sys.executable, "scripts/picks_sync.py", "--submit"], check=False)
         return True
     return await bookorders.sell(broker, symbol, open_orders, strategy=GEMMA, reason=why,
                                  policy=gtr.POLICY, session=session, client=client)
+
+
+def status(ok: bool | None) -> str:
+    return {True: "SELL SENT", False: "SELL FAILED", None: "SELL PENDING (off the picks list; picks sync sells it)"}[ok]
 
 
 def load_locks() -> dict:
@@ -163,9 +170,9 @@ async def lock_pass(broker, client, positions, book_of, orders, open_orders, ses
                 log(f"  WOULD SELL {book} {s}: {why}")
                 continue
             ok = await sell_position(broker, client, s, book, why, open_orders, session)
-            log(f"  {'SOLD' if ok else 'SELL FAILED'} {book} {s}: {why}")
+            log(f"  {status(ok)} {book} {s}: {why}")
             if ok:
-                alerts.append(f"Sold {s} ({book}) -- profit lock at {lock:,.2f}")
+                alerts.append(f"Sell sent for {s} ({book}) -- profit lock at {lock:,.2f}")
             continue
         if order_id is None:
             log(f"  LOCK {s}: {lock:,.2f} (no working stop to raise -- watched here every 5 min)")
@@ -230,9 +237,9 @@ async def main(dry: bool) -> int:
                 log(f"  WOULD SELL {book_of[s]} {s}: {why}")
                 continue
             ok = await sell_position(broker, client, s, book_of[s], why, open_orders, session)
-            log(f"  {'SOLD' if ok else 'SELL FAILED'} {book_of[s]} {s}: {why}")
+            log(f"  {status(ok)} {book_of[s]} {s}: {why}")
             if ok:
-                alerts.append(f"Sold {s} ({book_of[s]}) -- took profit, trend turned after READY")
+                alerts.append(f"Sell sent for {s} ({book_of[s]}) -- took profit, trend turned after READY")
                 marks.pop(s, None)
         gone = set(sell) if not dry else set()
         alerts += await queue_pass(broker, client, positions, book_of, open_orders, session, dry, log)
