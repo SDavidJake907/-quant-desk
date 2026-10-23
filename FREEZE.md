@@ -1281,3 +1281,6 @@ BHVN's after-hours sale failed (bracket stuck pending_cancel), and peak watch re
 
 ## 2026-10-22 19:00 AK -- Gemma takes over the whole account (operator)
 Operator: "Gemma should take my position to catch up ... it's still a challenge, but I need help catching up." gemma_allocation_pct 50 -> 100, gemma_max_positions 5 -> 10, gemma_risk_pct 2.0 -> 1.0, size menu (1,2,3) -> (0.5,1,1.5): each position stays ~10% / ~$1k risk (more names, not bigger bets -- operator chose this over 5 bigger). Picks sleeve is now 0; OKTA and ANF removed from picks.txt before buying (BHVN still being sold). Gemma's prompt: the competition sentence now says she runs the whole account and the contest/record still stand. Note takeover-1022 added (not in git).
+
+## 2026-10-23 09:20 AK -- protect.py: Gemma's "target none" trades re-arm their own stop
+audit.submitted_levels skipped any submission with target 0.0 (Gemma's "target none"), so protect.py re-armed RNG (bought premarket 10-23, tight stop 85.40) with the 10-22 picks RNG levels (stop 79.13, target 179.44). Now a zero target counts, with the bracket's ceiling (entry x 1000) as its target. Test added.

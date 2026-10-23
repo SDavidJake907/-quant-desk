@@ -131,3 +131,14 @@ def test_an_explicit_model_is_not_overwritten(tmp_path):
     append_event(path, AuditEvent(event="position_review", model="gemma3:12b",
                                   at=datetime(2026, 10, 5, tzinfo=timezone.utc)))
     assert json.loads(path.read_text())["model"] == "gemma3:12b"
+
+
+def test_target_none_still_counts_and_beats_an_older_trade(tmp_path):
+    """Gemma's "target none" logs target 0.0. It must still be the latest levels,
+    not skipped in favour of an older trade's (RNG, 2026-10-23)."""
+    from scanner.execution.audit import submitted_levels
+    path = tmp_path / "audit.jsonl"
+    _submitted(path, "RNG", 79.13, 179.44, at_hour=9)
+    _submitted(path, "RNG", 85.40, 0.0, at_hour=10)
+    stop, target = submitted_levels(path)["RNG"]
+    assert stop == 85.40 and target > 1000
