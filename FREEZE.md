@@ -1278,3 +1278,6 @@ research.
 
 ## 2026-10-22 18:40 AK -- peak watch: a pick already off the list is not re-sold every 5 min
 BHVN's after-hours sale failed (bracket stuck pending_cancel), and peak watch re-ran remove_picks + picks_sync on it every 5 min (23 times) and logged SOLD each time. Now: if the pick is already off picks.txt, peak watch leaves it to picks_sync (extsync hourly, scan at the open) and logs SELL PENDING. Picks/Gemma sells log SELL SENT instead of SOLD (the fill is not confirmed there).
+
+## 2026-10-22 19:00 AK -- Gemma takes over the whole account (operator)
+Operator: "Gemma should take my position to catch up ... it's still a challenge, but I need help catching up." gemma_allocation_pct 50 -> 100, gemma_max_positions 5 -> 10, gemma_risk_pct 2.0 -> 1.0, size menu (1,2,3) -> (0.5,1,1.5): each position stays ~10% / ~$1k risk (more names, not bigger bets -- operator chose this over 5 bigger). Picks sleeve is now 0; OKTA and ANF removed from picks.txt before buying (BHVN still being sold). Gemma's prompt: the competition sentence now says she runs the whole account and the contest/record still stand. Note takeover-1022 added (not in git).

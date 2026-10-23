@@ -31,8 +31,7 @@
 # 2026-10-22 12:50 AK (operator: "look for mid cap and smaller stocks" -> "lets buy all those, have Gemma monitor them"):
 # S&P 400/600 by 12-1 momentum (WORKLIST §31 rule), above the 50d and 200d, no earnings in the next 30 days.
 # OKTA + ANF mid caps, RNG small cap. Section 1 sizing (1% risk, 2.5 ATR stop).
-OKTA
-ANF
+# OKTA, ANF removed 2026-10-22 before buying: Gemma takes over the whole account (operator)
 # RNG removed 2026-10-22 12:55 AK (operator: cancel -- the buy chased RNG's earnings pop; Q3 reported 10-22 after the close, the calendar missed it; 8 sh filled, sold)
 # [fast]
 # 2026-10-21 20:50 AK: Section 2 test (operator: "test one tomorrow, buy one, see how it moves until friday").

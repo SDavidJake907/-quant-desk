@@ -23,6 +23,6 @@ def test_policy_menus_resolve_by_name():
     assert p.gemma_menu_value("target", "none") == 0.0
     assert p.gemma_menu_value("target", "5R") == 5.0
     assert p.gemma_menu_value("size", "normal") == p.gemma_risk_pct
-    assert p.gemma_menu_value("size", "large") == 3.0
+    assert p.gemma_menu_value("size", "large") == 1.5
     with pytest.raises(KeyError):
         p.gemma_menu_value("stop", "yolo")

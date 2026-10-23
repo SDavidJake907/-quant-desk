@@ -20,5 +20,5 @@ def test_money_at_work_counts_her_positions_slots_and_whole_book_pl():
     owners = {"MPC": "gemma", "VLO": "gemma", "XOM": "picks"}
     text = g.money_at_work(positions, owners, done_dollars=-557.0, sleeve=50_000.0)
     assert "$9,150 of your $50,000 book invested (18%)" in text
-    assert "3 of 5 slots empty" in text
+    assert "8 of 10 slots empty" in text
     assert "-$47 (-0.09% of the book)" in text

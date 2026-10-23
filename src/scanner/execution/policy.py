@@ -436,14 +436,18 @@ class TradingPolicy(Frozen):
     #: was split Gemma +20 / picks + manual +20 (operator's choice).
     #: 50.0 from 2026-10-09 (operator: "both of us starting with 50/50"): Gemma
     #: 50%, picks + manual 50%. The quarterly 25% transfers start 2027 (§60).
-    gemma_allocation_pct: float = 50.0
-    gemma_max_positions: int = 5
+    #: 100.0 / 10 names from 2026-10-22 (operator: "Gemma should take my position ... I need
+    #: help catching up"): Gemma runs the whole account; the picks sleeve is 0. Slots 5 -> 10
+    #: and risk halved, so each position stays ~10% / ~$1k risk -- more names, not bigger bets.
+    gemma_allocation_pct: float = 100.0
+    gemma_max_positions: int = 10
     #: Risk per Gemma trade, as % of ITS sleeve. 2.0 from 2026-10-07 (operator:
     #: "push Gemma to max out profit"): at 1% with ~10% stops its five positions
     #: used ~$17.6k of a ~$61k sleeve. 2% lets it near-fully deploy (the 20%
     #: per-name cap binds). Twice the dollar swing; the competition score is %
     #: on money invested, so it stays comparable with the picks book (1%).
-    gemma_risk_pct: float = 2.0
+    #: 1.0 from 2026-10-22: the sleeve doubled (50 -> 100%), so the dollar risk is unchanged.
+    gemma_risk_pct: float = 1.0
     #: GEMMA'S MENU (2026-10-08, operator: "let it pick its own TP and SL";
     #: WORKLIST §50). For each NEW buy Gemma names a stop, a target and a size
     #: from these lists; the system turns the name into a price. Stop: daily
@@ -456,7 +460,7 @@ class TradingPolicy(Frozen):
     gemma_target_r_menu: tuple[tuple[str, float], ...] = (
         ("none", 0.0), ("2R", 2.0), ("3R", 3.0), ("5R", 5.0))
     gemma_size_risk_menu: tuple[tuple[str, float], ...] = (
-        ("small", 1.0), ("normal", 2.0), ("large", 3.0))
+        ("small", 0.5), ("normal", 1.0), ("large", 1.5))   # halved 2026-10-22 with the 100% sleeve
     #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
     #: (it wants its record to be its own judgement); TradingAgents keeps running
     #: as a graded shadow the operator still sees (second_opinion.py, weekly report).
