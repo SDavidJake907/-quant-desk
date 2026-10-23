@@ -36,6 +36,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from scanner.advisor import after_hours
 from scanner.advisor import brief_store
+from scanner.advisor import clock
 from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
@@ -572,6 +573,15 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
               f"{f'{len(lessons):,} chars' if lessons else 'none (missing or stale)'}{RESET}")
         # Notes from the operator (2026-10-21): information only, never a rule.
         told = operator_notes.block(operator_notes.read(), date.today())
+        # Date, time, weekday, next session, month and quarter (operator 2026-10-23; she asked
+        # for the time left and the quarter). Information only; fail-open.
+        try:
+            now_et = datetime.now(clock.ET)
+            rows = await broker._get("/v2/calendar", start=now_et.date().isoformat(),
+                                     end=(now_et.date() + timedelta(days=100)).isoformat())
+            text = clock.now_line(now_et, rows, session) + "\n\n" + text
+        except Exception as exc:                          # noqa: BLE001
+            print(f"  {YELLOW}no 'Now:' line ({type(exc).__name__}: {exc}){RESET}")
         text = text.replace("The list:", (f"{told}\n\n" if told else "")
                             + (f"{memory}\n\n" if memory else "")
                             + (f"{lessons}\n\n" if lessons else "")
