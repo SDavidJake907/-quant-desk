@@ -3,17 +3,17 @@ import pytest
 from scanner.execution import profit_lock as pl
 
 
-def test_no_lock_until_up_one_percent():
-    assert pl.lock_stop(entry=100.0, high=100.9) == pytest.approx(97.0)   # the loss floor
+def test_no_lock_until_up_three_percent():
+    assert pl.lock_stop(entry=100.0, high=102.9) == pytest.approx(97.0)   # the loss floor
 
 
-def test_lock_at_one_percent_is_just_above_entry():
-    assert pl.lock_stop(entry=100.0, high=101.0) == pytest.approx(100.2)
+def test_lock_at_three_percent_is_one_percent_above_entry():
+    assert pl.lock_stop(entry=100.0, high=103.0) == pytest.approx(101.0)
 
 
 def test_trail_takes_over_once_the_high_is_far_enough():
-    # 2% under a 110 high = 107.8, above the 100.2 lock
-    assert pl.lock_stop(entry=100.0, high=110.0) == pytest.approx(107.8)
+    # 3% under a 110 high = 106.7, above the 101.0 lock
+    assert pl.lock_stop(entry=100.0, high=110.0) == pytest.approx(106.7)
 
 
 def test_update_tracks_the_high_and_never_lowers_it():

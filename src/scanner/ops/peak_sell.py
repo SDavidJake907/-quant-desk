@@ -21,6 +21,9 @@ from scanner.signals import indicators as ind
 
 PLAN_FILE = Path("data/gemma/peak_sell_prompt.md")
 MIN_MET = 4                       # of the 6 checks
+#: READY only once the position is up this much (operator + Gemma 2026-10-23: winners
+#: were sold at +0.2-0.6% within hours; hold small gains, sell near a real top).
+MIN_PROFIT_PCT = 2.0
 SESSION_OPEN, SESSION_CLOSE = time(9, 30), time(16, 0)
 EXTENDED_STALE = timedelta(minutes=30)    # newest after-hours candle older than this = no trend
 
@@ -56,7 +59,7 @@ class Readings:
         return sum(1 for m in self.met().values() if m)
 
     def may_sell(self) -> bool:
-        return self.pl_pct > 0 and self.score() >= MIN_MET
+        return self.pl_pct >= MIN_PROFIT_PCT and self.score() >= MIN_MET
 
 
 def _last(x: Sequence[float | None]) -> float | None:

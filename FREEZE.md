@@ -1287,3 +1287,6 @@ audit.submitted_levels skipped any submission with target 0.0 (Gemma's "target n
 
 ## 2026-10-23 09:20 AK -- loss limit: no stop more than 3% under the buy (operator)
 Operator: "fix that under where we bought this at" (since 10-19: 9 wins +$282, about +$31 each; 9 losses -$1,368, about -$152 each; ATR stops sat 5-15% under the buy, RNG -7.8%). profit_lock.lock_stop now returns entry x 0.97 until the +1% lock takes over; peak watch raises every broker stop to it 24/5 and sells itself at/under it (logged "loss limit"). New buys: bookorders caps the bracket stop at limit x 0.97 too (sizing uses it). First run raises DINO 117.01->119.19, PBF 67.02->76.48, VLO 383.57->413.16.
+
+## 2026-10-23 10:05 AK -- exits: lock 3/1/3, peak-sell from +2%, loss limit 3% kept (operator + Gemma)
+Operator: "the last set up was better, holding" but "we still need to monitor the top"; asked Gemma first (she: drop the lock and peak-sell, 2% loss limit; Claude's blend chosen). profit_lock LOCK_AT 1->3, LOCK_ABOVE 0.2->1, TRAIL 2->3; peak_sell MIN_PROFIT_PCT 2.0 (READY only at >= +2%); loss limit 3% unchanged. One-time: MPC stop 454.79->450.15, ZBRA 382.34->370.13 (the lock never lowers stops itself). Gemma note exits-1023.

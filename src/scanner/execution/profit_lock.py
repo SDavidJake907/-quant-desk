@@ -26,9 +26,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-LOCK_AT_PCT = 1.0
-LOCK_ABOVE_PCT = 0.2
-TRAIL_PCT = 2.0
+#: 3 / 1 / 3 from 2026-10-23 (was 1 / 0.2 / 2): the old lock sold winners on normal
+#: wiggle at +0.2-0.6% (operator + Gemma: let winners run, still catch the top).
+LOCK_AT_PCT = 3.0
+LOCK_ABOVE_PCT = 1.0
+TRAIL_PCT = 3.0
 MAX_LOSS_PCT = 3.0
 #: Working order statuses a stop can be in (a bracket's stop leg sits "held").
 LIVE = frozenset({"new", "accepted", "held", "partially_filled", "pending_new",

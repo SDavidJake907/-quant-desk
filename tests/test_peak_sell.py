@@ -24,8 +24,14 @@ def test_red_position_never_eligible():
 def test_needs_four_of_six():
     three = dict(HOT, stc_1d=10, pctb_1d=0.2, crsi_1h=20)
     four = dict(HOT, stc_1d=10, pctb_1d=0.2)
-    assert not _r(1.0, **three).may_sell()
-    assert _r(1.0, **four).may_sell()
+    assert not _r(2.5, **three).may_sell()
+    assert _r(2.5, **four).may_sell()
+
+
+def test_small_gains_are_held():
+    """Under MIN_PROFIT_PCT (2%) a position is never READY, however hot."""
+    assert not _r(1.9, **HOT).may_sell()
+    assert _r(2.0, **HOT).may_sell()
 
 
 def test_missing_reading_counts_as_not_met():
@@ -39,7 +45,7 @@ def test_thresholds_are_inclusive():
 
 
 def test_approved_needs_her_sell_and_eligibility():
-    ok = ps.Readings("A", 1.0, HOT)
+    ok = ps.Readings("A", 2.5, HOT)
     red = ps.Readings("B", -1.0, HOT)
     ans = {"positions": [{"symbol": "A", "action": "sell", "why": "w"},
                          {"symbol": "B", "action": "sell", "why": "w"},
