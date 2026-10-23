@@ -7,6 +7,9 @@ way to secure profit"; chose lock at +1%, trail 2% under the high, both books.
   LOCK   once the high since entry is LOCK_AT_PCT over the entry, the stop moves
          to LOCK_ABOVE_PCT over the entry -- the worst case is a small win
   TRAIL  then the stop follows the high at TRAIL_PCT under it, never down
+  LOSS   until then, the stop is never more than MAX_LOSS_PCT under the entry
+         (operator 2026-10-23, after RNG -7.8%: "fix that under where we bought
+         this at" -- winners were +$31 each, losers -$152; ATR stops sat 5-15% down)
 
 scripts/peak_watch.py runs it every 5 minutes, 24/5: in any session it raises
 the broker's stop (PATCH, so a gap at the open still sells), and when the price
@@ -26,6 +29,7 @@ from typing import Any
 LOCK_AT_PCT = 1.0
 LOCK_ABOVE_PCT = 0.2
 TRAIL_PCT = 2.0
+MAX_LOSS_PCT = 3.0
 #: Working order statuses a stop can be in (a bracket's stop leg sits "held").
 LIVE = frozenset({"new", "accepted", "held", "partially_filled", "pending_new",
                   "accepted_for_bidding", "pending_replace"})
@@ -35,10 +39,15 @@ MIN_RAISE = 0.01
 State = Mapping[str, Mapping[str, float]]
 
 
-def lock_stop(*, entry: float, high: float) -> float | None:
-    """The lock/trail stop, or None while the position has not been up LOCK_AT_PCT."""
+def loss_floor(entry: float) -> float:
+    return entry * (1 - MAX_LOSS_PCT / 100)
+
+
+def lock_stop(*, entry: float, high: float) -> float:
+    """The loss floor (MAX_LOSS_PCT under the entry) until the position has been up
+    LOCK_AT_PCT; then the lock/trail stop."""
     if high < entry * (1 + LOCK_AT_PCT / 100):
-        return None
+        return loss_floor(entry)
     return max(entry * (1 + LOCK_ABOVE_PCT / 100), high * (1 - TRAIL_PCT / 100))
 
 

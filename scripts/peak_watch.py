@@ -164,15 +164,19 @@ async def lock_pass(broker, client, positions, book_of, orders, open_orders, ses
         if act == "none":
             continue
         if act == "sell":
-            why = (f"profit lock: {price:,.2f} at/under the lock {lock:,.2f} (entry {entry:,.2f}, "
-                   f"high {state[s]['high']:,.2f}) -- sold before it turns red")
+            if lock < entry:
+                why = (f"loss limit: {price:,.2f} at/under {lock:,.2f}, {profit_lock.MAX_LOSS_PCT:g}% "
+                       f"under the buy {entry:,.2f}")
+            else:
+                why = (f"profit lock: {price:,.2f} at/under the lock {lock:,.2f} (entry {entry:,.2f}, "
+                       f"high {state[s]['high']:,.2f}) -- sold before it turns red")
             if dry:
                 log(f"  WOULD SELL {book} {s}: {why}")
                 continue
             ok = await sell_position(broker, client, s, book, why, open_orders, session)
             log(f"  {status(ok)} {book} {s}: {why}")
             if ok:
-                alerts.append(f"Sell sent for {s} ({book}) -- profit lock at {lock:,.2f}")
+                alerts.append(f"Sell sent for {s} ({book}) -- {why.split(':')[0]} at {lock:,.2f}")
             continue
         if order_id is None:
             log(f"  LOCK {s}: {lock:,.2f} (no working stop to raise -- watched here every 5 min)")

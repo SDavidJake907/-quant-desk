@@ -4,7 +4,7 @@ from scanner.execution import profit_lock as pl
 
 
 def test_no_lock_until_up_one_percent():
-    assert pl.lock_stop(entry=100.0, high=100.9) is None
+    assert pl.lock_stop(entry=100.0, high=100.9) == pytest.approx(97.0)   # the loss floor
 
 
 def test_lock_at_one_percent_is_just_above_entry():

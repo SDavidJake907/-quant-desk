@@ -1284,3 +1284,6 @@ Operator: "Gemma should take my position to catch up ... it's still a challenge,
 
 ## 2026-10-23 09:20 AK -- protect.py: Gemma's "target none" trades re-arm their own stop
 audit.submitted_levels skipped any submission with target 0.0 (Gemma's "target none"), so protect.py re-armed RNG (bought premarket 10-23, tight stop 85.40) with the 10-22 picks RNG levels (stop 79.13, target 179.44). Now a zero target counts, with the bracket's ceiling (entry x 1000) as its target. Test added.
+
+## 2026-10-23 09:20 AK -- loss limit: no stop more than 3% under the buy (operator)
+Operator: "fix that under where we bought this at" (since 10-19: 9 wins +$282, about +$31 each; 9 losses -$1,368, about -$152 each; ATR stops sat 5-15% under the buy, RNG -7.8%). profit_lock.lock_stop now returns entry x 0.97 until the +1% lock takes over; peak watch raises every broker stop to it 24/5 and sells itself at/under it (logged "loss limit"). New buys: bookorders caps the bracket stop at limit x 0.97 too (sizing uses it). First run raises DINO 117.01->119.19, PBF 67.02->76.48, VLO 383.57->413.16.

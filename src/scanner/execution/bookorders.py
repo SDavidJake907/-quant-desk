@@ -16,7 +16,7 @@ from datetime import datetime
 from scanner.config import settings
 import asyncio
 
-from scanner.execution import extended, manual, picks
+from scanner.execution import extended, manual, picks, profit_lock
 from scanner.execution.alpaca import BrokerError, round_tick
 from scanner.execution.audit import append_event
 from scanner.execution.flatten_run import close_when_released
@@ -82,6 +82,8 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
             last=last, atr_pct=atr,
             atr_multiple=policy.picks_stop_atr_multiple if atr_multiple is None else atr_multiple,
             offset_pct=policy.entry_limit_offset_pct, ceiling=policy.picks_target_ceiling)
+        # Never more than MAX_LOSS_PCT under the buy (operator 2026-10-23).
+        stop = round_tick(max(stop, profit_lock.loss_floor(limit)))
         # reward_risk is None when the picks list calls without specifying
         # (picks always uses picks_target_ceiling as its ceiling target).
         # reward_risk == 0.0 means Gemma explicitly chose "none" (ride it).
