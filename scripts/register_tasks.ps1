@@ -26,7 +26,6 @@ $tasks = @(
     "stock-scanner-news",
     "stock-scanner-extended",
     "stock-scanner-extras",
-    "stock-scanner-advisor-pre",
     "stock-scanner-momentum",
     "stock-scanner-gemma",
     "stock-scanner-gemma-portfolio",
@@ -34,7 +33,6 @@ $tasks = @(
     "stock-scanner-weekly",
     "stock-scanner-monday",
     "stock-scanner-weekahead",
-    "stock-scanner-extsync",
     "stock-scanner-gemma-sunday",
     "stock-scanner-peakwatch",
     "stock-scanner-monitor",
@@ -46,7 +44,16 @@ $tasks = @(
 #   sector       fed a relative-strength gate removed as null
 #   advisor-live 117 ratings, none scoreable, and it shared the GPU with the
 #                news gate every 30 minutes
-$retired = @("stock-scanner-sector", "stock-scanner-advisor-live")
+# Retired 2026-10-23 (operator: trim the repo; FREEZE):
+#   extsync      hourly after-hours picks sync -- the picks list is empty since
+#                Gemma runs the whole account (10-22)
+#   advisor-pre  TradingAgents pre-open ratings, disabled since 10-19
+#   signals      Pine signals virtual paper, every 5 min (TRIALS #80, 0/66); trades nothing
+#   oneshot-*, picks-pause/resume   one-time tasks, disabled
+$retired = @("stock-scanner-sector", "stock-scanner-advisor-live",
+    "stock-scanner-extsync", "stock-scanner-advisor-pre", "stock-scanner-signals",
+    "stock-scanner-oneshot-fast-exit-1023", "stock-scanner-oneshot-picks-exit-1026",
+    "stock-scanner-oneshot-wdc-exit", "stock-scanner-picks-pause", "stock-scanner-picks-resume")
 foreach ($name in $retired) {
     try {
         Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction Stop
@@ -211,18 +218,6 @@ Write-Output "registered stock-scanner-extras   19:00 AK daily"
 
 $weekdays = @("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
 
-# --- second opinions: TradingAgents, pre-open, advisory only -----------------
-# 03:30 AK weekdays. Rates held positions, the momentum picks and
-# watchlists/core.txt (~28 names, ~2 min each, done before the 05:30 open).
-# ADVISORY - UNPROVEN (WORKLIST §38): every rating is graded by
-# second_opinion.py against the S&P over 21 sessions and gates nothing. The
-# 30-minute live pass stays retired, so nothing else wants the GPU at 03:30.
-$advSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2 -Minutes 5) -MultipleInstances IgnoreNew
-$advPreTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $weekdays -At 3:30AM
-$advPreAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_tradingagents.bat" -Argument "premarket" -WorkingDirectory $root
-Register-ScheduledTask -TaskName "stock-scanner-advisor-pre" -Trigger $advPreTrigger -Action $advPreAction -Settings $advSettings -Description "Second opinions: TradingAgents rates held, momentum and core names before the open; advisory, graded (03:30 AK weekdays)" -Force | Out-Null
-Write-Output "registered stock-scanner-advisor-pre  03:30 AK weekdays (advisory, graded)"
-
 # --- Gemma's book: the junior trader (WORKLIST §42) -------------------------
 # 05:45 AK weekdays: after the 05:33 safety pass has placed the picks list's
 # orders (so those names are visibly taken) and after the 03:30 ratings have
@@ -297,15 +292,7 @@ Register-ScheduledTask -TaskName "stock-scanner-momentum" -Trigger $momTrigger -
 Write-Output "registered stock-scanner-momentum 11:40 AK weekdays, acts once a month"
 
 # --- extended hours (WORKLIST §59) ---------------------------------------------
-# Hourly 12:35-04:35 AK: the picks sync in after-hours, overnight (from Sunday
-# 16:00 AK) and premarket, as limit orders; stops armed by protect.py at the open.
 # Gemma decides once more on Sunday 16:45 AK, in the overnight session.
-$exTrigger = New-ScheduledTaskTrigger -Daily -At 12:35PM
-$exTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 12:35PM -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Hours 16)).Repetition
-$exSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 20) -MultipleInstances IgnoreNew
-$exAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_extsync.bat" -WorkingDirectory $root
-Register-ScheduledTask -TaskName "stock-scanner-extsync" -Trigger $exTrigger -Action $exAction -Settings $exSettings -Description "Extended-hours picks sync, hourly 12:35-04:35 AK" -Force | Out-Null
-Write-Output "registered stock-scanner-extsync  hourly 12:35-04:35 AK"
 $gsTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 4:45PM
 $gsSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
 $gsAction = New-ScheduledTaskAction -Execute "$root\scripts\scheduled_gemma.bat" -WorkingDirectory $root

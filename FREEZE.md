@@ -1293,3 +1293,6 @@ Operator: "the last set up was better, holding" but "we still need to monitor th
 
 ## 2026-10-23 10:15 AK -- Gemma has full authority (operator)
 Operator: "give her full authority for everything, buy/sell/hold". Asked about the weekend, Gemma sold MPC 458.83 (+188.80), VLO 422.00 (-86.68), DINO 121.97 (-72.80) at market before the close and holds ZBRA. Note authority-1023 (not in git). No code change.
+
+## 2026-10-23 10:40 AK -- repo trim, steps 1-2 (operator: "lets do all of it")
+Retired 8 scheduled tasks (unregistered, and listed in register_tasks.ps1 $retired so a re-run removes them): extsync (picks list empty since Gemma runs the account), signals (Pine virtual paper, TRIALS #80 0/66), advisor-pre (disabled since 10-19), oneshot-fast-exit-1023, oneshot-picks-exit-1026, oneshot-wdc-exit, picks-pause, picks-resume. 23 tasks remain. Moved 48 one-time research scripts (tests/replays/benchmarks nothing scheduled or tested runs) to scripts/research/ with a README; test_no_undefined_names now scans scripts/ recursively so they stay checked. No trading-path code changed.

@@ -32,7 +32,7 @@ import pytest
 _ROOT = Path(__file__).resolve().parent.parent
 _FILES = sorted(
     [p for p in (_ROOT / "src").rglob("*.py")]
-    + [p for p in (_ROOT / "scripts").glob("*.py")]
+    + [p for p in (_ROOT / "scripts").rglob("*.py")]
 )
 
 _BUILTINS = set(dir(builtins)) | {"__file__", "__name__", "__doc__", "__spec__"}
