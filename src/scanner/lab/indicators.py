@@ -354,6 +354,22 @@ def more(bars: Bars, market: Mapping[date, float] | None = None,
     out["month"] = [float(x.month) for x in d]
     out["day_of_month"] = [float(x.day) for x in d]
     if market_bars is not None:
+        # The market's own state (operator 2026-10-23: "almost every 2-3 weeks there's a sell-off";
+        # measured: a 2%+ drop under the S&P's 10-day closing high comes a median 18 trading days
+        # apart over 20 years). The same values for every stock on a date.
+        mlist = list(market_bars.closes)
+        mpos = {x: j for j, x in enumerate(market_bars.dates)}
+        off, r5 = [], []
+        for x in d:
+            j = mpos.get(x)
+            if j is None or j < 10:
+                off.append(None)
+                r5.append(None)
+                continue
+            off.append((mlist[j] / max(mlist[j - 10:j]) - 1) * 100)
+            r5.append((mlist[j] / mlist[j - 5] - 1) * 100)
+        out["mkt_off_10d_high_pct"] = off
+        out["mkt_ret_5d_pct"] = r5
         # Real Relative Strength (after simonro/edge-scanner, MIT, scanner/indicators/rrs.py):
         # strength vs the S&P 500 beyond what this stock's own ATR predicts from the index's
         # move -- per bar ((move - power * atr) / atr, power = index move / index ATR), then

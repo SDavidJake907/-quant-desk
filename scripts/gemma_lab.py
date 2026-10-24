@@ -485,6 +485,80 @@ async def run_momentum_study(client) -> None:
     say(f"\nreport: {MOMENTUM_REPORT}")
 
 
+COMBO_REPORT = "logs/lab/combo_study.md"
+#: Operator 2026-10-23: "the best momentum on entry, and holding the best 2-3 weeks. and best
+#: indicator on exit" + "almost every 2-3 weeks there's a sell-off". Windows: the two strongest
+#: region centres of the momentum grid per gate (chosen FROM the search years -- the hidden
+#: years must judge them), with the classic 12-1 as the reference.
+COMBO_WINDOWS = {"large": ((10, 7), (8, 7), (12, 1)), "mid": ((10, 2), (9, 3), (12, 1)),
+                 "small": ((6, 3), (7, 2), (12, 1))}
+COMBO_HOLDS = (10, 15)
+_MKT2 = rc.Filter(name="mkt_off_10d_high_pct", op="below", value=-2.0)
+COMBO_EXITS: tuple[tuple[str, dict], ...] = (
+    ("time only", {}),
+    ("market sell-off 2%", {"exit_filters": (_MKT2,)}),
+    ("market sell-off 3%", {"exit_filters": (rc.Filter(name="mkt_off_10d_high_pct", op="below", value=-3.0),)}),
+    ("RSI above 80", {"exit_filters": (rc.Filter(name="rsi14", op="above", value=80.0),)}),
+    ("trail 2 ATR", {"trail_atr": 2.0}),
+    ("trail 3 ATR", {"trail_atr": 3.0}),
+    ("close under 20-day", {"exit_filters": (rc.Filter(name="price_vs_sma20_pct", op="below", value=0.0),)}),
+    ("SuperTrend down", {"exit_filters": (rc.Filter(name="supertrend_up", op="not"),)}),
+)
+COMBO_TIMING: tuple[tuple[str, tuple], ...] = (("any day", ()), ("after a 2% market dip", (_MKT2,)))
+
+
+async def run_combo_study(client) -> None:
+    """Best momentum window x 2-3 week hold x exit indicator x entry timing, per gate. The random
+    control depends only on the hold and the exit, so it is run once per (hold, exit)."""
+    entries = ledger.read()
+    out: dict[str, dict[tuple, sim.Result]] = {}
+    for u in UNIVERSES.values():
+        say(f"\n## Combo study -- {u.label}")
+        data = await load(client, u)
+        stocks, calendar, bench, members, uptrend, _ = data
+        controls: dict[tuple[int, str], float | None] = {}
+        for lb, sk in COMBO_WINDOWS[u.key]:
+            for st in stocks.values():
+                st.ind["mom_window"] = momentum_series(st.closes, lb, sk)
+            for hold in COMBO_HOLDS:
+                for xn, xk in COMBO_EXITS:
+                    for tn, tf in COMBO_TIMING:
+                        recipe = rc.Recipe(filters=tf, rank_by="mom_window", rank_order="high_first", top_n=10,
+                                           rebalance_days=5, stop_atr=0.0, target_r=0.0, max_hold_days=hold, **xk)
+                        args = (recipe, stocks, calendar, bench, members, uptrend)
+                        if (hold, xn) not in controls:
+                            result = sim.with_control(*args, start=u.search[0], end=u.search[1])
+                            controls[(hold, xn)] = result.random_annual_pct
+                        else:
+                            result = sim.simulate(*args, start=u.search[0], end=u.search[1]).model_copy(
+                                update={"random_annual_pct": controls[(hold, xn)]})
+                        name = f"momentum {lb}-{sk} / {hold}d / {xn} / {tn}"
+                        entry(entries, u, "combo_study", recipe, result, name=name, verdict=sim.passes(result)[1])
+                        out.setdefault(u.key, {})[(lb, sk, hold, xn, tn)] = result
+                        say(f"- {name}: {result.line()}")
+    gate = {"large": "gate 1, big caps", "mid": "gate 2, mid caps", "small": "gate 3, small caps"}
+    lines = ["# Combo study: momentum window x 2-3 week hold x exit x entry timing", "",
+             "Points a year vs the group's index; * = passes Gemma's bar. Top 10, refilled weekly; search years; "
+             "idle cash in the index; costs.", ""]
+    for uk, cells in out.items():
+        cols = [(lb, sk, h) for lb, sk in COMBO_WINDOWS[uk] for h in COMBO_HOLDS]
+        lines += [f"## {gate[uk]}", "",
+                  "| exit / entry timing | " + " | ".join(f"{lb}-{sk}, {h // 5} wk" for lb, sk, h in cols) + " | avg |",
+                  "|---|" + "---|" * (len(cols) + 1)]
+        rows = [(xn, tn) for xn, _ in COMBO_EXITS for tn, _ in COMBO_TIMING]
+        avg = {r: sum(cells[(lb, sk, h, *r)].excess_pts for lb, sk, h in cols) / len(cols) for r in rows}
+        for xn, tn in sorted(rows, key=lambda r: -avg[r]):
+            cs = [cells[(lb, sk, h, xn, tn)] for lb, sk, h in cols]
+            lines.append(f"| {xn} / {tn} | " + " | ".join(f"{r.excess_pts:+.1f}{'*' if sim.passes(r)[0] else ''}"
+                                                       for r in cs) + f" | {avg[(xn, tn)]:+.1f} |")
+        best = max(cells, key=lambda k: cells[k].excess_pts if sim.passes(cells[k])[0] else -99)
+        lines += ["", f"Best passing combination: momentum {best[0]}-{best[1]}, {best[2]} days, exit {best[3]}, "
+                      f"{best[4]}: {cells[best].line()}", ""]
+    Path(COMBO_REPORT).parent.mkdir(parents=True, exist_ok=True)
+    Path(COMBO_REPORT).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    say(f"\nreport: {COMBO_REPORT}")
+
+
 ROTATION_REPORT = "logs/lab/rotation_study.md"
 
 
@@ -527,8 +601,11 @@ async def run_rotation_study(client) -> None:
 
 async def main(universe: str, tries: int, check: bool, weekend: bool, baseline: bool = False,
                exits: bool = False, entries_study: bool = False, rotation: bool = False,
-               momentum: bool = False) -> int:
+               momentum: bool = False, combo: bool = False) -> int:
     async with httpx.AsyncClient(timeout=600) as client:
+        if combo:
+            await run_combo_study(client)
+            return 0
         if momentum:
             await run_momentum_study(client)
             return 0
@@ -580,6 +657,7 @@ if __name__ == "__main__":
     p.add_argument("--entry-study", action="store_true", help="the best entry with the exit study's best exits, per gate")
     p.add_argument("--rotation-study", action="store_true", help="hold 2-4 weeks then replace, per gate")
     p.add_argument("--momentum-study", action="store_true", help="every momentum window L-S, per gate")
+    p.add_argument("--combo-study", action="store_true", help="best momentum x 2-3 week hold x exit x timing")
     a = p.parse_args()
     sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline, a.exit_study,
-                              a.entry_study, a.rotation_study, a.momentum_study)))
+                              a.entry_study, a.rotation_study, a.momentum_study, a.combo_study)))

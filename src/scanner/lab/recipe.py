@@ -64,6 +64,10 @@ NUMERIC: dict[str, tuple[tuple[float, ...], str]] = {
     # beyond what the stock's own ATR predicts, averaged so one spike does not count.
     "rrs_5d": ((-1, -0.5, 0, 0.5, 1, 2), "Real Relative Strength over 1 week (volatility-adjusted vs the S&P 500)"),
     "rrs_20d": ((-1, -0.5, 0, 0.5, 1, 2), "Real Relative Strength over 4 weeks (volatility-adjusted vs the S&P 500)"),
+    # The market's sell-offs (operator 2026-10-23): the S&P 500's close vs its prior 10-day closing
+    # high (a 2%+ drop comes a median 18 trading days apart) and its 1-week return.
+    "mkt_off_10d_high_pct": ((-6, -4, -3, -2, -1, 0), "S&P 500 close vs its prior 10-day closing high % (sell-off depth)"),
+    "mkt_ret_5d_pct": ((-4, -2, -1, 0, 1, 2), "S&P 500 1-week return %"),
 }
 #: Calendar filters also take op "is" (exactly that day / month).
 CALENDAR = ("day_of_week", "month", "day_of_month")
