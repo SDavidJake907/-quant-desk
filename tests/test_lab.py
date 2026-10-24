@@ -123,15 +123,25 @@ def test_sector_cap_and_random_control_are_reproducible():
 
 
 def test_passes_names_every_miss():
-    r = sim.Result(start=DAYS[0], end=DAYS[-1], annual_pct=12, spx_annual_pct=10, sharpe=0.8,
+    # Gemma's revised bar (2026-10-23): +3 pts, Sharpe above the index's, drawdown <= index + 5.
+    r = sim.Result(start=DAYS[0], end=DAYS[-1], annual_pct=12, spx_annual_pct=10, sharpe=0.5,
                    max_drawdown_pct=30, trades=5, win_rate_pct=50, avg_trade_pct=1,
-                   exposure_pct=90, random_annual_pct=13)
+                   exposure_pct=90, random_annual_pct=13, index_sharpe=0.7, index_drawdown_pct=20)
     ok, why = sim.passes(r)
     assert not ok
-    for words in ("+2.0 pts", "Sharpe 0.80", "drawdown 30%", "random", "5 trades"):
+    for words in ("+2.0 pts", "Sharpe 0.50", "index's 0.70", "drawdown 30%", "random", "5 trades"):
         assert words in why
-    good = r.model_copy(update={"annual_pct": 30, "sharpe": 1.5, "max_drawdown_pct": 15, "trades": 40})
+    good = r.model_copy(update={"annual_pct": 14, "sharpe": 0.9, "max_drawdown_pct": 24, "trades": 40})
     assert sim.passes(good) == (True, "passed")
+
+
+def test_idle_cash_earns_the_index():
+    flat = stock("F", [100.0] * 40)
+    never = rc.parse({**BASE, "filters": [{"name": "rsi14", "op": "above", "value": 80}]})
+    rising = {d: 100.0 * (1.001 ** i) for i, d in enumerate(DAYS)}
+    r = sim.simulate(never, {"F": flat}, DAYS, rising, lambda d: frozenset({"F"}), {d: 1.0 for d in DAYS},
+                     start=DAYS[0], end=DAYS[-1])
+    assert r.trades == 0 and r.annual_pct == pytest.approx(r.spx_annual_pct, abs=0.01)
 
 
 # --- the log ------------------------------------------------------------------
@@ -145,7 +155,7 @@ def test_ledger_round_trip_and_summary(tmp_path):
     rows = ledger.read(path)
     assert ledger.tried(rows, ledger.SEARCH) == {r.key}
     assert "1 recipes searched" in ledger.summary(rows)
-    assert "empty" in ledger.summary([])
+    assert "No searches of your own" in ledger.summary([])
 
 
 # --- the weekend (operator 2026-10-23: "backtest all weekend. big caps, med caps, small caps") ---
@@ -163,7 +173,7 @@ def test_summary_is_per_universe_and_counts_the_others(tmp_path):
     text = ledger.summary(rows, universe="large")
     assert "1 recipes searched" in text and "Other stock groups: small 1" in text
     assert ledger.tried(rows, ledger.SEARCH, universe="small") == {r.key}
-    assert "empty" in ledger.summary(rows, universe="mid")
+    assert "No searches of your own" in ledger.summary(rows, universe="mid")
 
 
 def test_weekend_plan_rotates_and_only_the_last_session_per_group_nominates():
@@ -290,3 +300,15 @@ def test_new_volume_indicators():
         assert any(v is not None for v in m[name]), name
     assert m["dollar_volume_m"][79] == pytest.approx(
         sum(c * v for c, v in zip(bars.closes[60:80], bars.volumes[60:80])) / 20 / 1e6)
+
+
+def test_summary_keeps_old_scoring_apart_and_lists_baselines():
+    r = rc.parse(BASE)
+    res = book({}, [stock("A", [100.0] * 40)]).model_dump(mode="json")
+    rows = [{"n": 1, "session": "s", "stage": ledger.SEARCH, "key": r.key, "describe": "old", "result": res},
+            {"n": 2, "session": "s", "stage": ledger.SEARCH, "key": r.key, "describe": "new", "result": res,
+             "scoring": 2},
+            {"n": 3, "session": "s", "stage": ledger.BASELINE, "key": r.key, "describe": "b", "result": res,
+             "scoring": 2, "name": "momentum 12-1"}]
+    text = ledger.summary(rows, scoring=2)
+    assert "1 earlier searches" in text and "momentum 12-1" in text and "] old" not in text

@@ -37,12 +37,16 @@ from scanner.models import Frozen
 
 COSTS = CostModel()
 RANDOM_SEEDS = 5
-#: Gemma's bar (2026-10-23), for EACH hidden stage: beat its index by 15 points a
-#: year, Sharpe above 1.2, worst drawdown 20% or less. Ours on top: beat the random
-#: control, and at least MIN_TRADES trades (fewer cannot show anything).
-BAR_EXCESS_PTS = 15.0
-BAR_SHARPE = 1.2
-BAR_MAX_DRAWDOWN = 20.0
+#: Gemma's bar, revised by her 2026-10-23 ("a necessary pivot from 'impossible' to
+#: 'professional'"; it was +15 pts / Sharpe 1.2 / drawdown 20%), for EACH hidden stage:
+#: beat the index by BAR_EXCESS_PTS a year, a Sharpe above the index's own over the same
+#: days, a worst drawdown no more than BAR_DD_OVER_INDEX points deeper than the index's,
+#: beat the random control, at least MIN_TRADES trades.
+BAR_EXCESS_PTS = 3.0
+BAR_DD_OVER_INDEX = 5.0
+#: Scoring version: 2 = idle cash earns the index (Gemma, 2026-10-23). Results of version 1
+#: (idle cash earned nothing) are not comparable and are kept apart in her log.
+SCORING = 2
 MIN_TRADES = 20
 
 
@@ -70,6 +74,8 @@ class Result(Frozen):
     avg_trade_pct: float
     exposure_pct: float
     random_annual_pct: float | None = None
+    index_sharpe: float = 0.0
+    index_drawdown_pct: float = 0.0
 
     @property
     def excess_pts(self) -> float:
@@ -79,8 +85,8 @@ class Result(Frozen):
         rnd = (f", random picks {self.random_annual_pct:+.1f}%/yr (you {self.annual_pct - self.random_annual_pct:+.1f} "
                "pts vs random)" if self.random_annual_pct is not None else "")
         return (f"{self.annual_pct:+.1f}%/yr vs the index {self.spx_annual_pct:+.1f}%/yr (you {self.excess_pts:+.1f} "
-                f"pts vs the index){rnd}; Sharpe "
-                f"{self.sharpe:.2f}, worst drawdown {self.max_drawdown_pct:.0f}%, {self.trades} trades, "
+                f"pts vs the index){rnd}; Sharpe {self.sharpe:.2f} (index {self.index_sharpe:.2f}), "
+                f"worst drawdown {self.max_drawdown_pct:.0f}% (index {self.index_drawdown_pct:.0f}%), {self.trades} trades, "
                 f"{self.win_rate_pct:.0f}% won, avg trade {self.avg_trade_pct:+.2f}%, "
                 f"invested {self.exposure_pct:.0f}% of the time")
 
@@ -90,10 +96,11 @@ def passes(r: Result) -> tuple[bool, str]:
     misses = []
     if r.excess_pts < BAR_EXCESS_PTS:
         misses.append(f"beat the index by {r.excess_pts:+.1f} pts/yr (needs +{BAR_EXCESS_PTS:g})")
-    if r.sharpe <= BAR_SHARPE:
-        misses.append(f"Sharpe {r.sharpe:.2f} (needs > {BAR_SHARPE:g})")
-    if r.max_drawdown_pct > BAR_MAX_DRAWDOWN:
-        misses.append(f"drawdown {r.max_drawdown_pct:.0f}% (needs <= {BAR_MAX_DRAWDOWN:g}%)")
+    if r.sharpe <= r.index_sharpe:
+        misses.append(f"Sharpe {r.sharpe:.2f} (needs above the index's {r.index_sharpe:.2f})")
+    if r.max_drawdown_pct > r.index_drawdown_pct + BAR_DD_OVER_INDEX:
+        misses.append(f"drawdown {r.max_drawdown_pct:.0f}% (needs <= the index's "
+                      f"{r.index_drawdown_pct:.0f}% + {BAR_DD_OVER_INDEX:g})")
     if r.random_annual_pct is not None and r.annual_pct <= r.random_annual_pct:
         misses.append("did not beat random picks")
     if r.trades < MIN_TRADES:
@@ -186,8 +193,13 @@ def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[dat
     cash, held, pending = 1.0, [], []
     curve, invested, trades = [], [], []
     last_value = 1.0
+    prev = None
     for k, d in enumerate(days):
         up = bool(uptrend.get(d))
+        # Idle cash sits in the index (Gemma, 2026-10-23): it earns the index's day.
+        if prev is not None and spx_closes.get(prev) and spx_closes.get(d):
+            cash *= spx_closes[d] / spx_closes[prev]
+        prev = d
         if recipe.entry_at == "next_open":               # yesterday's decisions fill at today's open
             for stock in pending:
                 i = stock.at.get(d)
@@ -273,13 +285,21 @@ def _score(curve, invested, trades, days, spx_closes) -> Result:
         worst = max(worst, (1 - v / peak) if peak else 0.0)
     marks = [spx_closes[d] for d in days if d in spx_closes]
     spx = (marks[-1] / marks[0]) ** (1 / years) - 1 if len(marks) > 1 else 0.0
+    idx_daily = [b / a - 1 for a, b in zip(marks, marks[1:]) if a > 0]
+    idx_sd = statistics.pstdev(idx_daily) if len(idx_daily) > 1 else 0.0
+    ipeak, iworst = 0.0, 0.0
+    for v in marks:
+        ipeak = max(ipeak, v)
+        iworst = max(iworst, (1 - v / ipeak) if ipeak else 0.0)
     return Result(start=days[0], end=days[-1], annual_pct=round((final ** (1 / years) - 1) * 100, 2),
                   spx_annual_pct=round(spx * 100, 2),
                   sharpe=round(statistics.fmean(daily) / sd * 252 ** 0.5, 2) if sd else 0.0,
                   max_drawdown_pct=round(worst * 100, 1), trades=len(trades),
                   win_rate_pct=round(sum(t > 0 for t in trades) / len(trades) * 100, 1) if trades else 0.0,
                   avg_trade_pct=round(statistics.fmean(trades) * 100, 2) if trades else 0.0,
-                  exposure_pct=round(statistics.fmean(invested) * 100, 1) if invested else 0.0)
+                  exposure_pct=round(statistics.fmean(invested) * 100, 1) if invested else 0.0,
+                  index_sharpe=round(statistics.fmean(idx_daily) / idx_sd * 252 ** 0.5, 2) if idx_sd else 0.0,
+                  index_drawdown_pct=round(iworst * 100, 1))
 
 
 def with_control(recipe: Recipe, *args, **kwargs) -> Result:

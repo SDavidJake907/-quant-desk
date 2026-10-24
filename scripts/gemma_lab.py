@@ -32,7 +32,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.features.bars import fetch_bars, fetch_many
-from scanner.lab import indicators, ledger, recipe as rc, sim
+from scanner.lab import baselines, indicators, ledger, recipe as rc, sim
 from scanner.llm.ollama import LLMError, chat_json
 from scanner.models import Frozen
 from scanner.sources import composite, index_history
@@ -97,10 +97,12 @@ each slot is 1/top_n of the book. Exits from the next day: stop and target (a da
 a level fills at the open; a day touching both is a stop), then the time limit at the close. Costs are
 included. Each result is shown beside RANDOM picks from the same stocks run through the same book and
 exits, and beside the index ({bench}, dividends included). If you cannot beat random picks, the idea is
-not adding anything.
+not adding anything. IDLE CASH (empty slots) sits in the index and earns its return, so every recipe
+starts at the index: the question is whether your picks ADD to it. "invested" is the share held in stocks.
 
 Search years: {s0} to {s1}. The years after are HIDDEN from you. {nominate}Your bar on the hidden
-years: beat the index by {pts:g} points a year, Sharpe above {sh:g}, worst drawdown {dd:g}% or less -- and
+years: beat the index by {pts:g} points a year, a Sharpe above the index's, a worst drawdown no more than {dd:g}
+points deeper than the index's -- and
 beat random picks with at least {mt} trades. With enough tries one recipe looks good by luck; every
 try is counted, so make each one a real idea, not a small tweak of a lucky number. Explore DIFFERENT
 families across a session -- trend following, buying dips, breakouts, volume, volatility squeezes,
@@ -156,11 +158,12 @@ def run(recipe: rc.Recipe, data, start: date, end: date) -> sim.Result:
 
 
 def entry(entries: list, u: Universe, stage: str, recipe: rc.Recipe, result: sim.Result, *,
-          idea: str = "", verdict: str = "") -> dict:
+          idea: str = "", verdict: str = "", name: str = "") -> dict:
     e = {"n": len(entries) + 1, "at": datetime.now().astimezone().isoformat(timespec="seconds"),
          "session": date.today().isoformat(), "universe": u.key, "stage": stage, "key": recipe.key,
+         "scoring": sim.SCORING,
          "recipe": recipe.model_dump(mode="json"), "describe": recipe.describe(), "idea": idea,
-         "result": result.model_dump(mode="json"), "verdict": verdict}
+         "result": result.model_dump(mode="json"), "verdict": verdict, **({"name": name} if name else {})}
     ledger.append(e)
     entries.append(e)
     return e
@@ -173,11 +176,11 @@ def prompt(u: Universe, entries: list, today: list[str], left: int, nominates: b
              "This weekend you nominate ONE recipe per stock group for them, in that group's last "
              "session -- so search widely now. ")
     intro = INTRO.format(label=u.label, caveat=u.caveat, bench=u.benchmark, s0=u.search[0], s1=u.search[1],
-                         nominate=later, pts=sim.BAR_EXCESS_PTS, sh=sim.BAR_SHARPE,
-                         dd=sim.BAR_MAX_DRAWDOWN, mt=sim.MIN_TRADES, menu=rc.menu_text())
+                         nominate=later, pts=sim.BAR_EXCESS_PTS,
+                         dd=sim.BAR_DD_OVER_INDEX, mt=sim.MIN_TRADES, menu=rc.menu_text())
     session = "\n".join(today) or "(none yet)"
     fix = f"\n\nYOUR LAST ANSWER WAS REFUSED: {error}. Send a corrected recipe." if error else ""
-    return (f"{intro}\n\n{ledger.summary(entries, universe=u.key)}\n\nThis session so far:\n{session}\n\n"
+    return (f"{intro}\n\n{ledger.summary(entries, universe=u.key, scoring=sim.SCORING)}\n\nThis session so far:\n{session}\n\n"
             f"Recipes left this session: {left}. Write the next recipe and, in 'idea', one or two "
             f"sentences: what market behaviour it bets on and why it should beat random picks.{fix}")
 
@@ -204,17 +207,18 @@ async def nominate(client, u: Universe, entries, data) -> None:
         return
     hidden = ledger.tried(entries, ledger.HIDDEN_A, universe=u.key)
     options = {e["key"]: e for e in entries if e["stage"] == ledger.SEARCH
-               and ledger.universe_of(e) == u.key and e["key"] not in hidden}
+               and ledger.universe_of(e) == u.key and e["key"] not in hidden
+               and ledger.scoring_of(e) == sim.SCORING}
     if not options:
         return
     schema = {"type": "object", "properties": {
         "nominate": {"type": "string", "enum": ["none", *options]}, "why": {"type": "string"}},
         "required": ["nominate", "why"]}
-    ask = (f"{ledger.summary(entries, universe=u.key, best=15, recent=15)}\n\nYou may now nominate ONE "
+    ask = (f"{ledger.summary(entries, universe=u.key, best=15, recent=15, scoring=sim.SCORING)}\n\nYou may now nominate ONE "
            f"searched recipe for {u.label} (by its [key]) for the hidden years, or 'none'. It runs on "
            f"{A} and, if it passes your bar, on {B}. A recipe runs there once, ever, so nominate "
-           f"only one you believe in. Bar: beat {u.benchmark} by {sim.BAR_EXCESS_PTS:g} pts/yr, Sharpe > "
-           f"{sim.BAR_SHARPE:g}, drawdown <= {sim.BAR_MAX_DRAWDOWN:g}%, beat random picks, >= {sim.MIN_TRADES} "
+           f"only one you believe in. Bar: beat {u.benchmark} by {sim.BAR_EXCESS_PTS:g} pts/yr, a Sharpe above "
+           f"the index's, drawdown no more than {sim.BAR_DD_OVER_INDEX:g} pts deeper than the index's, beat random picks, >= {sim.MIN_TRADES} "
            "trades.")
     try:
         answer = await chat_json(ask, schema, client)
@@ -255,7 +259,7 @@ async def session(client, u: Universe, tries: int, nominates: bool) -> None:
             continue
         recipe, idea = got
         seen = [e for e in entries if e["stage"] == ledger.SEARCH and e["key"] == recipe.key
-                and ledger.universe_of(e) == u.key]
+                and ledger.universe_of(e) == u.key and ledger.scoring_of(e) == sim.SCORING]
         if seen:
             today.append(f"- [{recipe.key}] ALREADY RUN as #{seen[0]['n']}: "
                          f"{seen[0]['result']['annual_pct']:+.1f}%/yr. Not run again.")
@@ -286,8 +290,30 @@ def weekend_plan(now: datetime, order: tuple[str, ...] = ("large", "mid", "small
     return [(t, u, last[u] == j) for j, (t, u) in enumerate(plan)]
 
 
-async def main(universe: str, tries: int, check: bool, weekend: bool) -> int:
+async def run_baselines(client) -> None:
+    """The classic-strategy library (lab/baselines.py) on every stock group, search years only,
+    each once per scoring version; shown to Gemma as reference rows and counted as trials."""
+    entries = ledger.read()
+    for u in UNIVERSES.values():
+        done = {(e.get("name"), e["key"]) for e in entries if e.get("stage") == ledger.BASELINE
+                and ledger.universe_of(e) == u.key and ledger.scoring_of(e) == sim.SCORING}
+        todo = [(n, rc.parse(r)) for n, r in baselines.BASELINES]
+        todo = [(n, r) for n, r in todo if (n, r.key) not in done]
+        if not todo:
+            continue
+        say(f"\n## Desk baselines -- {u.label}")
+        data = await load(client, u)
+        for name, recipe in todo:
+            result = run(recipe, data, *u.search)
+            entry(entries, u, ledger.BASELINE, recipe, result, name=name, verdict=sim.passes(result)[1])
+            say(f"- {name}: {result.line()}")
+
+
+async def main(universe: str, tries: int, check: bool, weekend: bool, baseline: bool = False) -> int:
     async with httpx.AsyncClient(timeout=600) as client:
+        if baseline:
+            await run_baselines(client)
+            return 0
         if check:
             u = UNIVERSES[universe]
             data = await load(client, u)
@@ -298,6 +324,7 @@ async def main(universe: str, tries: int, check: bool, weekend: bool) -> int:
         if not weekend:
             await session(client, UNIVERSES[universe], tries, nominates=True)
             return 0
+        await run_baselines(client)                      # once per scoring version; quick
         plan = weekend_plan(datetime.now().astimezone())
         say(f"weekend plan: {len(plan)} sessions until {plan[-1][0]:%a %H:%M} + one: "
             + ", ".join(f"{t:%a %H:%M} {u}{'*' if n else ''}" for t, u, n in plan) + "  (* nominates)")
@@ -318,5 +345,6 @@ if __name__ == "__main__":
     p.add_argument("--tries", type=int, default=TRIES)
     p.add_argument("--check", action="store_true")
     p.add_argument("--weekend", action="store_true")
+    p.add_argument("--baseline", action="store_true", help="run the classic-strategy library on all groups")
     a = p.parse_args()
-    sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend)))
+    sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline)))
