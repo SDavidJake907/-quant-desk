@@ -33,7 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.features.bars import fetch_bars, fetch_many
-from scanner.lab import baselines, exit_study, indicators, ledger, recipe as rc, sim
+from scanner.lab import baselines, entry_study, exit_study, indicators, ledger, recipe as rc, sim
 from scanner.llm.ollama import LLMError, chat_json
 from scanner.models import Frozen
 from scanner.sources import composite, index_history
@@ -353,11 +353,60 @@ async def run_exit_study(client) -> None:
     say(f"\nreport: {EXIT_REPORT}")
 
 
+ENTRY_REPORT = "logs/lab/entry_study.md"
+
+
+async def run_entry_study(client) -> None:
+    """The best entry with the best exits, per gate (lab/entry_study.py). Needs the exit study."""
+    rows = [e for e in ledger.read() if e.get("stage") == "exit_study" and ledger.scoring_of(e) == sim.SCORING]
+    exits = list(dict.fromkeys([*entry_study.best_exits(rows), entry_study.LIVE_EXIT]))
+    if len(exits) < 2:
+        say("run --exit-study first: the entry study uses its best exits")
+        return
+    say(f"exits under test: {exits}")
+    entries = ledger.read()
+    table: dict[str, dict[tuple[str, str], sim.Result]] = {}
+    for u in UNIVERSES.values():
+        say(f"\n## Entry study -- {u.label}")
+        data = await load(client, u)
+        for en, xn, raw in entry_study.grid(exits):
+            recipe = rc.parse(raw)
+            result = run(recipe, data, *u.search)
+            entry(entries, u, "entry_study", recipe, result, name=f"{en} / {xn}", verdict=sim.passes(result)[1])
+            table.setdefault(u.key, {})[(en, xn)] = result
+            say(f"- {en} / {xn}: {result.line()}")
+    gate = {"large": "gate 1, big caps", "mid": "gate 2, mid caps", "small": "gate 3, small caps"}
+    lines = ["# Entry study: the best entry with the best exits, per gate", "",
+             f"Exits: {', '.join(exits)}. Points a year vs the group's index (vs random in brackets); "
+             "MET = passes Gemma's bar. Search years; idle cash in the index; costs.", ""]
+    for uk, cells in table.items():
+        lines += [f"## {gate[uk]} ({UNIVERSES[uk].label})", "",
+                  "| entry | " + " | ".join(exits) + " | average |", "|---|" + "---|" * (len(exits) + 1)]
+        names = [en for en, _ in entry_study.ENTRIES]
+        avg = {en: sum(cells[(en, x)].excess_pts for x in exits) / len(exits) for en in names}
+        for en in sorted(names, key=lambda n: -avg[n]):
+            row = []
+            for x in exits:
+                r = cells[(en, x)]
+                rnd = r.annual_pct - (r.random_annual_pct or 0.0)
+                row.append(f"{r.excess_pts:+.1f} ({rnd:+.1f}){' MET' if sim.passes(r)[0] else ''}")
+            lines.append(f"| {en} | " + " | ".join(row) + f" | {avg[en]:+.1f} |")
+        best = max(cells, key=lambda k: cells[k].excess_pts)
+        r = cells[best]
+        lines += ["", f"Best pair for {gate[uk]}: **{best[0]} + {best[1]}** -- {r.line()}", ""]
+    Path(ENTRY_REPORT).parent.mkdir(parents=True, exist_ok=True)
+    Path(ENTRY_REPORT).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    say(f"\nreport: {ENTRY_REPORT}")
+
+
 async def main(universe: str, tries: int, check: bool, weekend: bool, baseline: bool = False,
-               exits: bool = False) -> int:
+               exits: bool = False, entries_study: bool = False) -> int:
     async with httpx.AsyncClient(timeout=600) as client:
         if exits:
             await run_exit_study(client)
+            return 0
+        if entries_study:
+            await run_entry_study(client)
             return 0
         if baseline:
             await run_baselines(client)
@@ -395,5 +444,7 @@ if __name__ == "__main__":
     p.add_argument("--weekend", action="store_true")
     p.add_argument("--baseline", action="store_true", help="run the classic-strategy library on all groups")
     p.add_argument("--exit-study", action="store_true", help="where to sell: every exit x entry x group")
+    p.add_argument("--entry-study", action="store_true", help="the best entry with the exit study's best exits, per gate")
     a = p.parse_args()
-    sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline, a.exit_study)))
+    sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline, a.exit_study,
+                              a.entry_study)))
