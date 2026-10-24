@@ -37,6 +37,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from scanner.advisor import after_hours
 from scanner.advisor import brief_store
 from scanner.advisor import clock
+from scanner.advisor import desk_guide
 from scanner.advisor import gemma_pool as gp
 from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
@@ -625,6 +626,7 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
                             + (f"{sold}\n\n" if sold else "")
                             + (f"{lessons}\n\n" if lessons else "")
                             + f"{gt.PLAN_RULES}\n{gates.text()}\n\n"
+                            + f"{desk_guide.GUIDE}\n\n"
                             + f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
                                   min_positions=least, graded=True)
