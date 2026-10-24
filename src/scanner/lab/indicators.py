@@ -221,6 +221,46 @@ def supertrend_up(highs, lows, closes, n: int = 10, mult: float = 3.0) -> Series
     return out
 
 
+def psar_up(highs, lows, step: float = 0.02, max_step: float = 0.2) -> Series:
+    """1.0 while Wilder's Parabolic SAR (classic 0.02 / 0.2) is under price (uptrend), else 0.0."""
+    n = len(highs)
+    out: Series = [None] * n
+    if n < 3:
+        return out
+    up, af = highs[1] >= highs[0], step
+    sar = lows[0] if up else highs[0]
+    ep = highs[1] if up else lows[1]
+    for i in range(2, n):
+        sar = sar + af * (ep - sar)
+        if up:
+            sar = min(sar, lows[i - 1], lows[i - 2])
+            if lows[i] < sar:
+                up, sar, ep, af = False, ep, lows[i], step
+            elif highs[i] > ep:
+                ep, af = highs[i], min(af + step, max_step)
+        else:
+            sar = max(sar, highs[i - 1], highs[i - 2])
+            if highs[i] > sar:
+                up, sar, ep, af = True, ep, highs[i], step
+            elif lows[i] < ep:
+                ep, af = lows[i], min(af + step, max_step)
+        out[i] = float(up)
+    return out
+
+
+def _fresh(flag: Series, days: int = 5) -> Series:
+    """1.0 when `flag` turned on (0 -> 1) within the last `days` bars and is still on."""
+    out: Series = [None] * len(flag)
+    last_flip = None
+    for i, v in enumerate(flag):
+        if v is None:
+            continue
+        if v >= 0.5 and i and flag[i - 1] is not None and flag[i - 1] < 0.5:
+            last_flip = i
+        out[i] = float(v >= 0.5 and last_flip is not None and i - last_flip < days)
+    return out
+
+
 def more(bars: Bars, market: Mapping[date, float] | None = None) -> dict[str, Series]:
     """The second menu (operator 2026-10-23: "give her all the indicators ... market hours,
     after hours, days of the week, months"). Daily bars: the OVERNIGHT move (after-hours +
@@ -295,6 +335,20 @@ def more(bars: Bars, market: Mapping[date, float] | None = None) -> dict[str, Se
     out["close_vs_vwap20_pct"] = [None if pv[i] is None or not vs[i] or vs[i] <= 1e-9 else _pct(c[i], pv[i] / vs[i])
                                   for i in range(n)]
     out["dollar_volume_m"] = [None if pv[i] is None else pv[i] / 20 / 1e6 for i in range(n)]
+    # Classic crossovers and Parabolic SAR at their standard settings (operator 2026-10-23,
+    # from everget's toolkit -- fixed, NOT optimised per stock: picking the best of hundreds of
+    # settings on the same history is the luck the hidden years exist to catch).
+    e10, e50 = ema(c, 10), ema(c, 50)
+    s50, s200 = sma(c, 50), sma(c, 200)
+    ema_up = [None if e10[i] is None or e50[i] is None else float(e10[i] > e50[i]) for i in range(n)]
+    golden = [None if s50[i] is None or s200[i] is None else float(s50[i] > s200[i]) for i in range(n)]
+    sar = psar_up(h, lo)
+    out["ema10_above_ema50"] = ema_up
+    out["ema_cross_up_5d"] = _fresh(ema_up)
+    out["golden_cross"] = golden
+    out["golden_cross_5d"] = _fresh(golden)
+    out["psar_up"] = sar
+    out["psar_flip_up_5d"] = _fresh(sar)
     out["day_of_week"] = [float(x.weekday() + 1) for x in d]
     out["month"] = [float(x.month) for x in d]
     out["day_of_month"] = [float(x.day) for x in d]

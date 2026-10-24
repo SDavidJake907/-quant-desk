@@ -312,3 +312,16 @@ def test_summary_keeps_old_scoring_apart_and_lists_baselines():
              "scoring": 2, "name": "momentum 12-1"}]
     text = ledger.summary(rows, scoring=2)
     assert "1 earlier searches" in text and "momentum 12-1" in text and "] old" not in text
+
+
+def test_psar_and_crossovers_follow_the_trend():
+    up = list(range(100, 160)) + list(range(160, 120, -1))
+    bars_up = __import__("scanner.features.bars", fromlist=["Bars"]).Bars(
+        symbol="P", dates=tuple(date(2020, 1, 1) + timedelta(days=i) for i in range(len(up))),
+        opens=tuple(float(x) for x in up), closes=tuple(float(x) for x in up),
+        highs=tuple(x + 0.5 for x in up), lows=tuple(x - 0.5 for x in up), volumes=tuple(1000.0 for _ in up))
+    m = ind.more(bars_up)
+    assert m["psar_up"][50] == 1.0 and m["psar_up"][-1] == 0.0
+    assert m["ema10_above_ema50"][58] == 1.0 and m["ema10_above_ema50"][-1] == 0.0
+    flips = [i for i, v in enumerate(m["psar_flip_up_5d"]) if v == 1.0]
+    assert all(m["psar_up"][i] == 1.0 for i in flips)

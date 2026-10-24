@@ -72,6 +72,12 @@ FLAGS: dict[str, str] = {
     "macd_above_signal": "the MACD line is above its signal line",
     "obv_rising": "On-Balance Volume is above its 20-day average",
     "supertrend_up": "SuperTrend(10, 3) is up",
+    "ema10_above_ema50": "the 10-day EMA is above the 50-day EMA",
+    "ema_cross_up_5d": "the 10-day EMA crossed above the 50-day EMA within the last 5 days",
+    "golden_cross": "the 50-day average is above the 200-day average",
+    "golden_cross_5d": "the 50-day crossed above the 200-day within the last 5 days",
+    "psar_up": "Parabolic SAR (0.02 / 0.2) is under the price (uptrend)",
+    "psar_flip_up_5d": "Parabolic SAR flipped to an uptrend within the last 5 days",
 }
 TOP_N = (3, 5, 10, 20)
 REBALANCE = (5, 10, 21)
