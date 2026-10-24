@@ -83,7 +83,7 @@ TOP_N = (3, 5, 10, 20)
 REBALANCE = (5, 10, 21)
 STOP_ATR = (0.0, 1.5, 2.5, 3.5)
 TARGET_R = (0.0, 2.0, 3.0, 5.0)
-MAX_HOLD = (5, 10, 21, 63)
+MAX_HOLD = (5, 10, 21, 63, 126, 252)   # 126 / 252 from 2026-10-23: "hold until it is ready to sell"
 MAX_PER_SECTOR = (0, 1, 2, 3)
 MAX_FILTERS = 6
 

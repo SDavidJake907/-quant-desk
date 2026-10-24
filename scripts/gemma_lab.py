@@ -27,12 +27,13 @@ from array import array
 from datetime import date, datetime, timedelta
 
 import httpx
+from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.features.bars import fetch_bars, fetch_many
-from scanner.lab import baselines, indicators, ledger, recipe as rc, sim
+from scanner.lab import baselines, exit_study, indicators, ledger, recipe as rc, sim
 from scanner.llm.ollama import LLMError, chat_json
 from scanner.models import Frozen
 from scanner.sources import composite, index_history
@@ -309,8 +310,55 @@ async def run_baselines(client) -> None:
             say(f"- {name}: {result.line()}")
 
 
-async def main(universe: str, tries: int, check: bool, weekend: bool, baseline: bool = False) -> int:
+EXIT_REPORT = "logs/lab/exit_study.md"
+
+
+async def run_exit_study(client) -> None:
+    """Where to sell (lab/exit_study.py): every exit x both entries x every stock group,
+    search years only; counted (stage exit_study); report in EXIT_REPORT."""
+    entries = ledger.read()
+    cells: dict[tuple[str, str], dict[str, sim.Result]] = {}
+    for u in UNIVERSES.values():
+        say(f"\n## Exit study -- {u.label}")
+        data = await load(client, u)
+        for en, xn, raw in exit_study.grid():
+            recipe = rc.parse(raw)
+            result = run(recipe, data, *u.search)
+            entry(entries, u, "exit_study", recipe, result, name=f"{en} / {xn}", verdict=sim.passes(result)[1])
+            cells.setdefault((u.key, en), {})[xn] = result
+            say(f"- {en} / {xn}: {result.line()}")
+    lines = ["# Exit study (search years; idle cash in the index; costs; random control)", "",
+             "Points a year vs the group's index, per exit. 'vs hold 3m' = the same entry held 3 months.", ""]
+    names = [x for x, _ in exit_study.EXITS]
+    score: dict[str, list[float]] = {x: [] for x in names}
+    for (uk, en), by_exit in cells.items():
+        base = by_exit["hold 3 months"]
+        lines += [f"## {UNIVERSES[uk].label} -- {en}", "",
+                  "| exit | vs index | vs random | vs hold 3m | Sharpe (index) | worst DD (index) | trades | bar |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for x in sorted(names, key=lambda x: -by_exit[x].excess_pts):
+            r = by_exit[x]
+            rnd = r.annual_pct - (r.random_annual_pct or 0.0)
+            score[x].append(r.annual_pct - base.annual_pct)
+            lines.append(f"| {x} | {r.excess_pts:+.1f} | {rnd:+.1f} | {r.annual_pct - base.annual_pct:+.1f} | "
+                         f"{r.sharpe:.2f} ({r.index_sharpe:.2f}) | {r.max_drawdown_pct:.0f}% ({r.index_drawdown_pct:.0f}%) | "
+                         f"{r.trades} | {'MET' if sim.passes(r)[0] else '-'} |")
+        lines.append("")
+    lines += ["## Across all six cells", "", "| exit | average vs hold 3m | cells better than hold 3m |", "|---|---|---|"]
+    for x in sorted(names, key=lambda x: -sum(score[x]) / max(1, len(score[x]))):
+        v = score[x]
+        lines.append(f"| {x} | {sum(v) / max(1, len(v)):+.1f} pts/yr | {sum(d > 0 for d in v)} of {len(v)} |")
+    Path(EXIT_REPORT).parent.mkdir(parents=True, exist_ok=True)
+    Path(EXIT_REPORT).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    say(f"\nreport: {EXIT_REPORT}")
+
+
+async def main(universe: str, tries: int, check: bool, weekend: bool, baseline: bool = False,
+               exits: bool = False) -> int:
     async with httpx.AsyncClient(timeout=600) as client:
+        if exits:
+            await run_exit_study(client)
+            return 0
         if baseline:
             await run_baselines(client)
             return 0
@@ -346,5 +394,6 @@ if __name__ == "__main__":
     p.add_argument("--check", action="store_true")
     p.add_argument("--weekend", action="store_true")
     p.add_argument("--baseline", action="store_true", help="run the classic-strategy library on all groups")
+    p.add_argument("--exit-study", action="store_true", help="where to sell: every exit x entry x group")
     a = p.parse_args()
-    sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline)))
+    sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline, a.exit_study)))
