@@ -43,6 +43,7 @@ from scanner.advisor import market_context as mc
 from scanner.advisor import hindsight_memory
 from scanner.advisor import operator_notes
 from scanner.advisor import memory_feed
+from scanner.advisor import sold_feed
 from scanner.advisor import stock_context
 from scanner.sources import yahoo_fundamentals
 from scanner.sources import market_caps
@@ -584,6 +585,8 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
         # Her short memory (operator 2026-10-19): her own record with what
         # happened since, built from outcomes and prices (advisor/gemma_memory.py).
         memory = await memory_feed.memory_block(client, held=list(mine))
+        # Every position sold lately, all books, with what happened after (operator 2026-10-23).
+        sold = await sold_feed.sold_block(broker, client)
         # Her long-term memory (operator 2026-10-19, live): Hindsight's lessons
         # from her own trades, written at 05:05 (advisor/hindsight_memory.py).
         lessons = hindsight_memory.block(hindsight_memory.read_lessons(),
@@ -603,6 +606,7 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             print(f"  {YELLOW}no 'Now:' line ({type(exc).__name__}: {exc}){RESET}")
         text = text.replace("The list:", (f"{told}\n\n" if told else "")
                             + (f"{memory}\n\n" if memory else "")
+                            + (f"{sold}\n\n" if sold else "")
                             + (f"{lessons}\n\n" if lessons else "")
                             + f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
@@ -630,6 +634,7 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             "submitted": submit and tradable, "session": session,
             "pool_size": pool_size, "thinking": notes,
             "memory": memory,
+            "sold_positions": sold,
             "hindsight": lessons,
             "operator_notes": told,
             # WORKLIST §65: her 5-day probabilities (graded by advisor/forecast_grade.py)
