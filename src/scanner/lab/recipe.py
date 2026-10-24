@@ -35,13 +35,37 @@ NUMERIC: dict[str, tuple[tuple[float, ...], str]] = {
     "bb_width_pct": ((3, 5, 8, 12, 20), "Bollinger width (4 st.dev of 20 days) as % of price; low = squeeze"),
     "gap_pct": ((-4, -2, -1, 0, 1, 2, 4), "today's open vs yesterday's close %"),
     "close_in_range": ((0.25, 0.5, 0.75, 0.9), "where the close sits in the day's range (1 = at the high)"),
+    # The second menu (operator 2026-10-23: "give her all the indicators ... market hours,
+    # after hours, days of the week, months").
+    "macd_hist_pct": ((-1, -0.5, 0, 0.5, 1), "MACD(12,26,9) histogram as % of price"),
+    "stoch_k14": ((10, 20, 50, 80, 90), "Stochastic %K(14)"),
+    "mfi14": ((20, 30, 50, 70, 80), "Money Flow Index(14) (RSI weighted by volume)"),
+    "ret_1w_pct": ((-10, -5, -2, 0, 2, 5, 10), "1-week return %"),
+    "ret_6m_pct": ((-20, 0, 10, 20, 40, 60), "6-month return %"),
+    "pct_above_52w_low": ((10, 25, 50, 100), "% above the 52-week low"),
+    "bb_pct_b": ((0, 0.2, 0.5, 0.8, 1), "Bollinger %B (0 = lower band, 1 = upper band)"),
+    "atr_vs_50d": ((0.7, 0.9, 1.1, 1.3, 1.5), "ATR / its 50-day average (above 1 = volatility expanding)"),
+    "streak": ((-4, -3, -2, -1, 1, 2, 3, 4), "consecutive up closes (+) or down closes (-)"),
+    "rs_3m_pct": ((-10, -5, 0, 5, 10, 20), "3-month return minus the S&P 500's (relative strength)"),
+    "intraday_pct": ((-3, -1, 0, 1, 3), "REGULAR SESSION today: close vs open %"),
+    "intraday_5d_pct": ((-5, -2, 0, 2, 5), "regular-session moves summed over 5 days %"),
+    "overnight_5d_pct": ((-5, -2, 0, 2, 5),
+                         "OVERNIGHT moves (after-hours + premarket: close to next open) summed over 5 days %"),
+    "day_of_week": ((1, 2, 3, 4, 5), "decision day: 1 Monday ... 5 Friday (the buy is the next trading day)"),
+    "month": ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), "decision month: 1 January ... 12 December"),
+    "day_of_month": ((1, 5, 10, 15, 20, 25, 28), "calendar day of the month"),
 }
+#: Calendar filters also take op "is" (exactly that day / month).
+CALENDAR = ("day_of_week", "month", "day_of_month")
 #: Yes/no conditions.
 FLAGS: dict[str, str] = {
     "new_high_20": "closed above the highest high of the prior 20 days",
     "new_high_55": "closed above the highest high of the prior 55 days",
     "pullback": "below the 20-day average while above the 200-day average",
     "market_uptrend": "the S&P 500 is above its 200-day average",
+    "macd_above_signal": "the MACD line is above its signal line",
+    "obv_rising": "On-Balance Volume is above its 20-day average",
+    "supertrend_up": "SuperTrend(10, 3) is up",
 }
 TOP_N = (3, 5, 10, 20)
 REBALANCE = (5, 10, 21)
@@ -49,7 +73,7 @@ STOP_ATR = (0.0, 1.5, 2.5, 3.5)
 TARGET_R = (0.0, 2.0, 3.0, 5.0)
 MAX_HOLD = (5, 10, 21, 63)
 MAX_PER_SECTOR = (0, 1, 2, 3)
-MAX_FILTERS = 5
+MAX_FILTERS = 6
 
 
 class Filter(Frozen):
@@ -98,8 +122,8 @@ def parse(raw: Any) -> Recipe:
             filters.append(Filter(name=name))
         elif name in NUMERIC:
             op, value = str(f.get("op", "")), f.get("value")
-            if op not in ("above", "below"):
-                raise ValueError(f"filter {name}: op must be 'above' or 'below'")
+            if op not in ("above", "below") and not (op == "is" and name in CALENDAR):
+                raise ValueError(f"filter {name}: op must be 'above' or 'below'" + (" or 'is'" if name in CALENDAR else ""))
             allowed = NUMERIC[name][0]
             if not isinstance(value, (int, float)) or float(value) not in allowed:
                 raise ValueError(f"filter {name}: value must be one of {list(allowed)}")
@@ -133,7 +157,9 @@ def parse(raw: Any) -> Recipe:
 
 
 def menu_text() -> str:
-    lines = ["FILTERS (all must hold on the decision day; up to 5):"]
+    lines = [f"FILTERS (all must hold on the decision day; up to {MAX_FILTERS}). Daily bars: the OVERNIGHT move "
+             "(after-hours + premarket) is yesterday's close to today's open; the REGULAR SESSION is open to close. "
+             f"Calendar filters ({', '.join(CALENDAR)}) also take op 'is' (exactly that value):"]
     lines += [f"- {k} above/below one of {list(v)}: {d}" for k, (v, d) in NUMERIC.items()]
     lines += [f"- {k} (yes/no): {d}" for k, d in FLAGS.items()]
     lines += ["RANK BY any numeric indicator above, rank_order high_first or low_first.",

@@ -8,7 +8,8 @@ None where the history is too short. PURE: lists in, lists out, no numpy
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import date
 
 from scanner.features.bars import Bars
 
@@ -158,6 +159,137 @@ def _rolling_max(values: Sequence[float], n: int) -> Series:
             window.popleft()
         if i >= n - 1:
             out[i] = values[window[0]]
+    return out
+
+
+def ema(values: Sequence[float | None], n: int) -> Series:
+    """Exponential average seeded with the first n-value mean; None until then."""
+    out: Series = [None] * len(values)
+    k, seed, prev = 2 / (n + 1), [], None
+    for i, v in enumerate(values):
+        if v is None:
+            continue
+        if prev is None:
+            seed.append(v)
+            if len(seed) == n:
+                prev = sum(seed) / n
+                out[i] = prev
+            continue
+        prev = v * k + prev * (1 - k)
+        out[i] = prev
+    return out
+
+
+def _rolling_min(values: Sequence[float], n: int) -> Series:
+    neg = _rolling_max([-v for v in values], n)
+    return [None if v is None else -v for v in neg]
+
+
+def _rolling_sum(values: Sequence[float], n: int) -> Series:
+    out: Series = [None] * len(values)
+    total = 0.0
+    for i, v in enumerate(values):
+        total += v
+        if i >= n:
+            total -= values[i - n]
+        if i >= n - 1:
+            out[i] = total
+    return out
+
+
+def supertrend_up(highs, lows, closes, n: int = 10, mult: float = 3.0) -> Series:
+    """1.0 while the SuperTrend (ATR n, multiplier mult) is up, 0.0 while down."""
+    atr = wilder(true_range(highs, lows, closes), n)
+    out: Series = [None] * len(closes)
+    upper = lower = None
+    up = True
+    for i, a in enumerate(atr):
+        if a is None:
+            continue
+        mid = (highs[i] + lows[i]) / 2
+        bu, bl = mid + mult * a, mid - mult * a
+        if upper is None:
+            upper, lower = bu, bl
+        else:
+            upper = bu if bu < upper or closes[i - 1] > upper else upper
+            lower = bl if bl > lower or closes[i - 1] < lower else lower
+        if up and closes[i] < lower:
+            up = False
+        elif not up and closes[i] > upper:
+            up = True
+        out[i] = float(up)
+    return out
+
+
+def more(bars: Bars, market: Mapping[date, float] | None = None) -> dict[str, Series]:
+    """The second menu (operator 2026-10-23: "give her all the indicators ... market hours,
+    after hours, days of the week, months"). Daily bars: the OVERNIGHT move (after-hours +
+    premarket) is yesterday's close -> today's open; the REGULAR SESSION is open -> close."""
+    c, h, lo, o, v, d = bars.closes, bars.highs, bars.lows, bars.opens, bars.volumes, bars.dates
+    n = len(c)
+    out: dict[str, Series] = {}
+    fast, slow = ema(c, 12), ema(c, 26)
+    line = [None if a is None or b is None else a - b for a, b in zip(fast, slow)]
+    signal = ema(line, 9)
+    out["macd_hist_pct"] = [None if line[i] is None or signal[i] is None or not c[i]
+                            else (line[i] - signal[i]) / c[i] * 100 for i in range(n)]
+    out["macd_above_signal"] = [None if line[i] is None or signal[i] is None
+                                else float(line[i] > signal[i]) for i in range(n)]
+    lo14, hi14 = _rolling_min(lo, 14), _rolling_max(h, 14)
+    out["stoch_k14"] = [None if lo14[i] is None or hi14[i] == lo14[i]
+                        else (c[i] - lo14[i]) / (hi14[i] - lo14[i]) * 100 for i in range(n)]
+    tp = [(h[i] + lo[i] + c[i]) / 3 for i in range(n)]
+    pos = [0.0] + [tp[i] * v[i] if tp[i] > tp[i - 1] else 0.0 for i in range(1, n)]
+    neg = [0.0] + [tp[i] * v[i] if tp[i] < tp[i - 1] else 0.0 for i in range(1, n)]
+    ps, ns = _rolling_sum(pos, 14), _rolling_sum(neg, 14)
+    # Rolling sums drift by float rounding: a "zero" can come back as -1e-12.
+    out["mfi14"] = [None if ps[i] is None else
+                    (100.0 if ns[i] <= 1e-9 else 100 * max(ps[i], 0.0) / (max(ps[i], 0.0) + ns[i]))
+                    for i in range(n)]
+    obv, run = [], 0.0
+    for i in range(n):
+        if i and c[i] > c[i - 1]:
+            run += v[i]
+        elif i and c[i] < c[i - 1]:
+            run -= v[i]
+        obv.append(run)
+    obv20 = sma(obv, 20)
+    out["obv_rising"] = [None if obv20[i] is None else float(obv[i] > obv20[i]) for i in range(n)]
+    out["ret_1w_pct"] = [_pct(c[i], c[i - 5]) if i >= 5 else None for i in range(n)]
+    out["ret_6m_pct"] = [_pct(c[i], c[i - 126]) if i >= 126 else None for i in range(n)]
+    lo252 = _rolling_min(lo, 252)
+    out["pct_above_52w_low"] = [_pct(c[i], lo252[i]) for i in range(n)]
+    mid, sd = sma(c, 20), stdev(c, 20)
+    out["bb_pct_b"] = [None if mid[i] is None or not sd[i] else (c[i] - (mid[i] - 2 * sd[i])) / (4 * sd[i])
+                       for i in range(n)]
+    atr = wilder(true_range(h, lo, c), 14)
+    atr50 = sma([a if a is not None else 0.0 for a in atr], 50)
+    out["atr_vs_50d"] = [None if atr[i] is None or i < 63 or not atr50[i] else atr[i] / atr50[i]
+                         for i in range(n)]
+    streak, s = [], 0
+    for i in range(n):
+        if i and c[i] > c[i - 1]:
+            s = s + 1 if s > 0 else 1
+        elif i and c[i] < c[i - 1]:
+            s = s - 1 if s < 0 else -1
+        else:
+            s = 0
+        streak.append(float(s))
+    out["streak"] = streak
+    out["supertrend_up"] = supertrend_up(h, lo, c)
+    intraday = [_pct(c[i], o[i]) or 0.0 for i in range(n)]
+    gaps = [0.0] + [_pct(o[i], c[i - 1]) or 0.0 for i in range(1, n)]
+    out["intraday_pct"] = intraday
+    out["intraday_5d_pct"] = _rolling_sum(intraday, 5)
+    out["overnight_5d_pct"] = _rolling_sum(gaps, 5)
+    out["day_of_week"] = [float(x.weekday() + 1) for x in d]
+    out["month"] = [float(x.month) for x in d]
+    out["day_of_month"] = [float(x.day) for x in d]
+    if market:
+        mk = [market.get(x) for x in d]
+        out["rs_3m_pct"] = [None if i < 63 or mk[i] is None or mk[i - 63] is None
+                            else (_pct(c[i], c[i - 63]) or 0.0) - (_pct(mk[i], mk[i - 63]) or 0.0)
+                            for i in range(n)]
     return out
 
 

@@ -115,7 +115,8 @@ def _ok(stock: Stock, i: int, recipe: Recipe, uptrend: bool) -> bool:
         if f.name in FLAGS:
             if v < 0.5:
                 return False
-        elif (f.op == "above" and v <= f.value) or (f.op == "below" and v >= f.value):
+        elif ((f.op == "above" and v <= f.value) or (f.op == "below" and v >= f.value)
+              or (f.op == "is" and v != f.value)):
             return False
     return _has(stock.ind[recipe.rank_by][i]) and _has(stock.ind["atr"][i])
 

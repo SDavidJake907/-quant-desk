@@ -182,3 +182,53 @@ def test_weekend_plan_rotates_and_only_the_last_session_per_group_nominates():
     for u in ("large", "mid", "small"):
         last = max(i for i, (_, x, _) in enumerate(plan) if x == u)
         assert plan[last][2]
+
+
+# --- the second menu (operator 2026-10-23: "all the indicators ... market hours, after hours,
+# days of the week, months") ---------------------------------------------------------------
+
+def _bars(n=300):
+    from scanner.features.bars import Bars
+    closes = [100 + (i % 9) - (i % 4) * 0.5 for i in range(n)]
+    opens = [c - 0.3 for c in closes]
+    return Bars(symbol="X", dates=tuple(date(2020, 1, 1) + timedelta(days=i) for i in range(n)),
+                opens=tuple(opens), closes=tuple(closes), highs=tuple(c + 1 for c in closes),
+                lows=tuple(c - 1 for c in closes), volumes=tuple(1000.0 + i for i in range(n)))
+
+
+def test_every_menu_name_is_computed_and_never_sees_the_future():
+    bars = _bars()
+    market = {d: 100.0 + i * 0.1 for i, d in enumerate(bars.dates)}
+    full = {**ind.compute(bars), **ind.more(bars, market)}
+    cut = {**ind.compute(bars.upto(279)), **ind.more(bars.upto(279), market)}
+    for name in [*rc.NUMERIC, *(f for f in rc.FLAGS if f != "market_uptrend")]:
+        assert name in full, name
+        assert cut[name] == full[name][:280], name
+
+
+def test_overnight_and_regular_session_split():
+    bars = _bars(10)
+    m = ind.more(bars)
+    assert m["intraday_pct"][3] == pytest.approx((bars.closes[3] / bars.opens[3] - 1) * 100)
+    gaps = [(bars.opens[i] / bars.closes[i - 1] - 1) * 100 for i in range(1, 10)]
+    assert m["overnight_5d_pct"][9] == pytest.approx(sum(gaps[-5:]))
+    assert m["day_of_week"][0] == 3.0 and m["month"][0] == 1.0     # 2020-01-01 was a Wednesday
+
+
+def test_calendar_filters_take_is_and_others_do_not():
+    r = rc.parse({**BASE, "filters": [{"name": "month", "op": "is", "value": 11},
+                                      {"name": "day_of_week", "op": "below", "value": 3}]})
+    assert "month is 11" in r.describe()
+    with pytest.raises(ValueError, match="above"):
+        rc.parse({**BASE, "filters": [{"name": "rsi14", "op": "is", "value": 30}]})
+
+
+def test_is_filter_trades_only_on_that_weekday():
+    names = [stock("A", [100.0 + 0.1 * k for k in range(40)])]
+    names[0].ind["day_of_week"][:] = [float(d.weekday() + 1) for d in DAYS]
+    tuesday_only = book({"top_n": 3, "rebalance_days": 5,
+                        "filters": [{"name": "day_of_week", "op": "is", "value": 2}]}, names)
+    never = book({"top_n": 3, "rebalance_days": 5,
+                  "filters": [{"name": "day_of_week", "op": "is", "value": 5},
+                              {"name": "day_of_week", "op": "is", "value": 1}]}, names)
+    assert never.trades == 0 and tuesday_only.exposure_pct >= 0

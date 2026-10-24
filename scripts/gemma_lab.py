@@ -125,6 +125,7 @@ async def load(client, u: Universe) -> tuple:
     sectors = {m.symbol: m.sector for m in await composite.load_universe(client, (u.spec,))}
     spx = await fetch_bars("^GSPC", client, range_="20y")        # the trend filter and calendar
     bench = await fetch_bars(u.benchmark, client, range_="20y")
+    market = dict(zip(spx.dates, spx.closes))                    # relative strength vs the S&P 500
     stocks = {}
     for i in range(0, len(symbols), CHUNK):
         got, _ = await fetch_many(tuple(symbols[i:i + CHUNK]), client, range_="20y")
@@ -133,7 +134,8 @@ async def load(client, u: Universe) -> tuple:
                 continue
             stocks[s] = sim.Stock(s, sectors.get(s, "unknown"), b.dates, _compact(b.opens),
                                   _compact(b.highs), _compact(b.lows), _compact(b.closes),
-                                  {k: _compact(v) for k, v in indicators.compute(b).items()},
+                                  {k: _compact(v) for k, v in
+                                   {**indicators.compute(b), **indicators.more(b, market)}.items()},
                                   {d: j for j, d in enumerate(b.dates)})
     memo: dict[date, frozenset[str]] = {}
 
