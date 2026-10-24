@@ -11,6 +11,8 @@ Every pass in regular hours (task stock-scanner-monitor, :15 and :45 past the ho
      check now and sell any picks position she calls a "concern"
   4  Gemma's book, hourly (the :45 pass): she re-reads her own sell-ifs against live
      facts; a met sell-if with a quote found in the facts is sold
+  4b 3:15 PM ET, only under a bellwether / theme-shock alert: her PRE-CLOSE risk check with
+     read-only lookups (ops/pre_close.py) -- keep or sell each holding before the close
   5  hourly: the PEAK-SELL readings and stage of every position (scanner/ops/peak_sell.py,
      operator 2026-10-22), shown to Gemma in her sell-if check -- information only; the
      5-minute peak watch (scripts/peak_watch.py) marks READY and does the selling
@@ -43,17 +45,20 @@ import gemma_review as grv  # scripts/ is on the path when this script runs
 import gemma_trade as gtr
 
 from scanner.advisor import gemma_memory as gm
+from scanner.advisor import gemma_trader as gt
 from scanner.config import settings
 from scanner.execution import ownership, sell_queue, sessions
 from scanner.execution.alpaca import Alpaca
+from scanner.execution import satellite as sat
 from scanner.execution.ownership import GEMMA, PICKS
 from scanner.execution.scorecard import read_rows
 from scanner.features.bars import fetch_bars, fetch_many
 from scanner.features.intraday import EXCHANGE_TZ
 from scanner.features.technicals import average_true_range_pct
-from scanner.llm.ollama import LLMError
+from scanner.llm.ollama import LLMError, chat_json
 from scanner.ops import market_monitor as mm
 from scanner.ops import notify
+from scanner.ops import pre_close
 from scanner.ops import shock_alert as sa
 from scanner.ops import shock_feed
 from scanner.sources import composite
@@ -149,6 +154,71 @@ def run_safety_check() -> dict[str, str]:
     return {r["symbol"]: r["reason"] for r in saved.get("positions", []) if r.get("verdict") == "concern"}
 
 
+async def researched_answer(build, facts: dict[str, str], schema: dict, client, broker, lines: list[str],
+                            *, ask: str, calls: int) -> tuple[dict, dict[str, str]]:
+    """Her thinking step with read-only tools (Gemma 2026-10-24), then her answer with what she looked
+    up added to each stock's facts -- so a quote from a lookup is checked like any fact. `build(facts)`
+    makes the question. (answer, facts) -- raises LLMError only if she cannot answer at all."""
+    notes, made = "", []
+    if gt.THINKS:
+        try:
+            notes, made = await gtr.research_notes(build(facts), client, broker, max_tokens=gt.THINK_TOKENS,
+                                                   ask=ask, calls=calls)
+        except LLMError as exc:
+            log(lines, f"  research failed ({exc}) -- answering from the facts alone")
+    for c in made:
+        log(lines, f"  lookup: {c['tool']}({', '.join(f'{k}={v}' for k, v in dict(c['args']).items())})")
+    facts = mm.with_lookups(facts, made)
+    return await chat_json(gt.with_notes(build(facts), notes), schema, client), facts
+
+
+async def pre_close_pass(client, broker, positions, owner_map, orders, lines: list[str], dry: bool,
+                         fired: list, skip: set[str]) -> list[str]:
+    """3:15 PM ET under a bellwether / theme-shock alert (ops/pre_close.py): she looks things up and
+    says keep or sell for each holding before the close. Sells are queued for peak watch."""
+    today = datetime.now(EXCHANGE_TZ).date()
+    mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA and p["symbol"] not in skip]
+    if not mine:
+        return []
+    log(lines, f"  PRE-CLOSE CHECK (alert: {', '.join(a.kind for a in fired)})")
+    try:
+        sectors = {m.symbol: m.sector for m in await composite.load_universe(client)}
+    except Exception as exc:                                  # noqa: BLE001
+        log(lines, f"  sectors unavailable ({type(exc).__name__}) -- the minimum hold applies to every name")
+        sectors = {}
+    entered = gtr.gemma_entry_dates(orders)
+    symbols = [p["symbol"] for p in mine]
+    facts, trend, _ = await gtr.facts_for(symbols, client, sessions.REGULAR)
+    rows, allowed = [], {}
+    for p in mine:
+        s = p["symbol"]
+        held = sat.trading_days_between(entered[s], today) if s in entered else sat.MIN_HOLD_DAYS
+        allowed[s] = pre_close.may_sell(held_days=held, min_hold=sat.MIN_HOLD_DAYS, sector=sectors.get(s))
+        rows.append((s, float(p["unrealized_plpc"]) * 100, (await quote(client, s))[1], held, allowed[s]))
+    try:
+        answer, _ = await researched_answer(
+            lambda f: pre_close.prompt(f, rows, alerts=fired, market=trend, today=today), facts,
+            pre_close.schema(symbols), client, broker, lines, ask=gt.PRE_CLOSE_ASK, calls=gt.PRE_CLOSE_CALLS)
+    except LLMError as exc:
+        log(lines, f"  Gemma unavailable ({exc}) -- pre-close check skipped, her book unchanged")
+        return []
+    for h in (answer or {}).get("holdings", []):
+        log(lines, f"  pre-close {h.get('symbol'):<6} {h.get('action'):<5} {str(h.get('reason', ''))[:160]}")
+    to_sell, held_back = pre_close.sells(answer, allowed)
+    for s in held_back:
+        log(lines, f"  kept {s}: inside the minimum hold and not in the alerted theme")
+    sold = []
+    for s, why in to_sell:
+        reason = f"pre-close check under an alert: {why}"
+        if dry:
+            log(lines, f"  WOULD SELL Gemma {s}: {reason}")
+            continue
+        queue_sells({s: reason})
+        log(lines, f"  QUEUED Gemma {s} for peak watch (sells within 5 min): {reason}")
+        sold.append(s)
+    return sold
+
+
 async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry: bool,
                          alerts: list[str], peak: str = "", session: str = sessions.REGULAR,
                          entered: dict[str, datetime] | None = None) -> list[str]:
@@ -176,9 +246,10 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
                   if when else f"bought at {float(p['avg_entry_price']):,.2f}")
         rows.append((p["symbol"], sell_ifs.get(p["symbol"], ""), float(p["unrealized_plpc"]) * 100, day,
                      bought))
-    text = mm.sell_if_prompt(facts, rows, market=trend, alerts=alerts, peak=peak)
     try:
-        answer, _ = await gtr.think_then_answer(text, mm.sell_if_schema(symbols), client)
+        answer, facts = await researched_answer(
+            lambda f: mm.sell_if_prompt(f, rows, market=trend, alerts=alerts, peak=peak), facts,
+            mm.sell_if_schema(symbols), client, broker, lines, ask=gt.SELL_IF_ASK, calls=gt.SELL_IF_CALLS)
     except LLMError as exc:
         log(lines, f"  Gemma unavailable ({exc}) -- her book unchanged this hour")
         return []
@@ -362,6 +433,16 @@ async def main(dry: bool) -> int:
             state["told_gemma"] = sorted(told | set(new))
             if sold:
                 alerts.append(f"Gemma's sell-if met for {', '.join(sold)} -- queued to sell")
+        # 3:15 PM ET, once a day, only under a bellwether / theme-shock alert (Gemma 2026-10-24).
+        if books["gemma"] and pre_close.due(datetime.now(EXCHANGE_TZ), state.get("pre_close_day")):
+            fired = pre_close.triggers(sa.active(shock_feed.read(), now.date()))
+            if fired:
+                state["pre_close_day"] = now.date().isoformat()
+                late = await pre_close_pass(client, broker, positions, owner_map, orders, lines, dry, fired, set(sold))
+                if late:
+                    alerts.append(f"Gemma's pre-close check queued {', '.join(late)} to sell")
+            else:
+                log(lines, "  pre-close check: no bellwether / theme-shock alert -- not needed today")
         if books["picks"] and hourly:
             await peak_status(client, positions, owner_map, stops, lines, PICKS)
         for a in [x for x in books["other"]]:

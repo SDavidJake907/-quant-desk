@@ -166,3 +166,19 @@ def sell_if_sells(answer: Mapping | None, sell_ifs: Mapping[str, str],
             continue
         out.append((s, " | ".join(quotes)))
     return out
+
+
+#: How much of one lookup's text joins a stock's facts in the sell-if check.
+LOOKUP_CHARS = 1500
+
+
+def with_lookups(facts: Mapping[str, str], calls: Iterable[Mapping]) -> dict[str, str]:
+    """A new facts map with each per-stock lookup (Gemma's sell-if tools, 2026-10-24) added under
+    that stock, so a quote from what she looked up passes sell_if_sells like any other fact.
+    Lookups without a held symbol (the market map) stay in her notes only."""
+    out = dict(facts)
+    for c in calls:
+        s = str((c.get("args") or {}).get("symbol", "")).upper()
+        if s in out:
+            out[s] = f"{out[s]}\n[you looked up {c.get('tool')}]\n{str(c.get('result', ''))[:LOOKUP_CHARS]}"
+    return out

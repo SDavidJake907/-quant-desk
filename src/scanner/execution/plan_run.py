@@ -5,7 +5,8 @@ the rules; this file only fetches, decides with them, and sends).
              hard stop (2.5 ATR, never more than 3%, break-even from +1 ATR) and sell at
              or under it; in the last 10 minutes of regular hours, the close-based exits
              (trailing 3 ATR under the highest close, the 10-day time stop, earnings)
-  buy_pass   regular hours from 10:00 ET: send Gemma's queued buys (execution/buy_queue.py)
+  buy_pass   regular hours from 10:00 ET: send Gemma's queued buys (execution/buy_queue.py) that
+             pass the 10:00 recheck (fell 2%+ since her decision, a new theme alert, earnings)
   core_pass  regular hours from 10:00 ET, once a day: buy the SPY core up to its target,
              at most half the target a day (two halves), topped up only below 90%
 
@@ -30,6 +31,9 @@ from scanner.execution.policy import TradingPolicy
 from scanner.execution.sessions import REGULAR
 from scanner.features.bars import fetch_bars
 from scanner.features.intraday_context import atr_pct
+from scanner.ops import shock_alert as sa
+from scanner.ops import shock_feed
+from scanner.sources import alpaca_bars, composite
 from scanner.sources import calendar as event_calendar
 
 CORE_STATE = Path("data/monitor/core_state.json")
@@ -134,6 +138,39 @@ async def exit_pass(broker, client, positions, book_of: Mapping[str, str], order
     return alerts
 
 
+async def _rechecks(client, due: Mapping[str, Mapping[str, Any]], today: date, log: Log) -> dict[str, str]:
+    """{symbol: why skipped} by the 10:00 recheck (buy_queue.recheck). Each input that cannot be read
+    is left out and logged -- her 9:45 checks stand for it."""
+    symbols = list(due)
+    prices: dict[str, float] = {}
+    try:
+        snaps = await alpaca_bars.snapshots(symbols, client)
+        prices = {s: float(v["latestTrade"]["p"]) for s, v in snaps.items() if (v or {}).get("latestTrade")}
+    except Exception as exc:                                  # noqa: BLE001
+        log(f"  recheck: prices unavailable ({type(exc).__name__}) -- the 2% drop check skipped")
+    kinds = {a.kind for a in sa.active(shock_feed.read(), today)}
+    sectors: dict[str, str] = {}
+    if any(kinds - set(v.get("alerts") or ()) for v in due.values()):
+        try:
+            sectors = {m.symbol: m.sector for m in await composite.load_universe(client)}
+        except Exception as exc:                              # noqa: BLE001
+            log(f"  recheck: sectors unavailable ({type(exc).__name__}) -- the alert check skipped")
+    earnings: dict[str, int] = {}
+    try:
+        found, _ = await event_calendar.upcoming_earnings(frozenset(symbols), client,
+                                                          horizon=sat.EARNINGS_BUFFER_DAYS + 1, today=today)
+        earnings = {s: (e.on - today).days for s, e in found.items() if e.on}
+    except Exception as exc:                                  # noqa: BLE001
+        log(f"  recheck: earnings calendar unavailable ({type(exc).__name__}) -- her 9:45 check stands")
+    out = {}
+    for s, item in due.items():
+        why = buy_queue.recheck(item, price=prices.get(s), alert_kinds=kinds, sector=sectors.get(s),
+                                earnings_in_days=earnings.get(s), buffer_days=sat.EARNINGS_BUFFER_DAYS)
+        if why:
+            out[s] = why
+    return out
+
+
 async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open_orders,
                    now: datetime, dry: bool, log: Log, policy: TradingPolicy) -> list[str]:
     if not _buying_hours(now):
@@ -150,6 +187,7 @@ async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open
                         pending=[o["symbol"] for o in pending])
     if not due:
         return []
+    skipped = await _rechecks(client, due, now.astimezone(sat.ET).date(), log)
     raw = await broker._get("/v2/account")
     equity = float(raw["equity"])
     gate = check_account(equity, float(raw.get("last_equity") or equity), len(mine),
@@ -165,6 +203,10 @@ async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open
     alerts, done = [], []
     for s, plan in due.items():
         done.append(s)
+        if s in skipped:
+            log(f"  QUEUED BUY {s} skipped at 10:00 -- {skipped[s]}")
+            bookorders.log("gemma_refused", s, f"10:00 recheck: {skipped[s]}", policy)
+            continue
         if not gate:
             log(f"  QUEUED BUY {s} not sent -- {gate.reason}")
             bookorders.log("gemma_refused", s, gate.reason, policy)

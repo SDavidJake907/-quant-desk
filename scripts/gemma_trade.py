@@ -49,7 +49,7 @@ from scanner.advisor import stock_tools
 from scanner.llm import tool_loop
 from scanner.advisor import stock_context
 from scanner.sources import yahoo_fundamentals
-from scanner.sources import market_caps
+from scanner.sources import alpaca_bars, market_caps
 from scanner.advisor import opinions
 from scanner.advisor import wall_street
 from scanner.advisor.scan_watch import operator_names
@@ -354,23 +354,24 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
     return text
 
 
-async def research_notes(text: str, client, broker, *, max_tokens: int) -> str:
+async def research_notes(text: str, client, broker, *, max_tokens: int, ask: str = gt.RESEARCH_ASK,
+                         calls: int = gt.RESEARCH_CALLS) -> tuple[str, list[dict]]:
     """Her thinking step with read-only tools (advisor/stock_tools.py, llm/tool_loop.py). The lookups
-    are listed at the end of the notes, so the decision row records what she checked."""
+    are listed at the end of the notes, so the decision row records what she checked. (notes, calls)"""
     started = time.monotonic()
 
     async def execute(name, args):
         print(f"  {DIM}lookup: {name}({', '.join(f'{k}={v}' for k, v in dict(args).items())}){RESET}", flush=True)
         return await stock_tools.execute(name, args, client=client, broker=broker)
 
-    notes, calls = await tool_loop.run(gt.research_prompt(text), stock_tools.TOOLS, execute, client,
-                                       max_calls=gt.RESEARCH_CALLS, max_tokens=max_tokens)
-    print(f"  {DIM}researched for {time.monotonic() - started:.0f}s with {len(calls)} lookups "
+    notes, made = await tool_loop.run(gt.research_prompt(text, ask, calls), stock_tools.TOOLS, execute,
+                                      client, max_calls=calls, max_tokens=max_tokens)
+    print(f"  {DIM}researched for {time.monotonic() - started:.0f}s with {len(made)} lookups "
           f"({len(notes.split())} words){RESET}")
-    if calls:
+    if made:
         notes += "\n\nLookups: " + "; ".join(
-            f"{c['tool']}({', '.join(f'{k}={v}' for k, v in dict(c['args']).items())})" for c in calls)
-    return notes
+            f"{c['tool']}({', '.join(f'{k}={v}' for k, v in dict(c['args']).items())})" for c in made)
+    return notes, made
 
 
 async def think_then_answer(text: str, answer_schema: dict, client,
@@ -381,7 +382,7 @@ async def think_then_answer(text: str, answer_schema: dict, client,
     notes = ""
     if gt.THINKS and broker is not None and gt.TOOLS_IN_DECISION:
         try:
-            notes = await research_notes(text, client, broker, max_tokens=max_tokens)
+            notes, _ = await research_notes(text, client, broker, max_tokens=max_tokens)
         except LLMError as exc:
             print(f"  {YELLOW}research failed ({exc}) -- answering without notes{RESET}")
         return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
@@ -777,6 +778,17 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             queued[s] = {"reason": reasons.get(s, ""), "stop": pl.stop, "target": pl.target,
                          "size": pl.size}
         if queued:
+            # For the 10:00 recheck (buy_queue.recheck): her decision's price and the alerts she saw.
+            try:
+                snaps = await alpaca_bars.snapshots(list(queued), client)
+            except Exception as exc:                     # noqa: BLE001 -- the recheck skips the drop test
+                print(f"  {YELLOW}no decision prices for the 10:00 recheck ({type(exc).__name__}){RESET}")
+                snaps = {}
+            seen = sorted({a.kind for a in alerts_now})
+            queued = {s: {**v, "alerts": seen,
+                          **({"price": float(snaps[s]["latestTrade"]["p"])}
+                             if (snaps.get(s) or {}).get("latestTrade") else {})}
+                      for s, v in queued.items()}
             path = Path(buy_queue.PATH)
             try:
                 old = json.loads(path.read_text(encoding="utf-8"))
