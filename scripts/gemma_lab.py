@@ -142,6 +142,8 @@ async def load(client, u: Universe) -> tuple:
     sectors = {m.symbol: m.sector for m in await composite.load_universe(client, (u.spec,))}
     spx = await fetch_bars("^GSPC", client, range_="20y")        # the trend filter and calendar
     bench = await fetch_bars(u.benchmark, client, range_="20y")
+    vix_bars = await fetch_bars("^VIX", client, range_="20y")     # sell-off warning (lab menu)
+    vix = dict(zip(vix_bars.dates, vix_bars.closes))
     market = dict(zip(spx.dates, spx.closes))                    # relative strength vs the S&P 500
     stocks = {}
     for i in range(0, len(symbols), CHUNK):
@@ -152,7 +154,7 @@ async def load(client, u: Universe) -> tuple:
             stocks[s] = sim.Stock(s, sectors.get(s, "unknown"), b.dates, _compact(b.opens),
                                   _compact(b.highs), _compact(b.lows), _compact(b.closes),
                                   {k: _compact(v) for k, v in
-                                   {**indicators.compute(b), **indicators.more(b, market, spx)}.items()},
+                                   {**indicators.compute(b), **indicators.more(b, market, spx, vix)}.items()},
                                   {d: j for j, d in enumerate(b.dates)})
     memo: dict[date, frozenset[str]] = {}
 
@@ -559,6 +561,66 @@ async def run_combo_study(client) -> None:
     say(f"\nreport: {COMBO_REPORT}")
 
 
+WARNING_REPORT = "logs/lab/warning_study.md"
+_F = rc.Filter
+WARNING_EXITS: tuple[tuple[str, tuple], ...] = (
+    ("hold 3 weeks (no warning exit)", ()),
+    ("sell when VIX above 25", (_F(name="vix", op="above", value=25.0),)),
+    ("sell when VIX above 20", (_F(name="vix", op="above", value=20.0),)),
+    ("sell when S&P RSI below 50", (_F(name="mkt_rsi14", op="below", value=50.0),)),
+    ("sell when S&P below its 20-day", (_F(name="mkt_vs_sma20_pct", op="below", value=0.0),)),
+    ("sell when S&P 3%+ above its 20-day", (_F(name="mkt_vs_sma20_pct", op="above", value=3.0),)),
+)
+WARNING_ENTRIES: tuple[tuple[str, tuple], ...] = (
+    ("buy any day", ()),
+    ("buy only when VIX under 20", (_F(name="vix", op="below", value=20.0),)),
+    ("buy only when S&P RSI over 50", (_F(name="mkt_rsi14", op="above", value=50.0),)),
+)
+
+
+async def run_warning_study(client) -> None:
+    """Sell-off warnings (2006-2024 event study) as exits and buy filters, per gate: the best
+    momentum window, top 10 held 3 weeks and refilled weekly, idle money as CASH (how the live
+    book holds a sale -- a market-timing exit cannot protect anything if its cash is the index)."""
+    entries = ledger.read()
+    out: dict[str, dict[tuple[str, str], sim.Result]] = {}
+    for u in UNIVERSES.values():
+        say(f"\n## Warning study -- {u.label}")
+        stocks, calendar, bench, members, uptrend, _ = await load(client, u)
+        lb, sk = COMBO_WINDOWS[u.key][0]
+        for st in stocks.values():
+            st.ind["mom_window"] = momentum_series(st.closes, lb, sk)
+        for xn, xf in WARNING_EXITS:
+            for en, ef in WARNING_ENTRIES:
+                recipe = rc.Recipe(filters=ef, rank_by="mom_window", rank_order="high_first", top_n=10,
+                                   rebalance_days=5, stop_atr=0.0, target_r=0.0, max_hold_days=15, exit_filters=xf)
+                result = sim.simulate(recipe, stocks, calendar, bench, members, uptrend, start=u.search[0],
+                                      end=u.search[1], idle_in_index=False)
+                name = f"momentum {lb}-{sk} / {xn} / {en} / idle cash"
+                entry(entries, u, "warning_study", recipe, result, name=name, verdict=sim.passes(result)[1])
+                out.setdefault(u.key, {})[(xn, en)] = result
+                say(f"- {name}: {result.line()}")
+    gate = {"large": "gate 1, big caps", "mid": "gate 2, mid caps", "small": "gate 3, small caps"}
+    lines = ["# Sell-off warnings as exits and buy filters (idle money as cash)", "",
+             "Momentum (each gate's best window), top 10 held 3 weeks, refilled weekly; search years; costs. "
+             "Each cell: return a year / worst drawdown / Sharpe.", ""]
+    for uk, cells in out.items():
+        lb, sk = COMBO_WINDOWS[uk][0]
+        idx = next(iter(cells.values()))
+        lines += [f"## {gate[uk]} -- momentum {lb}-{sk} (index {idx.spx_annual_pct:+.1f}%/yr, worst drawdown "
+                  f"{idx.index_drawdown_pct:.0f}%, Sharpe {idx.index_sharpe:.2f})", "",
+                  "| exit | " + " | ".join(en for en, _ in WARNING_ENTRIES) + " |",
+                  "|---|" + "---|" * len(WARNING_ENTRIES)]
+        for xn, _ in WARNING_EXITS:
+            lines.append(f"| {xn} | " + " | ".join(
+                f"{cells[(xn, en)].annual_pct:+.1f}% / {cells[(xn, en)].max_drawdown_pct:.0f}% / "
+                f"{cells[(xn, en)].sharpe:.2f}" for en, _ in WARNING_ENTRIES) + " |")
+        lines.append("")
+    Path(WARNING_REPORT).parent.mkdir(parents=True, exist_ok=True)
+    Path(WARNING_REPORT).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    say(f"\nreport: {WARNING_REPORT}")
+
+
 ROTATION_REPORT = "logs/lab/rotation_study.md"
 
 
@@ -601,8 +663,11 @@ async def run_rotation_study(client) -> None:
 
 async def main(universe: str, tries: int, check: bool, weekend: bool, baseline: bool = False,
                exits: bool = False, entries_study: bool = False, rotation: bool = False,
-               momentum: bool = False, combo: bool = False) -> int:
+               momentum: bool = False, combo: bool = False, warning: bool = False) -> int:
     async with httpx.AsyncClient(timeout=600) as client:
+        if warning:
+            await run_warning_study(client)
+            return 0
         if combo:
             await run_combo_study(client)
             return 0
@@ -658,6 +723,8 @@ if __name__ == "__main__":
     p.add_argument("--rotation-study", action="store_true", help="hold 2-4 weeks then replace, per gate")
     p.add_argument("--momentum-study", action="store_true", help="every momentum window L-S, per gate")
     p.add_argument("--combo-study", action="store_true", help="best momentum x 2-3 week hold x exit x timing")
+    p.add_argument("--warning-study", action="store_true", help="sell-off warnings as exits / buy filters")
     a = p.parse_args()
     sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline, a.exit_study,
-                              a.entry_study, a.rotation_study, a.momentum_study, a.combo_study)))
+                              a.entry_study, a.rotation_study, a.momentum_study, a.combo_study,
+                              a.warning_study)))

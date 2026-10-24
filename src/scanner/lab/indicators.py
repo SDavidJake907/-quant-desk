@@ -262,7 +262,7 @@ def _fresh(flag: Series, days: int = 5) -> Series:
 
 
 def more(bars: Bars, market: Mapping[date, float] | None = None,
-         market_bars: Bars | None = None) -> dict[str, Series]:
+         market_bars: Bars | None = None, vix: Mapping[date, float] | None = None) -> dict[str, Series]:
     """The second menu (operator 2026-10-23: "give her all the indicators ... market hours,
     after hours, days of the week, months"). Daily bars: the OVERNIGHT move (after-hours +
     premarket) is yesterday's close -> today's open; the REGULAR SESSION is open -> close."""
@@ -370,6 +370,16 @@ def more(bars: Bars, market: Mapping[date, float] | None = None,
             r5.append((mlist[j] / mlist[j - 5] - 1) * 100)
         out["mkt_off_10d_high_pct"] = off
         out["mkt_ret_5d_pct"] = r5
+        # Warnings that came BEFORE a 2% drop, 2006-2024, in both halves (operator 2026-10-23:
+        # "find the exit before that"): the S&P's RSI slipping to 40-50 (1.47x the usual chance),
+        # below its 20-day or stretched 3%+ above it (1.3x), and the VIX level (25-35: 1.7x;
+        # under 13: 0.44x).
+        m_rsi, m_sma = rsi(mlist), sma(mlist, 20)
+        out["mkt_rsi14"] = [None if (j := mpos.get(x)) is None else m_rsi[j] for x in d]
+        out["mkt_vs_sma20_pct"] = [None if (j := mpos.get(x)) is None or not m_sma[j] else (mlist[j] / m_sma[j] - 1) * 100
+                                   for x in d]
+        if vix:
+            out["vix"] = [vix.get(x) for x in d]
         # Real Relative Strength (after simonro/edge-scanner, MIT, scanner/indicators/rrs.py):
         # strength vs the S&P 500 beyond what this stock's own ATR predicts from the index's
         # move -- per bar ((move - power * atr) / atr, power = index move / index ATR), then

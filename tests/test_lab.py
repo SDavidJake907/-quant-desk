@@ -213,8 +213,9 @@ def test_every_menu_name_is_computed_and_never_sees_the_future():
     mc = [100.0 + i * 0.1 for i in range(len(bars.dates))]
     mbars = Bars(symbol="^GSPC", dates=bars.dates, opens=tuple(mc), closes=tuple(mc),
                  highs=tuple(x + 0.5 for x in mc), lows=tuple(x - 0.5 for x in mc), volumes=tuple(0.0 for _ in mc))
-    full = {**ind.compute(bars), **ind.more(bars, market, mbars)}
-    cut = {**ind.compute(bars.upto(279)), **ind.more(bars.upto(279), market, mbars)}
+    vix = {d: 15.0 + (i % 7) for i, d in enumerate(bars.dates)}
+    full = {**ind.compute(bars), **ind.more(bars, market, mbars, vix)}
+    cut = {**ind.compute(bars.upto(279)), **ind.more(bars.upto(279), market, mbars, vix)}
     for name in [*rc.NUMERIC, *(f for f in rc.FLAGS if f != "market_uptrend")]:
         assert name in full, name
         assert cut[name] == full[name][:280], name

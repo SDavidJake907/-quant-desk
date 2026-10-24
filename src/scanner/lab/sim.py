@@ -187,7 +187,7 @@ def _value(cash: float, held, d) -> float:
 def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[date],
              spx_closes: Mapping[date, float], members: Callable[[date], frozenset[str]],
              uptrend: Mapping[date, float], *, start: date, end: date,
-             rng: _random.Random | None = None) -> Result:
+             rng: _random.Random | None = None, idle_in_index: bool = True) -> Result:
     """One run. With `rng` the picks are random members (the control)."""
     days = [d for d in calendar if start <= d <= end]
     cash, held, pending = 1.0, [], []
@@ -197,7 +197,9 @@ def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[dat
     for k, d in enumerate(days):
         up = bool(uptrend.get(d))
         # Idle cash sits in the index (Gemma, 2026-10-23): it earns the index's day.
-        if prev is not None and spx_closes.get(prev) and spx_closes.get(d):
+        # idle_in_index=False: idle money is plain cash (how the live book holds a sale) -- the fair
+        # test for a market-timing exit, which cannot protect anything if its cash is the index.
+        if idle_in_index and prev is not None and spx_closes.get(prev) and spx_closes.get(d):
             cash *= spx_closes[d] / spx_closes[prev]
         prev = d
         if recipe.entry_at == "next_open":               # yesterday's decisions fill at today's open

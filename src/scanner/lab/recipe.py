@@ -68,6 +68,10 @@ NUMERIC: dict[str, tuple[tuple[float, ...], str]] = {
     # high (a 2%+ drop comes a median 18 trading days apart) and its 1-week return.
     "mkt_off_10d_high_pct": ((-6, -4, -3, -2, -1, 0), "S&P 500 close vs its prior 10-day closing high % (sell-off depth)"),
     "mkt_ret_5d_pct": ((-4, -2, -1, 0, 1, 2), "S&P 500 1-week return %"),
+    # Sell-off warnings (2006-2024 study, both halves agree): see indicators.more.
+    "mkt_rsi14": ((40, 50, 60, 70), "S&P 500 RSI(14) (40-50 came before 1.47x the usual 2% drops)"),
+    "mkt_vs_sma20_pct": ((-2, -1, 0, 1, 2, 3), "S&P 500 vs its 20-day average % (below 0 or above +3: 1.3x the drops)"),
+    "vix": ((13, 16, 20, 25, 30), "VIX level (under 13: 0.44x the usual drops; 25-35: 1.7x)"),
 }
 #: Calendar filters also take op "is" (exactly that day / month).
 CALENDAR = ("day_of_week", "month", "day_of_month")
