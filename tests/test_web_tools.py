@@ -43,3 +43,14 @@ def test_web_lookups_join_the_named_stocks_facts():
 def test_web_tools_are_registered():
     names = {t["function"]["name"] for t in stock_tools.TOOLS}
     assert {"web_search", "read_page"} <= names == set(stock_tools.HANDLERS)
+
+
+def test_tradingview_tool_skips_menus_and_checks_pages():
+    from scanner.advisor import tradingview_tool as tv
+    assert tv.section("Search Menu Quotes Symbol Mkt cap NVDA 5 T", "Symbol") == "Symbol Mkt cap NVDA 5 T"
+    assert tv.section("no marker here", "Symbol") == "no marker here"
+    out = asyncio.run(stock_tools.execute("tradingview", {"page": "crypto"}, client=None, broker=None))
+    assert out.startswith("Unknown page")
+    out = asyncio.run(stock_tools.execute("tradingview", {"page": "symbol_ideas", "symbol": "../x"}, client=None,
+                                          broker=None))
+    assert "needs a ticker" in out
