@@ -106,6 +106,14 @@ MAX_EXIT_FILTERS = 3
 TRAIL_ATR = (0.0, 2.0, 3.0, 4.0)
 #: When the buy fills after the decision close: the next day's open or its close.
 ENTRY_AT = ("next_close", "next_open")
+#: PROFIT PROTECTION (operator 2026-10-23: "holding blew out the profit"; measured: 17 real trades
+#: were up 3%+, 9 of them ended at a loss, average best +6.0% vs result -0.7%). Once a CLOSE has
+#: been lock_at_pct over the buy, a close under buy * (1 + lock_keep * best gain) sells: keep 0 =
+#: never let it turn red, keep 0.5 = give back at most half. trail_pct: a close that % under the
+#: best close sells. 0 = off.
+LOCK_AT_PCT = (0.0, 3.0, 5.0, 8.0, 10.0)
+LOCK_KEEP = (0.0, 0.5, 0.75)
+TRAIL_PCT = (0.0, 4.0, 6.0, 8.0, 10.0)
 
 
 class Filter(Frozen):
@@ -132,13 +140,17 @@ class Recipe(Frozen):
     exit_filters: tuple[Filter, ...] = ()
     trail_atr: float = 0.0
     entry_at: str = "next_close"
+    lock_at_pct: float = 0.0
+    lock_keep: float = 0.0
+    trail_pct: float = 0.0
 
     @property
     def key(self) -> str:
         """Stable id: the same recipe is the same trial, however it is worded. Fields at
         their defaults are left out, so recipes from before the sell rules keep their key."""
         dump = self.model_dump(mode="json")
-        for name, default in (("exit_filters", []), ("trail_atr", 0.0), ("entry_at", "next_close")):
+        for name, default in (("exit_filters", []), ("trail_atr", 0.0), ("entry_at", "next_close"),
+                              ("lock_at_pct", 0.0), ("lock_keep", 0.0), ("trail_pct", 0.0)):
             if dump.get(name) == default:
                 dump.pop(name)
         blob = json.dumps(dump, sort_keys=True)
@@ -150,6 +162,10 @@ class Recipe(Frozen):
             f"stop {self.stop_atr:g} ATR" if self.stop_atr else "no stop",
             f"target {self.target_r:g}R" if self.target_r else "no target",
             f"trail {self.trail_atr:g} ATR under the highest close" if self.trail_atr else "",
+            f"trail {self.trail_pct:g}% under the best close" if self.trail_pct else "",
+            (f"lock once up {self.lock_at_pct:g}%: keep {self.lock_keep:.0%} of the best gain"
+             if self.lock_keep else f"lock once up {self.lock_at_pct:g}%: never back under the buy")
+            if self.lock_at_pct else "",
             ("sell at a close when " + " OR ".join(f.describe() for f in self.exit_filters))
             if self.exit_filters else "",
             f"max {self.max_hold_days}d") if x)
@@ -215,6 +231,9 @@ def parse(raw: Any) -> Recipe:
                     max_per_sector=int(pick("max_per_sector", MAX_PER_SECTOR)),
                     exit_filters=tuple(exits),
                     trail_atr=float(pick("trail_atr", TRAIL_ATR)) if "trail_atr" in raw else 0.0,
+                    lock_at_pct=float(pick("lock_at_pct", LOCK_AT_PCT)) if "lock_at_pct" in raw else 0.0,
+                    lock_keep=float(pick("lock_keep", LOCK_KEEP)) if "lock_keep" in raw else 0.0,
+                    trail_pct=float(pick("trail_pct", TRAIL_PCT)) if "trail_pct" in raw else 0.0,
                     entry_at=str(raw.get("entry_at") or "next_close"))
     if recipe.entry_at not in ENTRY_AT:
         raise ValueError(f"entry_at must be one of {list(ENTRY_AT)}")
@@ -239,6 +258,9 @@ def menu_text() -> str:
               f"{list(TRAIL_ATR)}: a close more than that many daily ATRs under the highest close since the "
               "buy sells (0 = off). Stops and targets act during the day; sell rules, the trail and the "
               "time limit at the close.",
+              f"PROFIT PROTECTION: lock_at_pct {list(LOCK_AT_PCT)} with lock_keep {list(LOCK_KEEP)} -- once a close "
+              "is that % over the buy, a close under buy + keep x best gain sells (keep 0 = never let it turn red); "
+              f"trail_pct {list(TRAIL_PCT)} -- a close that % under the best close sells. 0 = off.",
               f"TIMING: entry_at {list(ENTRY_AT)} -- buy at the next day's open (holds the overnight move "
               "from the decision) or its close."]
     return "\n".join(lines)
@@ -271,8 +293,11 @@ def schema() -> dict[str, Any]:
                     "value": {"type": "number"}},
                 "required": ["name", "op", "value"]}},
             "trail_atr": {"type": "number", "enum": list(TRAIL_ATR)},
-            "entry_at": {"type": "string", "enum": list(ENTRY_AT)}},
+            "entry_at": {"type": "string", "enum": list(ENTRY_AT)},
+            "lock_at_pct": {"type": "number", "enum": list(LOCK_AT_PCT)},
+            "lock_keep": {"type": "number", "enum": list(LOCK_KEEP)},
+            "trail_pct": {"type": "number", "enum": list(TRAIL_PCT)}},
             "required": ["filters", "rank_by", "rank_order", "top_n", "rebalance_days",
                          "stop_atr", "target_r", "max_hold_days", "max_per_sector",
-                         "exit_filters", "trail_atr", "entry_at"]}},
+                         "exit_filters", "trail_atr", "entry_at", "lock_at_pct", "lock_keep", "trail_pct"]}},
         "required": ["idea", "recipe"]}

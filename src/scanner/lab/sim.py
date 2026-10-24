@@ -151,6 +151,8 @@ class _Pos(NamedTuple):
     #: Bought at today's open: today's bar after the open can still hit the levels,
     #: but the open itself was the fill, so no gap rule applies to it.
     at_open: bool = False
+    #: The quoted buy price (before costs): profit locks and percent trails measure from it.
+    entry: float = 0.0
 
 
 def _exit(p: _Pos, i: int) -> float | None:
@@ -177,7 +179,7 @@ def _open(stock: Stock, i: int, price_now: float, spend: float, recipe: Recipe, 
     stop = price_now - recipe.stop_atr * atr if recipe.stop_atr and atr else None
     target = (price_now + recipe.target_r * recipe.stop_atr * atr
               if recipe.target_r and stop is not None else None)
-    return _Pos(stock, spend / price, spend, stop, target, 0, atr, price_now, at_open)
+    return _Pos(stock, spend / price, spend, stop, target, 0, atr, price_now, at_open, price_now)
 
 
 def _value(cash: float, held, d) -> float:
@@ -222,7 +224,13 @@ def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[dat
             fill = _exit(p, i)
             if fill is None:
                 high = max(p.high_close, close)
+                best = high / p.entry - 1 if p.entry else 0.0
                 if recipe.trail_atr and p.atr and close < high - recipe.trail_atr * p.atr:
+                    fill = close
+                elif recipe.trail_pct and close < high * (1 - recipe.trail_pct / 100):
+                    fill = close
+                elif (recipe.lock_at_pct and best * 100 >= recipe.lock_at_pct
+                      and close < p.entry * (1 + recipe.lock_keep * best)):
                     fill = close
                 elif _sell_rule(p.stock, i, recipe, up) is not None:
                     fill = close

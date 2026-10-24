@@ -355,3 +355,30 @@ def test_weekend_focus_limits_the_hold_to_3_or_4_weeks():
     assert lab.focus_schema()["properties"]["recipe"]["properties"]["max_hold_days"]["enum"] == [15, 21]
     assert lab.in_focus(rc.parse({**BASE, "max_hold_days": 63})).max_hold_days == 21
     assert lab.in_focus(rc.parse({**BASE, "max_hold_days": 5})).max_hold_days == 15
+
+
+# --- profit protection (operator 2026-10-23: "holding blew out the profit") ----------------
+
+def _runup_then_fade():
+    # bought at 100 on day 1; closes run to 110 by day 6, then fade back to 98
+    closes = [100.0, 100.0, 102.0, 104.0, 106.0, 108.0, 110.0, 107.0, 104.0, 101.0, 98.0] + [98.0] * 29
+    return stock("R", closes)
+
+
+def test_lock_never_lets_a_3pct_winner_turn_red():
+    # one decision only (rebalance and hold longer than the series): plain holding never sells,
+    # the lock sells at the first CLOSE under the buy after the run-up (98 here: close-based)
+    one = {"top_n": 3, "rebalance_days": 21, "max_hold_days": 63}
+    r = book({**one, "lock_at_pct": 3.0, "lock_keep": 0.0}, [_runup_then_fade()])
+    plain = book(one, [_runup_then_fade()])
+    assert plain.trades == 0 and r.trades >= 1
+
+
+def test_keep_half_and_percent_trail_sell_on_the_fade():
+    half = book({"top_n": 3, "rebalance_days": 21, "max_hold_days": 21, "lock_at_pct": 5.0, "lock_keep": 0.5},
+                [_runup_then_fade()])
+    trail = book({"top_n": 3, "rebalance_days": 21, "max_hold_days": 21, "trail_pct": 4.0}, [_runup_then_fade()])
+    assert half.avg_trade_pct > 3.0 and trail.avg_trade_pct > 2.0     # sold near 107 / 104, not 98
+    r = rc.parse({**BASE, "lock_at_pct": 5.0, "lock_keep": 0.5, "trail_pct": 6.0})
+    assert "keep 50% of the best gain" in r.describe() and "6% under the best close" in r.describe()
+    assert rc.parse(BASE).key == rc.parse({**BASE, "lock_at_pct": 0.0, "lock_keep": 0.0, "trail_pct": 0.0}).key
