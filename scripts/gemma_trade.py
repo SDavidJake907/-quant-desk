@@ -45,6 +45,8 @@ from scanner.advisor import hindsight_memory
 from scanner.advisor import operator_notes
 from scanner.advisor import memory_feed
 from scanner.advisor import sold_feed
+from scanner.advisor import stock_tools
+from scanner.llm import tool_loop
 from scanner.advisor import stock_context
 from scanner.sources import yahoo_fundamentals
 from scanner.sources import market_caps
@@ -352,11 +354,37 @@ async def scoreboard(client, positions, owner_map, sleeve: float) -> str:
     return text
 
 
+async def research_notes(text: str, client, broker, *, max_tokens: int) -> str:
+    """Her thinking step with read-only tools (advisor/stock_tools.py, llm/tool_loop.py). The lookups
+    are listed at the end of the notes, so the decision row records what she checked."""
+    started = time.monotonic()
+
+    async def execute(name, args):
+        print(f"  {DIM}lookup: {name}({', '.join(f'{k}={v}' for k, v in dict(args).items())}){RESET}", flush=True)
+        return await stock_tools.execute(name, args, client=client, broker=broker)
+
+    notes, calls = await tool_loop.run(gt.research_prompt(text), stock_tools.TOOLS, execute, client,
+                                       max_calls=gt.RESEARCH_CALLS, max_tokens=max_tokens)
+    print(f"  {DIM}researched for {time.monotonic() - started:.0f}s with {len(calls)} lookups "
+          f"({len(notes.split())} words){RESET}")
+    if calls:
+        notes += "\n\nLookups: " + "; ".join(
+            f"{c['tool']}({', '.join(f'{k}={v}' for k, v in dict(c['args']).items())})" for c in calls)
+    return notes
+
+
 async def think_then_answer(text: str, answer_schema: dict, client,
-                            *, max_tokens: int = gt.THINK_TOKENS) -> tuple[dict, str]:
+                            *, max_tokens: int = gt.THINK_TOKENS, broker=None) -> tuple[dict, str]:
     """She thinks in plain words first (capped), then answers with her notes in
-    front of her. A failed thinking pass never blocks the answer. (answer, notes)"""
+    front of her. A failed thinking pass never blocks the answer. (answer, notes)
+    With `broker` (her trading decision) the thinking step may use her read-only tools."""
     notes = ""
+    if gt.THINKS and broker is not None and gt.TOOLS_IN_DECISION:
+        try:
+            notes = await research_notes(text, client, broker, max_tokens=max_tokens)
+        except LLMError as exc:
+            print(f"  {YELLOW}research failed ({exc}) -- answering without notes{RESET}")
+        return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
     if gt.THINKS:
         started = time.monotonic()
         try:
@@ -644,7 +672,7 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
                                   min_positions=least, graded=True)
         notes = ""
         try:
-            answer, notes = await think_then_answer(text, answer_schema, client)
+            answer, notes = await think_then_answer(text, answer_schema, client, broker=broker)
         except LLMError as exc:
             answer = None
             # Upper case on purpose: the desk journal's error check looks for it.
