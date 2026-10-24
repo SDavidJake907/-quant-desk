@@ -43,6 +43,7 @@ from scanner.advisor import gemma_trader as gt
 from scanner.advisor import market_context as mc
 from scanner.advisor import hindsight_memory
 from scanner.advisor import operator_notes
+from scanner.advisor import outlook
 from scanner.advisor import memory_feed
 from scanner.advisor import sold_feed
 from scanner.advisor import stock_tools
@@ -397,6 +398,26 @@ async def think_then_answer(text: str, answer_schema: dict, client,
     return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
 
 
+async def outlooks_now(client, answer, buys, kept, weekly: bool, mine) -> list[outlook.Outlook]:
+    """Her outlooks with the price now (Alpaca snapshot; a held stock falls back to its position
+    price). An outlook without a price is not recorded. Never raises."""
+    wanted = sorted(set(buys) | (set(kept) if weekly else set()))
+    if not wanted:
+        return []
+    prices = {s: float(p["current_price"]) for s, p in mine.items() if p.get("current_price")}
+    try:
+        snaps = await alpaca_bars.snapshots(wanted, client)
+        prices |= {s: float(v["latestTrade"]["p"]) for s, v in snaps.items() if (v or {}).get("latestTrade")}
+    except Exception as exc:                             # noqa: BLE001
+        print(f"  {YELLOW}outlook prices: snapshots unavailable ({type(exc).__name__}){RESET}")
+    try:
+        return outlook.parse(answer, day=datetime.now(sat.ET).date(), buys=buys, kept=kept,
+                             holdings_due=weekly, prices=prices)
+    except Exception as exc:                             # noqa: BLE001
+        print(f"  {YELLOW}outlooks not recorded ({type(exc).__name__}: {exc}){RESET}")
+        return []
+
+
 def in_alerted_theme(symbol: str, alerts, sectors: dict[str, str]) -> bool:
     """A bellwether or theme-shock alert is active and the stock is in the alerted sectors: Gemma
     may drop it inside its 3-day minimum hold (her choice, 2026-10-23)."""
@@ -661,6 +682,12 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
         gates = await satellite_feed.gates(client)
         # Crash / shock alerts from the market monitor (ops/shock_alert.py; 10-23): information for her.
         alerts_now = sa.active(shock_feed.read(), datetime.now(sat.ET).date())
+        # Her 10-day outlooks, where and how far (operator + Gemma 2026-10-25; advisor/outlook.py):
+        # every new buy, and her holdings once a week; graded, never sized from.
+        made_outlooks = outlook.extract(read_rows(settings.audit_log_path))
+        weekly = session == sessions.REGULAR and outlook.holdings_due(made_outlooks, datetime.now(sat.ET).date())
+        outlook_text = (outlook.rules(weekly) + "\n"
+                        + outlook.text(await memory_feed.outlook_score(client, made_outlooks)))
         text = text.replace("The list:", (f"{told}\n\n" if told else "")
                             + (f"{memory}\n\n" if memory else "")
                             + (f"{sold}\n\n" if sold else "")
@@ -668,9 +695,10 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
                             + f"{gt.PLAN_RULES}\n{gates.text()}\n\n"
                             + f"{desk_guide.GUIDE}\n\n"
                             + (f"{sa.block(alerts_now)}\n\n" if alerts_now else "")
+                            + f"{outlook_text}\n\n"
                             + f"Market: {trend}.\n\nThe list:", 1)
-        answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
-                                  min_positions=least, graded=True)
+        answer_schema = outlook.with_schema(gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
+                                                      min_positions=least, graded=True), list(facts))
         notes = ""
         try:
             answer, notes = await think_then_answer(text, answer_schema, client, broker=broker)
@@ -681,6 +709,7 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
         decision = gt.validate(answer, facts, held=set(mine),
                                max_positions=POLICY.gemma_max_positions, menu=MENU)
         buys, sells = gt.diff(decision.keep, mine)
+        outlooks = await outlooks_now(client, answer, buys, decision.keep, weekly, mine)
         bookorders.log("gemma_decision", "", json.dumps({
             "keep": decision.keep, "buys": buys, "sells": sells,
             "reasons": dict(decision.reasons), "rejected": dict(decision.rejected),
@@ -699,7 +728,8 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             "operator_notes": told,
             # WORKLIST §65: her 5-day probabilities (graded by advisor/forecast_grade.py)
             # and the observable exit she names for each holding.
-            "forecasts": dict(decision.forecasts), "sell_if": dict(decision.sell_if)}), POLICY)
+            "forecasts": dict(decision.forecasts), "sell_if": dict(decision.sell_if),
+            "outlooks": [o.model_dump() for o in outlooks]}), POLICY)
         save_question(text, answer_schema, facts, mine, decision.keep, submitted=submit and tradable,
                       session=session)
 
@@ -719,6 +749,9 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             top = sorted(decision.forecasts, key=lambda f: -f[1])
             print(f"  {DIM}forecasts ({len(top)}): "
                   + ", ".join(f"{s} {p:.2f}" for s, p in top) + RESET)
+        for o in outlooks:
+            print(f"  {DIM}{o.symbol:<6} outlook ({o.kind}): {o.p_up * 100:.0f}% up in {outlook.HORIZON} days, "
+                  f"range {o.low_pct:+.1f}% to {o.high_pct:+.1f}% [{o.lean}] {o.basis[:120]}{RESET}")
         print(f"  plan: buy {list(buys) or 'nothing'}; sell {list(sells) or 'nothing'}")
 
         if not tradable:

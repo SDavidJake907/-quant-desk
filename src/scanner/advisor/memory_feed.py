@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 
 from scanner.advisor import forecast_grade as fg
+from scanner.advisor import outlook
 from scanner.advisor import gemma_memory as gm
 from scanner.config import settings
 from scanner.execution.scorecard import read_rows
@@ -36,6 +37,17 @@ async def forecast_score(client: httpx.AsyncClient, rows=None) -> dict:
         bars, _ = await fetch_many(tuple(sorted({f.symbol for f in made})), client, range_="3mo")
         spx = await fetch_bars("^GSPC", client, range_="3mo")
         return fg.score(fg.grade(made, bars, spx))
+    except Exception as exc:                              # noqa: BLE001
+        return {"n": 0, "error": type(exc).__name__}
+
+
+async def outlook_score(client: httpx.AsyncClient, made: list[outlook.Outlook]) -> dict:
+    """Her graded 10-day outlooks so far (advisor/outlook.py). Never raises."""
+    try:
+        if not made:
+            return outlook.score([])
+        bars, _ = await fetch_many(tuple(sorted({o.symbol for o in made})), client, range_="6mo")
+        return outlook.score(outlook.grade(made, bars))
     except Exception as exc:                              # noqa: BLE001
         return {"n": 0, "error": type(exc).__name__}
 
