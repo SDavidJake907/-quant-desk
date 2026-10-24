@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from scanner.advisor import tradingview_tool, web_tools
+from scanner.advisor import candle_story, tradingview_tool, web_tools
 from scanner.config import settings
 from scanner.execution import ownership
 from scanner.execution.ownership import GEMMA
@@ -38,7 +38,7 @@ SYMBOL = {"symbol": {"type": "string", "description": "US stock ticker, e.g. NVD
 TOOLS = [
     _fn("get_quote", "Latest price, today's % change vs the prior close and today's volume vs yesterday's.",
         SYMBOL, ("symbol",)),
-    _fn("get_chart", "Daily chart summary: returns over 1 week / 1 / 3 / 6 months and 12-1 momentum, price vs "
+    _fn("get_chart", "Daily chart summary and the last 5 daily candles in words: returns over 1 week / 1 / 3 / 6 months and 12-1 momentum, price vs "
         "its 20/50/200-day averages, RSI(14), daily ATR %, distance from the 52-week high, volume trend.",
         SYMBOL, ("symbol",)),
     _fn("stock_story", "One stock's whole story in ONE lookup: the chart summary (as get_chart, plus RSI and the "
@@ -110,7 +110,7 @@ async def get_chart(client, broker, symbol: str) -> str:
         f"200-day {v('price_vs_sma200_pct')}%; RSI(14) {v('rsi14', '{:.0f}')}; ATR {v('atr_pct', '{:.1f}')}% a day; "
         f"{v('pct_below_52w_high', '{:.1f}')}% under its 52-week high; ADX {v('adx14', '{:.0f}')}; volume 20/60-day "
         f"{v('volume_trend', '{:.2f}')}x; up/down volume {v('up_volume_ratio', '{:.2f}')}; SuperTrend "
-        f"{'up' if k['supertrend_up'][i] == 1.0 else 'down'}{then}")
+        f"{'up' if k['supertrend_up'][i] == 1.0 else 'down'}{then}\n{candle_story.text(b, atr)}")
 
 
 async def stock_story(client, broker, symbol: str) -> str:
