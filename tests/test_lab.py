@@ -232,3 +232,12 @@ def test_is_filter_trades_only_on_that_weekday():
                   "filters": [{"name": "day_of_week", "op": "is", "value": 5},
                               {"name": "day_of_week", "op": "is", "value": 1}]}, names)
     assert never.trades == 0 and tuesday_only.exposure_pct >= 0
+
+
+def test_a_restarted_weekend_does_not_nominate_twice():
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 25, 12, tzinfo=timezone.utc)
+    rows = [{"stage": ledger.HIDDEN_A, "universe": "mid", "at": "2026-10-25T09:00:00+00:00", "key": "k"}]
+    assert ledger.nominated_since(rows, "mid", now - timedelta(days=3))
+    assert not ledger.nominated_since(rows, "small", now - timedelta(days=3))
+    assert not ledger.nominated_since(rows, "mid", now + timedelta(days=1))

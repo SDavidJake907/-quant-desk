@@ -197,6 +197,9 @@ async def ask_recipe(client, u, entries, today, left, nominates) -> tuple[rc.Rec
 
 
 async def nominate(client, u: Universe, entries, data) -> None:
+    if ledger.nominated_since(entries, u.key, datetime.now().astimezone() - timedelta(days=3)):
+        say(f"\n{u.key}: already had its hidden-years run this weekend (a restarted weekend run) -- none now")
+        return
     hidden = ledger.tried(entries, ledger.HIDDEN_A, universe=u.key)
     options = {e["key"]: e for e in entries if e["stage"] == ledger.SEARCH
                and ledger.universe_of(e) == u.key and e["key"] not in hidden}

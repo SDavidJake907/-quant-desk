@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,20 @@ def universe_of(e: Mapping[str, Any]) -> str:
 def tried(entries: Iterable[Mapping[str, Any]], stage: str, *, universe: str | None = None) -> set[str]:
     return {e["key"] for e in entries if e.get("stage") == stage
             and (universe is None or universe_of(e) == universe)}
+
+
+def nominated_since(entries: Iterable[Mapping[str, Any]], universe: str, since: datetime) -> bool:
+    """Whether `universe` already had a hidden-years run since `since`: a weekend run that is
+    restarted (a reboot, the scheduled task's next trigger) must not nominate twice."""
+    for e in entries:
+        if e.get("stage") != HIDDEN_A or universe_of(e) != universe:
+            continue
+        try:
+            if datetime.fromisoformat(str(e["at"])) >= since:
+                return True
+        except (KeyError, ValueError):
+            continue
+    return False
 
 
 def _line(e: Mapping[str, Any]) -> str:
