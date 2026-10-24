@@ -178,7 +178,11 @@ def with_lookups(facts: Mapping[str, str], calls: Iterable[Mapping]) -> dict[str
     Lookups without a held symbol (the market map) stay in her notes only."""
     out = dict(facts)
     for c in calls:
-        s = str((c.get("args") or {}).get("symbol", "")).upper()
-        if s in out:
-            out[s] = f"{out[s]}\n[you looked up {c.get('tool')}]\n{str(c.get('result', ''))[:LOOKUP_CHARS]}"
+        args = c.get("args") or {}
+        s = str(args.get("symbol", "")).upper()
+        # A web search or page names its stock in the query / link (her web tools, 2026-10-25).
+        named = [s] if s in out else [t for t in out if re.search(
+            rf"\b{re.escape(t)}\b", f"{args.get('query', '')} {args.get('url', '')}", re.I)]
+        for t in named:
+            out[t] = f"{out[t]}\n[you looked up {c.get('tool')}]\n{str(c.get('result', ''))[:LOOKUP_CHARS]}"
     return out
