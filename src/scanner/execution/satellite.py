@@ -16,7 +16,8 @@ trend gates, one per size group (operator: "gate1 big, gate2 mid, gate3 small").
   EXIT       stop 2.5 ATR under the buy (never more than 3% -- profit_lock.loss_floor);
              from +1 ATR the stop is at least break-even; then a CLOSE under the
              highest close less 3 ATR sells; no fixed target; nothing reporting
-             earnings is held into the report; no progress in 10 days sells
+             earnings is held into the report; no progress in 10 days sells; once a close
+             was +5%, a close giving back half the best gain sells (the profit lock)
   HOLD       her own drops wait 3 trading days (stops, the loss limit and her
              sell-ifs from the day after the buy still act)
 
@@ -39,6 +40,12 @@ BREAKEVEN_ATR = 1.0
 TRAIL_ATR = 3.0
 MIN_HOLD_DAYS = 3
 TIME_STOP_DAYS = 10
+#: PROFIT LOCK (operator + Gemma, 2026-10-23: "holding blew out the profit"; 17 real trades were up
+#: 3%+, 9 ended at a loss): once a close has been LOCK_AT_PCT over the buy, a close under
+#: buy + LOCK_KEEP x the best gain sells -- give back at most half. Lab, 2-4 week holds: mid caps
+#: +3.8 -> +6.4 pts/yr vs the index, small -2.9 -> +3.9, big about -0.5.
+LOCK_AT_PCT = 5.0
+LOCK_KEEP = 0.5
 MAX_PER_SECTOR = 2
 MOMENTUM_TOP_FRACTION = 1 / 3
 EARNINGS_BUFFER_DAYS = 5
@@ -129,6 +136,10 @@ def close_exit(*, entry: float, atr: float, closes_since_buy: Sequence[float], p
     if reports_before_next_session:
         return "earnings before the next session: not held into the report"
     high = max([*closes_since_buy, price, entry])
+    best = high / entry - 1 if entry else 0.0
+    if best * 100 >= LOCK_AT_PCT and price < entry * (1 + LOCK_KEEP * best):
+        return (f"profit lock: close {price:,.2f} gave back over half the best gain (best close {high:,.2f}, "
+                f"+{best * 100:.1f}%; floor {entry * (1 + LOCK_KEEP * best):,.2f})")
     trail = trail_level(entry=entry, atr=atr, high_close=high)
     if trail is not None and price < trail:
         return (f"trailing exit: close {price:,.2f} under the trail {trail:,.2f} "

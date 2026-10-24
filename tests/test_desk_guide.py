@@ -6,7 +6,7 @@ from scanner.advisor import desk_guide
 def test_guide_states_strength_and_that_it_is_not_a_rule():
     g = desk_guide.GUIDE
     assert "Information, not rules" in g and "STRONG" in g and "MILD" in g
-    assert "FAILED in 2025" in g and "NOT live yet" in g
+    assert "FAILED in 2025" in g and "LIVE from 10-26" in g
     for words in ("Tuesday", "September", "18 trading days", "Sell into strength"):
         assert words in g
 

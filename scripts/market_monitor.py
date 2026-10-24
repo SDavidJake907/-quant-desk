@@ -31,7 +31,7 @@ import functools
 import json
 import subprocess
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -54,6 +54,9 @@ from scanner.features.technicals import average_true_range_pct
 from scanner.llm.ollama import LLMError
 from scanner.ops import market_monitor as mm
 from scanner.ops import notify
+from scanner.ops import shock_alert as sa
+from scanner.ops import shock_feed
+from scanner.sources import composite
 from scanner.ops import peak_sell as ps
 
 STATE = Path("data/monitor/state.json")
@@ -220,6 +223,40 @@ def write_log(now: datetime, lines: list[str]) -> None:
         f.write("\n".join(lines) + "\n")
 
 
+async def shock_pass(client, broker, positions, owner_map, session: str, lines: list[str],
+                     dry: bool) -> list[str]:
+    """Crash / shock alerts (ops/shock_alert.py, operator + Gemma 2026-10-23). Returns the texts of
+    today's alerts for her (they wake her; they sell nothing). Never fails the run."""
+    try:
+        today = datetime.now(EXCHANGE_TZ).date()
+        mine = [p["symbol"] for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA]
+        sectors = {m.symbol: m.sector for m in await composite.load_universe(client)}
+        theme = sa.theme_holdings(mine, sectors)
+        r = await shock_feed.readings(client, session)
+        late = session != sessions.REGULAR or datetime.now(EXCHANGE_TZ).hour >= 14
+        reporting = (await shock_feed.reporting_bellwethers(client, broker, today)
+                     if late and len(theme) >= sa.NIGHT_BEFORE_MIN_NAMES else [])
+        alerts = sa.classify(spy=r["spy"], qqq=r["qqq"], smh=r["smh"], vix=r["vix"], up_share=r["up_share"],
+                             theme_held=theme, reporting=reporting, regular=session == sessions.REGULAR)
+        fmt = lambda v: "n/a" if v is None else f"{v:+.1f}%"        # noqa: E731
+        log(lines, f"  shock check: SPY {fmt(r['spy'])}, QQQ {fmt(r['qqq'])}, SMH {fmt(r['smh'])}, "
+                   f"VIX {r['vix'] if r['vix'] is not None else 'n/a'}, "
+                   f"S&P stocks up {'n/a' if r['up_share'] is None else f'{r['up_share'] * 100:.0f}%'}; "
+                   f"Gemma's AI-theme holdings {theme or 'none'}; bellwethers reporting {reporting or 'none'}")
+        for a in alerts:
+            log(lines, f"  ALERT {a.kind}: {a.text}")
+        if dry:
+            return [a.text for a in alerts]
+        days = await broker._get("/v2/calendar", start=(today + timedelta(days=1)).isoformat(),
+                                 end=(today + timedelta(days=7)).isoformat())
+        nxt = date.fromisoformat(days[0]["date"]) if days else today + timedelta(days=1)
+        shock_feed.store(alerts, today, until_next=nxt)
+        return [a.text for a in sa.active(shock_feed.read(), today)]
+    except Exception as exc:                                  # noqa: BLE001
+        log(lines, f"  shock check unavailable ({type(exc).__name__}: {exc})")
+        return []
+
+
 async def extended_pass(dry: bool, now: datetime, session: str) -> int:
     """Outside regular hours: Gemma's sell-if check on her own book, sells as limit orders."""
     lines: list[str] = []
@@ -232,7 +269,8 @@ async def extended_pass(dry: bool, now: datetime, session: str) -> int:
         owner_map = ownership.owners(orders)
         stops = grv.live_stops(orders)
         peak = await peak_status(client, positions, owner_map, stops, lines, GEMMA, session)
-        sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, [],
+        shocks = await shock_pass(client, broker, positions, owner_map, session, lines, dry)
+        sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, shocks,
                                     peak, session, entered=entry_times(orders, GEMMA))
         if sold and not dry:
             body = f"Gemma's sell-if met for {', '.join(sold)} ({session}) -- queued to sell"
@@ -310,6 +348,7 @@ async def main(dry: bool) -> int:
         # (operator 2026-10-22: "lets have the alert go to Gemma") -- each alarm wakes her once a day.
         hers = [mm.position_alarm(h) for h in books["gemma"]]
         gemma_alerts = ([f"market: {reason}"] if reason else []) + [a for a in hers if a]
+        gemma_alerts += await shock_pass(client, broker, positions, owner_map, session, lines, dry)
         told = set(state.get("told_gemma", []))
         new = [a.split(" ")[0] if not a.startswith("market") else "market" for a in gemma_alerts]
         fresh = [k for k in new if k not in told]

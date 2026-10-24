@@ -60,10 +60,14 @@ def test_hard_stop_floor_and_break_even():
 def test_trailing_exit_sells_on_a_close_under_the_trail_only_once_armed():
     assert sat.close_exit(entry=100, atr=2, closes_since_buy=[101.0], price=95.5, held_days=2,
                           reports_before_next_session=False) is None          # not armed: the broker stop's job
+    why = sat.close_exit(entry=100, atr=1, closes_since_buy=[104, 104.4], price=101.1, held_days=4,
+                         reports_before_next_session=False)
+    assert why.startswith("trailing exit") and "101.40" in why                 # 104.4 - 3*1; best +4.4%: no lock
+    # a +10% run-up giving back more than half: the profit lock comes first (floor 105 > trail 104)
     why = sat.close_exit(entry=100, atr=2, closes_since_buy=[104, 110, 108], price=103.9, held_days=4,
                          reports_before_next_session=False)
-    assert why.startswith("trailing exit") and "104.00" in why                 # 110 - 3*2
-    assert sat.close_exit(entry=100, atr=2, closes_since_buy=[104, 110], price=104.5, held_days=4,
+    assert why.startswith("profit lock") and "105.00" in why
+    assert sat.close_exit(entry=100, atr=2, closes_since_buy=[104, 110], price=105.5, held_days=4,
                           reports_before_next_session=False) is None
 
 
@@ -117,3 +121,10 @@ def test_entry_dates_use_the_newest_filled_buy_of_the_book():
               {"symbol": "AAA", "side": "buy", "client_order_id": "gem-AAA-2", "filled_at": "2026-10-22T14:00:00Z"},
               {"symbol": "BBB", "side": "buy", "client_order_id": "orb-BBB-1", "filled_at": "2026-10-22T14:00:00Z"}]
     assert plan_run.entry_dates(orders, ("gemma",)) == {"AAA": date(2026, 10, 22)}
+
+
+def test_profit_lock_keeps_half_of_a_5pct_gain():
+    hold = dict(entry=100, atr=5, held_days=5, reports_before_next_session=False)
+    assert sat.close_exit(closes_since_buy=[104.0], price=101.0, **hold) is None          # never +5%: off
+    assert sat.close_exit(closes_since_buy=[106.0], price=103.5, **hold) is None          # kept over half
+    assert sat.close_exit(closes_since_buy=[106.0], price=102.9, **hold).startswith("profit lock")

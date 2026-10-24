@@ -65,6 +65,8 @@ from scanner.momentum import state as mstate
 from scanner.ops import competition
 from scanner.ops import ghost_scanner
 from scanner.ops import market_monitor as mm
+from scanner.ops import shock_alert as sa
+from scanner.ops import shock_feed
 from scanner.features.intraday_context import atr_pct
 from scanner.features.technicals import compute, relative_strength
 from scanner.llm.ollama import LLMError, chat_json, chat_text
@@ -366,6 +368,13 @@ async def think_then_answer(text: str, answer_schema: dict, client,
     return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
 
 
+def in_alerted_theme(symbol: str, alerts, sectors: dict[str, str]) -> bool:
+    """A bellwether or theme-shock alert is active and the stock is in the alerted sectors: Gemma
+    may drop it inside its 3-day minimum hold (her choice, 2026-10-23)."""
+    return (any(a.kind in sa.OVERRIDES_MIN_HOLD for a in alerts)
+            and sectors.get(symbol) in sa.THEME_SECTORS)
+
+
 def gemma_entry_dates(orders) -> dict[str, date]:
     """ET date of the newest filled gem- buy per symbol (the plan's minimum hold)."""
     out: dict[str, datetime] = {}
@@ -621,12 +630,15 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             print(f"  {YELLOW}no 'Now:' line ({type(exc).__name__}: {exc}){RESET}")
         # The plan's three gates (big / mid / small caps) and its rules (execution/satellite.py).
         gates = await satellite_feed.gates(client)
+        # Crash / shock alerts from the market monitor (ops/shock_alert.py; 10-23): information for her.
+        alerts_now = sa.active(shock_feed.read(), datetime.now(sat.ET).date())
         text = text.replace("The list:", (f"{told}\n\n" if told else "")
                             + (f"{memory}\n\n" if memory else "")
                             + (f"{sold}\n\n" if sold else "")
                             + (f"{lessons}\n\n" if lessons else "")
                             + f"{gt.PLAN_RULES}\n{gates.text()}\n\n"
                             + f"{desk_guide.GUIDE}\n\n"
+                            + (f"{sa.block(alerts_now)}\n\n" if alerts_now else "")
                             + f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
                                   min_positions=least, graded=True)
@@ -689,12 +701,16 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
 
         # The plan (execution/satellite.py, 2026-10-26): her own drops wait 3 trading days.
         entered = gemma_entry_dates(all_orders)
+        theme_sectors = ({m.symbol: m.sector for m in await composite.load_universe(client)}
+                         if any(a.kind in sa.OVERRIDES_MIN_HOLD for a in alerts_now) else {})
         today_et = datetime.now(sat.ET).date()
         sold_now = set()
         for s in sells:
             held_days = (sat.trading_days_between(entered[s], today_et) if s in entered
                          else sat.MIN_HOLD_DAYS)
-            if not sat.may_drop(held_days):
+            if not sat.may_drop(held_days) and in_alerted_theme(s, alerts_now, theme_sectors):
+                print(f"  {YELLOW}{s:<6} inside its minimum hold, dropped under an active alert (her choice 10-23){RESET}")
+            elif not sat.may_drop(held_days):
                 why = (f"held {held_days} trading day(s); the plan's minimum hold is {sat.MIN_HOLD_DAYS} "
                        "-- its stop, the loss limit and her sell-if still protect it")
                 print(f"  {YELLOW}{s:<6} kept -- {why}{RESET}")

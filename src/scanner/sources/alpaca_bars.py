@@ -53,3 +53,17 @@ async def bars(symbols: Sequence[str], client: httpx.AsyncClient, *, timeframe: 
             if not token:
                 break
     return out
+
+
+SNAPSHOTS = "https://data.alpaca.markets/v2/stocks/snapshots"
+
+
+async def snapshots(symbols: Sequence[str], client: httpx.AsyncClient, *, feed: str = "iex") -> dict[str, dict]:
+    """{symbol: Alpaca snapshot} (latestTrade, dailyBar, prevDailyBar), CHUNK symbols a request."""
+    out: dict[str, dict] = {}
+    for i in range(0, len(symbols), CHUNK):
+        r = await client.get(SNAPSHOTS, headers=_headers(), timeout=30.0,
+                             params={"symbols": ",".join(symbols[i:i + CHUNK]), "feed": feed})
+        r.raise_for_status()
+        out.update(r.json() or {})
+    return out

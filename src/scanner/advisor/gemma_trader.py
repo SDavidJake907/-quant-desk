@@ -169,10 +169,13 @@ PLAN_RULES = "\n".join((
     "after hours).",
     "- Exits are automatic: a stop 2.5 ATR under the buy (never more than 3%); from +1 ATR the "
     "stop is at least your buy price; then a CLOSE below the highest close less 3 ATR sells. "
-    "No fixed target: winners run. Nothing is held into an earnings report. A name with no new "
-    "high in 10 trading days and under +1 ATR is sold (time stop).",
+    "No fixed target: winners run, but once a close has been +5% a close that gives back HALF the best "
+    "gain sells (profit lock, your choice 10-23). Nothing is held into an earnings report. A name with "
+    "no new high in 10 trading days and under +1 ATR is sold (time stop).",
     "- A stock you drop is kept until it has been held 3 trading days (its stop and your "
-    "sell-if still act). So drop a holding only when its reason has truly failed.",
+    "sell-if still act). So drop a holding only when its reason has truly failed. Exception (your "
+    "choice 10-23): while a DESK ALERT for a bellwether report or a theme shock is active, you may "
+    "drop holdings in the alerted sectors at once.",
     "",
 ))
 

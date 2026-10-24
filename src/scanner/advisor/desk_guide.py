@@ -27,7 +27,11 @@ FAILED in 2025: -2.5% vs its index +7.5%, so even the best of this can have a ba
 EXITS
 - Fast indicator sells (close under the 20/50-day, MACD, SuperTrend, Parabolic SAR) cut winners (STRONG).
 - Profit protection on 2-4 week holds helped in mid and small caps, not big: keep half the gain once up
-  5%, or keep 75% once up 3% (MILD-to-STRONG; NOT live yet -- the operator decides).
+  5%, or keep 75% once up 3% (MILD-to-STRONG). LIVE from 10-26: the 5% / keep-half lock.
+- 10-22 crash anatomy: the S&P lost $1.1T while 338 of 495 stocks ROSE -- the AI giants were sold after
+  Meta's report, money rotated to staples, utilities, health care. Chips were -3% at 04:00 ET, before the
+  open; after a 2%+ sector gap-down, selling AT the open usually lost (STRONG). DESK ALERTS now warn the
+  evening before (bellwether reports) and before the open (theme shocks).
 - The account's own record: 17 trades were up 3%+; 9 of them ended at a LOSS (average best +6.0%, result
   -0.7%). The leak was giving back run-ups and churn, not selling too early.
 - Sell into strength, not weakness: after a 5%+ run-up, a big GREEN day, churning (heavy volume, narrow
