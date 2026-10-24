@@ -18,11 +18,11 @@ def test_no_target_is_the_ceiling():
 
 def test_policy_menus_resolve_by_name():
     p = TradingPolicy()
-    assert p.gemma_menu_value("stop", "tight") == 1.5
-    assert p.gemma_menu_value("stop", "wide") == 3.5
+    # One choice each from 2026-10-26 (the core-and-satellite plan): the rules exit and size.
+    assert p.gemma_menu_value("stop", "normal") == 2.5
     assert p.gemma_menu_value("target", "none") == 0.0
-    assert p.gemma_menu_value("target", "5R") == 5.0
     assert p.gemma_menu_value("size", "normal") == p.gemma_risk_pct
-    assert p.gemma_menu_value("size", "large") == 1.5
+    with pytest.raises(KeyError):
+        p.gemma_menu_value("target", "5R")
     with pytest.raises(KeyError):
         p.gemma_menu_value("stop", "yolo")

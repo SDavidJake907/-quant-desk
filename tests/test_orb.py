@@ -103,7 +103,7 @@ def test_orb_owns_its_prefix_and_sleeve():
     assert ownership.strategy_of("orb-AAA-1") == ownership.ORB
     assert ownership.ORB in ownership.OWN_SLEEVE
     p = TradingPolicy()
-    assert p.gemma_allocation_pct + p.orb_allocation_pct == 100.0
+    assert p.gemma_allocation_pct + p.orb_allocation_pct + p.core_allocation_pct == 100.0
     assert "orb" in p.flatten_strategies
 
 

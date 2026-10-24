@@ -375,7 +375,7 @@ class TradingPolicy(Frozen):
     max_hold_strategies: tuple[str, ...] = ("smc",)
     #: Held without a stop by design: the momentum backtest had none (its
     #: guard is the S&P trend filter), so protect.py must not "re-arm" one.
-    stopless_strategies: tuple[str, ...] = ("momentum",)
+    stopless_strategies: tuple[str, ...] = ("momentum", "core")
 
     # --- the operator's own picks (scripts/manual_trade.py) -----------------
     #: Same 1% risk and the per-position cap as the scanner. Target defaults
@@ -442,8 +442,10 @@ class TradingPolicy(Frozen):
     #: and risk halved, so each position stays ~10% / ~$1k risk -- more names, not bigger bets.
     #: 90.0 from 2026-10-23: 10% to the opening-range breakout book (operator "lets tie this
     #: in"; Gemma asked and agreed: "the 10% capital reduction is negligible").
-    gemma_allocation_pct: float = 90.0
-    gemma_max_positions: int = 10
+    #: 40.0 / 6 names from 2026-10-26: the core-and-satellite plan (execution/satellite.py;
+    #: operator + Gemma 10-23): 50% SPY core, Gemma 40% in 6 equal names, breakout 10%.
+    gemma_allocation_pct: float = 40.0
+    gemma_max_positions: int = 6
     #: Risk per Gemma trade, as % of ITS sleeve. 2.0 from 2026-10-07 (operator:
     #: "push Gemma to max out profit"): at 1% with ~10% stops its five positions
     #: used ~$17.6k of a ~$61k sleeve. 2% lets it near-fully deploy (the 20%
@@ -458,12 +460,12 @@ class TradingPolicy(Frozen):
     #: (the picks ceiling). Size: risk as % of its sleeve; "normal" is
     #: `gemma_risk_pct`. CHOSEN, not measured: every choice is logged so it
     #: can be graded. The 20% per-name cap still binds a large size.
-    gemma_stop_atr_menu: tuple[tuple[str, float], ...] = (
-        ("tight", 1.5), ("normal", 2.5), ("wide", 3.5))
-    gemma_target_r_menu: tuple[tuple[str, float], ...] = (
-        ("none", 0.0), ("2R", 2.0), ("3R", 3.0), ("5R", 5.0))
-    gemma_size_risk_menu: tuple[tuple[str, float], ...] = (
-        ("small", 0.5), ("normal", 1.0), ("large", 1.5))   # halved 2026-10-22 with the 100% sleeve
+    #: One choice each from 2026-10-26 (the plan): stop 2.5 ATR (the 3% floor usually binds),
+    #: no fixed target (a trailing exit sells), equal size (the 1/6 cap binds at any risk
+    #: with a stop of 3% or less). She chooses WHICH names; the rules size and exit them.
+    gemma_stop_atr_menu: tuple[tuple[str, float], ...] = (("normal", 2.5),)
+    gemma_target_r_menu: tuple[tuple[str, float], ...] = (("none", 0.0),)
+    gemma_size_risk_menu: tuple[tuple[str, float], ...] = (("normal", 1.0),)
     #: TradingAgents in Gemma's facts. OFF from 2026-10-07 at Gemma's own request
     #: (it wants its record to be its own judgement); TradingAgents keeps running
     #: as a graded shadow the operator still sees (second_opinion.py, weekly report).
@@ -507,6 +509,12 @@ class TradingPolicy(Frozen):
     orb_risk_pct: float = 1.0
     orb_reward_risk: float = 1.5
 
+    # --- the SPY core (execution/satellite.py, the plan of 2026-10-23) ------------
+    #: Half the account sits in SPY: bought in two halves, topped up below 90% of its
+    #: target, never sold by a rule, no stop. Operator + Gemma: "holding does work".
+    core_allocation_pct: float = 50.0
+    core_symbol: str = "SPY"
+
     def gemma_menu_value(self, kind: str, label: str) -> float:
         """The number behind one of Gemma's menu names. KeyError if unknown."""
         menu = {"stop": self.gemma_stop_atr_menu, "target": self.gemma_target_r_menu,
@@ -516,7 +524,8 @@ class TradingPolicy(Frozen):
     @property
     def own_sleeves_pct(self) -> float:
         """Equity claimed by the books with their own sleeve."""
-        return self.momentum_allocation_pct + self.gemma_allocation_pct + self.orb_allocation_pct
+        return (self.momentum_allocation_pct + self.gemma_allocation_pct + self.orb_allocation_pct
+                + self.core_allocation_pct)
 
     # --- recorded, never enforced ------------------------------------------
     #: Each of these improved the holdout and none has forward evidence. They

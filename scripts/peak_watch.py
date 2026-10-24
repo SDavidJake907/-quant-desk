@@ -15,6 +15,11 @@ An operator rule, not a tested edge (FREEZE.md).
 regular, after-hours, overnight. Outside regular hours the 5-minute trend reads the pre/post-market
 candles and must be fresh (ps.extended_trend); overnight Yahoo has none, so nothing sells on trend
 then. Sells outside regular hours are limit orders (bookorders.sell with the session).
+
+FROM 2026-10-26, THE CORE-AND-SATELLITE PLAN (execution/satellite.py, plan_run.py): the
+peak-sell and the profit lock are off; each pass runs the plan's exits (hard stop, and in
+the last 10 minutes the trailing / time / earnings exits), and in regular hours from 10:00
+ET sends Gemma's queued buys and the SPY core. READY marks are still shown, as information.
 """
 
 from __future__ import annotations
@@ -37,7 +42,7 @@ import gemma_review as grv  # scripts/ is on the path when this script runs
 import gemma_trade as gtr
 
 from scanner.config import settings
-from scanner.execution import bookorders, ownership, profit_lock, sell_queue, sessions
+from scanner.execution import bookorders, ownership, plan_run, profit_lock, sell_queue, sessions
 from scanner.execution.alpaca import Alpaca, BrokerError
 from scanner.execution.ownership import GEMMA, PICKS
 from scanner.features.bars import fetch_many
@@ -48,7 +53,9 @@ from scanner.ops import peak_sell as ps
 from scanner.signals.candles24 import yahoo_5m
 
 MARKS = Path("data/monitor/peak_marks.json")
-LOCKS = Path("data/monitor/profit_lock.json")
+#: Off from 2026-10-26 (the core-and-satellite plan, execution/satellite.py): its +2%
+#: trigger caught bounces, not tops; the plan's trailing exit (execution/plan_run.py) sells.
+PEAK_SELL = False
 SELL_QUEUE = Path(sell_queue.PATH)
 OUT = Path("logs/peak_watch")
 
@@ -117,13 +124,6 @@ def status(ok: bool | None) -> str:
     return {True: "SELL SENT", False: "SELL FAILED", None: "SELL PENDING (off the picks list; picks sync sells it)"}[ok]
 
 
-def load_locks() -> dict:
-    try:
-        return json.loads(LOCKS.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
 async def queue_pass(broker, client, positions, book_of, open_orders, session: str,
                      dry: bool, log) -> list[str]:
     """Queued sells (execution/sell_queue.py) -- the operator's, and the market monitor's
@@ -150,57 +150,6 @@ async def queue_pass(broker, client, positions, book_of, open_orders, session: s
         except (OSError, ValueError):
             latest = queue
         SELL_QUEUE.write_text(json.dumps(sell_queue.prune(latest, held=held), indent=1), encoding="utf-8")
-    return alerts
-
-
-async def lock_pass(broker, client, positions, book_of, orders, open_orders, session: str,
-                    dry: bool, log) -> list[str]:
-    """Profit lock (execution/profit_lock.py): raise each green position's broker stop
-    to the lock/trail level; sell when the price is already at or under it."""
-    state = profit_lock.prune(load_locks(), [p["symbol"] for p in positions])
-    stops = profit_lock.stop_orders(orders)
-    alerts: list[str] = []
-    for p in positions:
-        s, book = p["symbol"], book_of[p["symbol"]]
-        entry, price = float(p["avg_entry_price"]), float(p["current_price"])
-        state = profit_lock.update(state, s, entry=entry, price=price)
-        lock = profit_lock.lock_stop(entry=entry, high=state[s]["high"])
-        order_id, broker_stop = stops.get(s, (None, None))
-        act = profit_lock.action(price=price, lock=lock, broker_stop=broker_stop)
-        if act == "none":
-            continue
-        if act == "sell":
-            if lock < entry:
-                why = (f"loss limit: {price:,.2f} at/under {lock:,.2f}, {profit_lock.MAX_LOSS_PCT:g}% "
-                       f"under the buy {entry:,.2f}")
-            else:
-                why = (f"profit lock: {price:,.2f} at/under the lock {lock:,.2f} (entry {entry:,.2f}, "
-                       f"high {state[s]['high']:,.2f}) -- sold before it turns red")
-            if dry:
-                log(f"  WOULD SELL {book} {s}: {why}")
-                continue
-            ok = await sell_position(broker, client, s, book, why, open_orders, session)
-            log(f"  {status(ok)} {book} {s}: {why}")
-            if ok:
-                alerts.append(f"Sell sent for {s} ({book}) -- {why.split(':')[0]} at {lock:,.2f}")
-            continue
-        if order_id is None:
-            log(f"  LOCK {s}: {lock:,.2f} (no working stop to raise -- watched here every 5 min)")
-            continue
-        if dry:
-            log(f"  WOULD RAISE {s} stop {broker_stop:,.2f} -> {lock:,.2f}")
-            continue
-        try:
-            await broker.replace_stop(order_id, lock)
-            log(f"  RAISED {s} stop {broker_stop:,.2f} -> {lock:,.2f} (entry {entry:,.2f}, "
-                f"high {state[s]['high']:,.2f})")
-            bookorders.log(f"{'picks' if book == PICKS else 'gemma'}_stop_raised", s,
-                           f"profit lock: stop {broker_stop:,.2f} -> {lock:,.2f}", gtr.POLICY)
-        except BrokerError as exc:
-            log(f"  RAISE FAILED {s} ({exc}) -- the 5-minute check still sells at {lock:,.2f}")
-    if not dry:
-        LOCKS.parent.mkdir(parents=True, exist_ok=True)
-        LOCKS.write_text(json.dumps(state, indent=1), encoding="utf-8")
     return alerts
 
 
@@ -239,7 +188,8 @@ async def main(dry: bool) -> int:
         for s in ready:
             log(f"  READY {s}: in profit with >= {ps.MIN_MET} of 6 peak checks -- sells when the 5m trend turns down")
             alerts.append(f"{s} READY to sell (peak checks)")
-        for s in sell:
+        # The plan (2026-10-26) removed the 5-minute peak-sell: READY is shown, nothing sells on it.
+        for s in (sell if PEAK_SELL else ()):
             m = marks.get(s, {})
             why = (f"peak-sell: READY since {m.get('ready_at')} at {m.get('ready_price')}, "
                    f"the 5-minute trend turned down while in profit")
@@ -253,8 +203,14 @@ async def main(dry: bool) -> int:
                 marks.pop(s, None)
         gone = set(sell) if not dry else set()
         alerts += await queue_pass(broker, client, positions, book_of, open_orders, session, dry, log)
-        alerts += await lock_pass(broker, client, [p for p in watched if p["symbol"] not in gone],
-                                  book_of, orders, open_orders, session, dry, log)
+        # The plan's exits replace the profit lock; its buys and the SPY core go out from 10:00 ET.
+        alerts += await plan_run.exit_pass(broker, client, [p for p in watched if p["symbol"] not in gone],
+                                           book_of, orders, open_orders, session, now, dry, log, sell_position)
+        if session == sessions.REGULAR:
+            alerts += await plan_run.buy_pass(broker, client, positions, owner_map, open_orders, now,
+                                              dry, log, gtr.POLICY)
+            alerts += await plan_run.core_pass(broker, client, positions, owner_map, open_orders, now,
+                                               dry, log, gtr.POLICY)
         if alerts and not dry:
             body = "; ".join(alerts)
             await notify.send(client, server=settings.ntfy_server, topic=settings.ntfy_topic,

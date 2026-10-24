@@ -51,7 +51,8 @@ from scanner.advisor import opinions
 from scanner.advisor import wall_street
 from scanner.advisor.scan_watch import operator_names
 from scanner.config import settings
-from scanner.execution import bookorders, ownership, picks, scorecard, sessions
+from scanner.execution import bookorders, buy_queue, ownership, picks, satellite as sat, scorecard, sessions
+from scanner.execution import satellite_feed
 from scanner.execution.alpaca import Alpaca
 from scanner.execution.guards import RiskLimits, check_account
 from scanner.execution.ownership import GEMMA
@@ -364,6 +365,19 @@ async def think_then_answer(text: str, answer_schema: dict, client,
     return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
 
 
+def gemma_entry_dates(orders) -> dict[str, date]:
+    """ET date of the newest filled gem- buy per symbol (the plan's minimum hold)."""
+    out: dict[str, datetime] = {}
+    for o in orders:
+        for x in (o, *(o.get("legs") or ())):
+            if (x.get("side") == "buy" and x.get("filled_at")
+                    and ownership.strategy_of(x.get("client_order_id")) == GEMMA):
+                t = datetime.fromisoformat(str(x["filled_at"]).replace("Z", "+00:00"))
+                if x["symbol"] not in out or t > out[x["symbol"]]:
+                    out[x["symbol"]] = t
+    return {s: t.astimezone(sat.ET).date() for s, t in out.items()}
+
+
 async def sell_if_already_true(client, buys: Sequence[str], sell_if: dict[str, str],
                                facts: dict[str, str], trend: str) -> dict[str, str]:
     """{symbol: her quotes} for NEW buys whose sell-if is already true (2026-10-23: SNDK, LITE,
@@ -470,7 +484,7 @@ MENU_TEXT = "\n".join((
                             for k, v in POLICY.gemma_target_r_menu),
     "- size: " + ", ".join(f"{k} = risk {v:g}% of your book if stopped"
                           for k, v in POLICY.gemma_size_risk_menu)
-    + " (one stock is never more than a fifth of your book)",
+    + " (every name is an equal sixth of your book under the plan)",
 ))
 
 
@@ -481,8 +495,8 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
         account = await broker.account()
         positions = await broker._get("/v2/positions")
         open_orders = await broker._get("/v2/orders", status="open", nested="true")
-        owner_map = ownership.owners(await broker._get(
-            "/v2/orders", status="all", limit=500, nested="true"))
+        all_orders = await broker._get("/v2/orders", status="all", limit=500, nested="true")
+        owner_map = ownership.owners(all_orders)
         # Extended hours (WORKLIST §59): outside regular hours the orders go as
         # limit orders and protect.py arms the stops at the open.
         session = await sessions.current(broker)
@@ -604,10 +618,13 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             text = clock.now_line(now_et, rows, session) + "\n\n" + text
         except Exception as exc:                          # noqa: BLE001
             print(f"  {YELLOW}no 'Now:' line ({type(exc).__name__}: {exc}){RESET}")
+        # The plan's three gates (big / mid / small caps) and its rules (execution/satellite.py).
+        gates = await satellite_feed.gates(client)
         text = text.replace("The list:", (f"{told}\n\n" if told else "")
                             + (f"{memory}\n\n" if memory else "")
                             + (f"{sold}\n\n" if sold else "")
                             + (f"{lessons}\n\n" if lessons else "")
+                            + f"{gt.PLAN_RULES}\n{gates.text()}\n\n"
                             + f"Market: {trend}.\n\nThe list:", 1)
         answer_schema = gt.schema(list(facts), POLICY.gemma_max_positions, menu=MENU,
                                   min_positions=least, graded=True)
@@ -668,52 +685,61 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             print(f"  {YELLOW}preview -- re-run with --submit{RESET}")
             return 0
 
+        # The plan (execution/satellite.py, 2026-10-26): her own drops wait 3 trading days.
+        entered = gemma_entry_dates(all_orders)
+        today_et = datetime.now(sat.ET).date()
+        sold_now = set()
         for s in sells:
+            held_days = (sat.trading_days_between(entered[s], today_et) if s in entered
+                         else sat.MIN_HOLD_DAYS)
+            if not sat.may_drop(held_days):
+                why = (f"held {held_days} trading day(s); the plan's minimum hold is {sat.MIN_HOLD_DAYS} "
+                       "-- its stop, the loss limit and her sell-if still protect it")
+                print(f"  {YELLOW}{s:<6} kept -- {why}{RESET}")
+                bookorders.log("gemma_kept", s, why, POLICY)
+                continue
             ok = await bookorders.sell(broker, s, open_orders, strategy=GEMMA,
                                        reason="Gemma dropped it", policy=POLICY,
                                        session=session, client=client)
             print(f"  {GREEN if ok else RED}{'sold' if ok else 'SELL FAILED'}{RESET} {s}")
+            if ok:
+                sold_now.add(s)
         if kill_switch_active(settings.kill_switch_path):
             print(f"  {RED}kill switch active -- no buys{RESET}")
             return 0
-        limits = RiskLimits(max_positions=POLICY.gemma_max_positions,
-                            max_daily_loss_pct=POLICY.max_daily_loss_pct,
-                            min_equity=POLICY.min_equity)
-        sleeve = account.equity * POLICY.gemma_allocation_pct / 100
-        deployed = sum(float(mine[s].get("market_value") or 0) for s in mine if s not in sells)
-        room = max(0.0, min(account.buying_power, sleeve - deployed))
-        cap = 100.0 / POLICY.gemma_max_positions
-        count = len([s for s in mine if s not in sells])
+        if not buys:
+            return 0
+        if session != sessions.REGULAR:
+            for s in buys:
+                bookorders.log("gemma_refused", s, f"no buys outside regular hours (the plan; {session})", POLICY)
+            print(f"  {YELLOW}no buys outside regular hours (the plan) -- not bought: {list(buys)}{RESET}")
+            return 0
         reasons = dict(decision.reasons)
-        stale = await sell_if_already_true(client, buys, dict(decision.sell_if), facts, trend)
+        holding = [s for s in mine if s not in sold_now]
+        refused = await satellite_feed.refusals(client, buys, holding, gates, settings.audit_log_path)
+        stale = await sell_if_already_true(client, [b for b in buys if b not in refused],
+                                           dict(decision.sell_if), facts, trend)
+        queued = {}
         for s in buys:
-            if s in stale:
-                why = f"sell-if already true at the buy ({stale[s][:150]}) -- choose it again with one that is not"
+            why = refused.get(s) or (f"sell-if already true at the buy ({stale[s][:150]}) -- choose it "
+                                     "again with one that is not" if s in stale else None)
+            if why:
                 print(f"  {YELLOW}{s:<6} not bought -- {why}{RESET}")
                 bookorders.log("gemma_refused", s, why, POLICY)
                 continue
-            gate = check_account(account.equity, float(raw.get("last_equity") or account.equity),
-                                 count, limits, market_open=True,
-                                 account_status=account.status, account_blocked=account.blocked)
-            if not gate:
-                print(f"  {YELLOW}{s:<6} not bought -- {gate.reason}{RESET}")
-                bookorders.log("gemma_refused", s, gate.reason, POLICY)
-                continue
             pl = plans[s]
-            result = await bookorders.buy_with_stop(
-                broker, client, s, strategy=GEMMA, sleeve=sleeve, room=room, cap_pct=cap,
-                policy=POLICY,
-                reason=f"Gemma [{pl.stop} stop, target {pl.target}, {pl.size}]: "
-                       f"{reasons.get(s, '')}",
-                risk_pct=POLICY.gemma_menu_value("size", pl.size),
-                atr_multiple=POLICY.gemma_menu_value("stop", pl.stop),
-                reward_risk=POLICY.gemma_menu_value("target", pl.target), session=session)
-            if not result.ok:
-                print(f"  {YELLOW}{s:<6} not bought -- {result.message}{RESET}")
-                continue
-            count += 1
-            room -= result.sizing.position_dollars
-            print(f"  {GREEN}bought{RESET} {s:<6} {result.message}")
+            queued[s] = {"reason": reasons.get(s, ""), "stop": pl.stop, "target": pl.target,
+                         "size": pl.size}
+        if queued:
+            path = Path(buy_queue.PATH)
+            try:
+                old = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                old = {}
+            items = {**(old.get("items") or {}), **queued} if old.get("day") == today_et.isoformat() else queued
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(buy_queue.make(today_et, items), indent=1), encoding="utf-8")
+            print(f"  {GREEN}queued for 10:00 ET{RESET} (peak watch sends them, sized then): {list(queued)}")
     return 0
 
 

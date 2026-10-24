@@ -107,10 +107,10 @@ CHARTER = (
     "own fixed stop and size, and your scoreboard shows both books every morning. It is "
     "scored month by month (win or lose), then by quarter; the season ends Dec 31 "
     "and its winner gets 10 more points of the account for the next season, taken "
-    "from the other book. From 10-22 the operator has handed you their half too: you run "
-    "the WHOLE account, up to 10 names at the same size as before, and they are counting on "
-    "you to help them catch up -- the competition is still on, their record so far still "
-    "counts. Two ghosts are scored "
+    "from the other book. From 10-22 the operator has handed you their half too, and from "
+    "10-26 the account runs the plan below: a SPY core plus your book of up to 6 names; they "
+    "are counting on you to help them catch up -- the competition is still on, their record "
+    "so far still counts. Two ghosts are scored "
     "against you every month and your scoreboard shows them: a random draw from your own "
     "list under the same stop (beating it shows your picking, not your list, did the "
     "work), and the desk's paused sweep scanner replayed on paper with its own stops and "
@@ -156,6 +156,26 @@ RULES = "\n".join((
     "",
 ))
 
+#: The core-and-satellite plan (execution/satellite.py; operator + Gemma 2026-10-23):
+#: she chooses WHICH names; these rules size, time and exit them.
+PLAN_RULES = "\n".join((
+    "THE PLAN (from 10-26, agreed by you and the operator): half the account is a SPY core "
+    "(not yours to trade); your book is 40% in up to 6 names of EQUAL size, at most 2 per sector.",
+    "- A new buy must pass every rule, or it is refused: its size group's gate is open (big caps: "
+    "SPY, mid caps: MDY, small caps: IJR above its 200-day average); top third of your pool by "
+    "12-1 momentum; 6-month return positive; above its 50-day average; no earnings within 5 "
+    "days; a name sold in the last 30 days only on a new 20-day closing high.",
+    "- Buys go out only in regular hours, from 10:00 ET (never in the first 30 minutes, never "
+    "after hours).",
+    "- Exits are automatic: a stop 2.5 ATR under the buy (never more than 3%); from +1 ATR the "
+    "stop is at least your buy price; then a CLOSE below the highest close less 3 ATR sells. "
+    "No fixed target: winners run. Nothing is held into an earnings report. A name with no new "
+    "high in 10 trading days and under +1 ATR is sold (time stop).",
+    "- A stock you drop is kept until it has been held 3 trading days (its stop and your "
+    "sell-if still act). So drop a holding only when its reason has truly failed.",
+    "",
+))
+
 #: WORKLIST §65 (operator 2026-10-19): a probability she is graded on, and a
 #: sell-if per holding. Recorded and scored; neither trades by itself.
 GRADED_RULES = "\n".join((
@@ -192,11 +212,8 @@ class Plan(Frozen):
 MENU_RULES = "\n".join((
     "Your menu, for your NEW buys (a stock you already hold keeps its stop and target):",
     "{menu_text}",
-    "- Choose them from your reason: a wider stop gives a volatile idea room, a tighter one "
-    "says exactly where you are wrong; a target takes profit, 'none' lets a winner run.",
-    "- A wide stop is not a reason to keep a failed idea. If the reason has failed, leave "
-    "the stock out and it is sold.",
-    "- Large size is for your strongest evidence, small for an idea you are testing.",
+    "- Under the plan each has one choice: the rules set the stop, the exit and the (equal) size.",
+    "- If a stock's reason has failed, leave it out and it is sold (after its 3-day minimum hold).",
     "",
 ))
 
