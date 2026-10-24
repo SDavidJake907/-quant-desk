@@ -261,7 +261,8 @@ def _fresh(flag: Series, days: int = 5) -> Series:
     return out
 
 
-def more(bars: Bars, market: Mapping[date, float] | None = None) -> dict[str, Series]:
+def more(bars: Bars, market: Mapping[date, float] | None = None,
+         market_bars: Bars | None = None) -> dict[str, Series]:
     """The second menu (operator 2026-10-23: "give her all the indicators ... market hours,
     after hours, days of the week, months"). Daily bars: the OVERNIGHT move (after-hours +
     premarket) is yesterday's close -> today's open; the REGULAR SESSION is open -> close."""
@@ -352,6 +353,25 @@ def more(bars: Bars, market: Mapping[date, float] | None = None) -> dict[str, Se
     out["day_of_week"] = [float(x.weekday() + 1) for x in d]
     out["month"] = [float(x.month) for x in d]
     out["day_of_month"] = [float(x.day) for x in d]
+    if market_bars is not None:
+        # Real Relative Strength (after simonro/edge-scanner, MIT, scanner/indicators/rrs.py):
+        # strength vs the S&P 500 beyond what this stock's own ATR predicts from the index's
+        # move -- per bar ((move - power * atr) / atr, power = index move / index ATR), then
+        # averaged over the same k bars so one spike does not count as sustained strength.
+        m_at = {x: j for j, x in enumerate(market_bars.dates)}
+        m_atr = wilder(true_range(market_bars.highs, market_bars.lows, market_bars.closes), 14)
+        for k in (5, 20):
+            raw: list[float] = []
+            for i in range(n):
+                j, jk = m_at.get(d[i]), m_at.get(d[i - k]) if i >= k else None
+                if i < k or j is None or jk is None or atr[i] in (None, 0) or not m_atr[j]:
+                    raw.append(float("nan"))
+                    continue
+                power = (market_bars.closes[j] - market_bars.closes[jk]) / m_atr[j]
+                raw.append(((c[i] - c[i - k]) - power * atr[i]) / atr[i])
+            # Window by window: a running sum would carry one missing value forward for ever.
+            out[f"rrs_{k}d"] = [None if i < k - 1 or any(v != v for v in raw[i - k + 1:i + 1])
+                                else sum(raw[i - k + 1:i + 1]) / k for i in range(n)]
     if market:
         mk = [market.get(x) for x in d]
         out["rs_3m_pct"] = [None if i < 63 or mk[i] is None or mk[i - 63] is None

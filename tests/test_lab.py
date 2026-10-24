@@ -207,10 +207,14 @@ def _bars(n=300):
 
 
 def test_every_menu_name_is_computed_and_never_sees_the_future():
+    from scanner.features.bars import Bars
     bars = _bars()
     market = {d: 100.0 + i * 0.1 for i, d in enumerate(bars.dates)}
-    full = {**ind.compute(bars), **ind.more(bars, market)}
-    cut = {**ind.compute(bars.upto(279)), **ind.more(bars.upto(279), market)}
+    mc = [100.0 + i * 0.1 for i in range(len(bars.dates))]
+    mbars = Bars(symbol="^GSPC", dates=bars.dates, opens=tuple(mc), closes=tuple(mc),
+                 highs=tuple(x + 0.5 for x in mc), lows=tuple(x - 0.5 for x in mc), volumes=tuple(0.0 for _ in mc))
+    full = {**ind.compute(bars), **ind.more(bars, market, mbars)}
+    cut = {**ind.compute(bars.upto(279)), **ind.more(bars.upto(279), market, mbars)}
     for name in [*rc.NUMERIC, *(f for f in rc.FLAGS if f != "market_uptrend")]:
         assert name in full, name
         assert cut[name] == full[name][:280], name
@@ -325,3 +329,28 @@ def test_psar_and_crossovers_follow_the_trend():
     assert m["ema10_above_ema50"][58] == 1.0 and m["ema10_above_ema50"][-1] == 0.0
     flips = [i for i, v in enumerate(m["psar_flip_up_5d"]) if v == 1.0]
     assert all(m["psar_up"][i] == 1.0 for i in flips)
+
+
+def test_rrs_credits_only_strength_beyond_the_stock_s_own_volatility():
+    from scanner.features.bars import Bars
+    n = 60
+    days = tuple(date(2020, 1, 1) + timedelta(days=i) for i in range(n))
+    flat_idx = Bars(symbol="^GSPC", dates=days, opens=(100.0,) * n, closes=(100.0,) * n,
+                    highs=(101.0,) * n, lows=(99.0,) * n, volumes=(0.0,) * n)
+    up = [100.0 + i for i in range(n)]
+    stock_bars = Bars(symbol="X", dates=days, opens=tuple(up), closes=tuple(up), highs=tuple(x + 1 for x in up),
+                      lows=tuple(x - 1 for x in up), volumes=(1000.0,) * n)
+    m = ind.more(stock_bars, None, flat_idx)
+    assert m["rrs_5d"][-1] > 0 and m["rrs_20d"][-1] > 0          # rising while the index is flat
+    assert m["rrs_5d"][3] is None                                 # not enough history
+
+
+def test_weekend_focus_limits_the_hold_to_3_or_4_weeks():
+    import importlib
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path("scripts").resolve()))
+    lab = importlib.import_module("gemma_lab")
+    assert lab.focus_schema()["properties"]["recipe"]["properties"]["max_hold_days"]["enum"] == [15, 21]
+    assert lab.in_focus(rc.parse({**BASE, "max_hold_days": 63})).max_hold_days == 21
+    assert lab.in_focus(rc.parse({**BASE, "max_hold_days": 5})).max_hold_days == 15

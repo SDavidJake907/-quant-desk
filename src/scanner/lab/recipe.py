@@ -60,6 +60,10 @@ NUMERIC: dict[str, tuple[tuple[float, ...], str]] = {
                         "volume on up days / volume on down days, last 20 days (above 1 = accumulation)"),
     "close_vs_vwap20_pct": ((-5, -2, 0, 2, 5), "close vs the 20-day volume-weighted average price %"),
     "dollar_volume_m": ((10, 25, 50, 100, 250), "average daily dollar volume, $ millions (liquidity)"),
+    # Real Relative Strength (after simonro/edge-scanner, MIT): strength vs the S&P 500
+    # beyond what the stock's own ATR predicts, averaged so one spike does not count.
+    "rrs_5d": ((-1, -0.5, 0, 0.5, 1, 2), "Real Relative Strength over 1 week (volatility-adjusted vs the S&P 500)"),
+    "rrs_20d": ((-1, -0.5, 0, 0.5, 1, 2), "Real Relative Strength over 4 weeks (volatility-adjusted vs the S&P 500)"),
 }
 #: Calendar filters also take op "is" (exactly that day / month).
 CALENDAR = ("day_of_week", "month", "day_of_month")

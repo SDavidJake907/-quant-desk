@@ -75,6 +75,8 @@ UNIVERSES = {
 HIDDEN_A = (date(2025, 1, 1), date(2025, 12, 31))
 HIDDEN_B_START = date(2026, 1, 1)
 TRIES = 15                     # Gemma asked for 15 (2026-10-23)
+#: Operator 2026-10-23: "find the best entry and exit, holding best 3-4 weeks".
+FOCUS_HOLD = (15, 21)
 CHUNK = 100
 #: --weekend: a session starts every SESSION_EVERY, rotating the universes, until
 #: Sunday WEEKEND_END (local time) -- leaving Ollama free before her Sunday decision.
@@ -109,6 +111,16 @@ try is counted, so make each one a real idea, not a small tweak of a lucky numbe
 families across a session -- trend following, buying dips, breakouts, volume, volatility squeezes,
 calendar (weekday, month), overnight vs regular-session moves -- instead of re-tuning one family.
 
+THIS WEEKEND'S FOCUS (operator, 2026-10-23): find the best ENTRY and the best EXIT for a book that
+holds each stock 3 to 4 weeks (max_hold_days 15 or 21) and then replaces it with the strongest names
+at that moment -- the same stock again if it still ranks. Use the sell rules, the trail, stops and
+targets to get out EARLIER when a trade fails; the 3-4 week limit sells the rest. What the desk's
+studies already found on the search years (in your log as baselines): mid caps are where entries
+work (momentum 12-1 rotated every 2-4 weeks passed your bar in 7 of 8 versions); big caps beat
+nothing; 10 names did better than 20; a 2.5-ATR safety stop on a 3-week hold usually hurt; quick
+indicator sells (close under the 20/50-day, MACD, SuperTrend) cut winners. New on the menu:
+rrs_5d / rrs_20d, Real Relative Strength (strength vs the S&P 500 beyond the stock's own volatility).
+
 THE MENU
 {menu}"""
 
@@ -140,7 +152,7 @@ async def load(client, u: Universe) -> tuple:
             stocks[s] = sim.Stock(s, sectors.get(s, "unknown"), b.dates, _compact(b.opens),
                                   _compact(b.highs), _compact(b.lows), _compact(b.closes),
                                   {k: _compact(v) for k, v in
-                                   {**indicators.compute(b), **indicators.more(b, market)}.items()},
+                                   {**indicators.compute(b), **indicators.more(b, market, spx)}.items()},
                                   {d: j for j, d in enumerate(b.dates)})
     memo: dict[date, frozenset[str]] = {}
 
@@ -186,16 +198,30 @@ def prompt(u: Universe, entries: list, today: list[str], left: int, nominates: b
             f"sentences: what market behaviour it bets on and why it should beat random picks.{fix}")
 
 
+def focus_schema() -> dict:
+    """Her recipe schema with the hold limited to FOCUS_HOLD (3-4 weeks)."""
+    schema = rc.schema()
+    schema["properties"]["recipe"]["properties"]["max_hold_days"]["enum"] = list(FOCUS_HOLD)
+    return schema
+
+
+def in_focus(recipe: rc.Recipe) -> rc.Recipe:
+    """A hold outside FOCUS_HOLD becomes the nearest one inside it."""
+    if recipe.max_hold_days in FOCUS_HOLD:
+        return recipe
+    return recipe.model_copy(update={"max_hold_days": min(FOCUS_HOLD, key=lambda d: abs(d - recipe.max_hold_days))})
+
+
 async def ask_recipe(client, u, entries, today, left, nominates) -> tuple[rc.Recipe, str] | None:
     error = ""
     for _ in range(2):
         try:
-            answer = await chat_json(prompt(u, entries, today, left, nominates, error), rc.schema(), client)
+            answer = await chat_json(prompt(u, entries, today, left, nominates, error), focus_schema(), client)
         except LLMError as exc:
             say(f"  Gemma did not answer: {exc}")
             return None
         try:
-            return rc.parse(answer.get("recipe")), str(answer.get("idea", ""))[:600]
+            return in_focus(rc.parse(answer.get("recipe"))), str(answer.get("idea", ""))[:600]
         except ValueError as exc:
             error = str(exc)
             say(f"  refused: {error}")
