@@ -147,10 +147,20 @@ def run_safety_check() -> dict[str, str]:
 
 
 async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry: bool,
-                         alerts: list[str], peak: str = "", session: str = sessions.REGULAR) -> list[str]:
+                         alerts: list[str], peak: str = "", session: str = sessions.REGULAR,
+                         entered: dict[str, datetime] | None = None) -> list[str]:
     mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA]
     if not mine:
         log(lines, "  Gemma holds nothing")
+        return []
+    # No sell-if sale on the day of the buy (Gemma, 2026-10-23); her stops still hold.
+    entered = entered or {}
+    now = datetime.now().astimezone()
+    fresh = [p["symbol"] for p in mine if mm.bought_today(entered.get(p["symbol"]), now)]
+    if fresh:
+        log(lines, f"  bought today, sell-if checks start tomorrow: {', '.join(fresh)}")
+    mine = [p for p in mine if p["symbol"] not in fresh]
+    if not mine:
         return []
     sell_ifs = gm.sell_ifs(read_rows(settings.audit_log_path))
     symbols = [p["symbol"] for p in mine]
@@ -158,7 +168,11 @@ async def gemma_sell_ifs(client, broker, positions, owner_map, open_orders, line
     rows = []
     for p in mine:
         _, day = await quote(client, p["symbol"])
-        rows.append((p["symbol"], sell_ifs.get(p["symbol"], ""), float(p["unrealized_plpc"]) * 100, day))
+        when = entered.get(p["symbol"])
+        bought = (f"bought {when.astimezone(mm.ET):%a %m-%d %H:%M} ET at {float(p['avg_entry_price']):,.2f}"
+                  if when else f"bought at {float(p['avg_entry_price']):,.2f}")
+        rows.append((p["symbol"], sell_ifs.get(p["symbol"], ""), float(p["unrealized_plpc"]) * 100, day,
+                     bought))
     text = mm.sell_if_prompt(facts, rows, market=trend, alerts=alerts, peak=peak)
     try:
         answer, _ = await gtr.think_then_answer(text, mm.sell_if_schema(symbols), client)
@@ -219,7 +233,7 @@ async def extended_pass(dry: bool, now: datetime, session: str) -> int:
         stops = grv.live_stops(orders)
         peak = await peak_status(client, positions, owner_map, stops, lines, GEMMA, session)
         sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, [],
-                                    peak, session)
+                                    peak, session, entered=entry_times(orders, GEMMA))
         if sold and not dry:
             body = f"Gemma's sell-if met for {', '.join(sold)} ({session}) -- queued to sell"
             await notify.send(client, server=settings.ntfy_server, topic=settings.ntfy_topic,
@@ -304,7 +318,8 @@ async def main(dry: bool) -> int:
             if fresh and not hourly:
                 log(lines, f"  waking Gemma for new alarms: {', '.join(fresh)}")
             peak = await peak_status(client, positions, owner_map, stops, lines, GEMMA) if books["gemma"] and hourly else ""
-            sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, gemma_alerts, peak)
+            sold = await gemma_sell_ifs(client, broker, positions, owner_map, open_orders, lines, dry, gemma_alerts, peak,
+                                        entered=entry_times(orders, GEMMA))
             state["told_gemma"] = sorted(told | set(new))
             if sold:
                 alerts.append(f"Gemma's sell-if met for {', '.join(sold)} -- queued to sell")

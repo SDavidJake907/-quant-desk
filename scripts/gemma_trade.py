@@ -61,6 +61,7 @@ from scanner.features.bars import fetch_bars, fetch_many
 from scanner.momentum import state as mstate
 from scanner.ops import competition
 from scanner.ops import ghost_scanner
+from scanner.ops import market_monitor as mm
 from scanner.features.intraday_context import atr_pct
 from scanner.features.technicals import compute, relative_strength
 from scanner.llm.ollama import LLMError, chat_json, chat_text
@@ -362,6 +363,24 @@ async def think_then_answer(text: str, answer_schema: dict, client,
     return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
 
 
+async def sell_if_already_true(client, buys: Sequence[str], sell_if: dict[str, str],
+                               facts: dict[str, str], trend: str) -> dict[str, str]:
+    """{symbol: her quotes} for NEW buys whose sell-if is already true (2026-10-23: SNDK, LITE,
+    MU, HPE were bought already below their 50-day average with "falls below its 50-day
+    average" and sold 28 minutes later). Same checker and quote rules as the hourly check.
+    Fail-open: if she cannot be asked, the buys go ahead and the hourly check still applies."""
+    rows = [(s, sell_if[s], 0.0, None) for s in buys if sell_if.get(s) and s in facts]
+    if not rows:
+        return {}
+    text = mm.sell_if_prompt(facts, rows, market=trend, before_buy=True)
+    try:
+        answer, _ = await think_then_answer(text, mm.sell_if_schema([r[0] for r in rows]), client)
+    except LLMError as exc:
+        print(f"  {YELLOW}sell-if pre-check unavailable ({exc}) -- buying without it{RESET}")
+        return {}
+    return dict(mm.sell_if_sells(answer, sell_if, facts))
+
+
 async def midcap_rows(client, exclude: set[str], caps, mom_picks: Sequence[str]) -> list:
     """The MidCap 400 + SmallCap 600 rows for round 1 (gemma_pool.MIDCAP_FROM): same
     floors, the strongest gemma_pool.MIDCAP_MAX by 12-1 across both. A failure adds
@@ -661,7 +680,13 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
         cap = 100.0 / POLICY.gemma_max_positions
         count = len([s for s in mine if s not in sells])
         reasons = dict(decision.reasons)
+        stale = await sell_if_already_true(client, buys, dict(decision.sell_if), facts, trend)
         for s in buys:
+            if s in stale:
+                why = f"sell-if already true at the buy ({stale[s][:150]}) -- choose it again with one that is not"
+                print(f"  {YELLOW}{s:<6} not bought -- {why}{RESET}")
+                bookorders.log("gemma_refused", s, why, POLICY)
+                continue
             gate = check_account(account.equity, float(raw.get("last_equity") or account.equity),
                                  count, limits, market_open=True,
                                  account_status=account.status, account_blocked=account.blocked)

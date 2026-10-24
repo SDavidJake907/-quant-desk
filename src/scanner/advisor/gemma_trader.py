@@ -167,7 +167,10 @@ GRADED_RULES = "\n".join((
     "specific evidence in that stock's block.",
     "- For each stock you hold, give a 'sell_if': one observable condition that would "
     "mean your reason has failed (for example a guidance cut, a lost contract, or the "
-    "stock falling back below where it broke out). You will check it every evening.",
+    "stock falling back below where it broke out). It is checked EVERY HOUR, around the "
+    "clock, from the day after you buy, and it must describe something that has NOT "
+    "happened yet: 'falls below its 50-day average' on a stock already below it is "
+    "already true, and the buy is refused.",
     "",
 ))
 

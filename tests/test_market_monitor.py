@@ -53,3 +53,30 @@ def test_alerts_reach_gemmas_prompt():
     with_alert = mm.sell_if_prompt({"MU": "facts"}, rows, market="weak", alerts=["QQQ -2.65% today", "MU -5.9% today"])
     assert "ALERTS from the desk monitor" in with_alert and "MU -5.9% today" in with_alert
     assert "ALERTS" not in mm.sell_if_prompt({"MU": "facts"}, rows, market="weak")
+
+
+# --- 2026-10-23: sell-ifs already true at the buy ------------------------------
+
+def test_bought_today_uses_the_et_calendar_date():
+    from datetime import datetime, timezone
+    buy = datetime(2026, 10, 23, 21, 17, tzinfo=timezone.utc)          # 5:17 PM ET Friday
+    assert mm.bought_today(buy, datetime(2026, 10, 23, 23, 45, tzinfo=timezone.utc))
+    assert not mm.bought_today(buy, datetime(2026, 10, 26, 13, 45, tzinfo=timezone.utc))
+    assert not mm.bought_today(None, datetime(2026, 10, 23, 23, 45, tzinfo=timezone.utc))
+
+
+def test_hourly_prompt_shows_the_buy_and_the_after_the_buy_rule():
+    rows = [("SNDK", "Price falls below its 50-day average.", -0.5, 0.2,
+             "bought Fri 10-23 19:16 ET at 1,232.00")]
+    text = mm.sell_if_prompt({"SNDK": "vs 50d -22.3%"}, rows, market="ok")
+    assert "bought Fri 10-23 19:16 ET at 1,232.00" in text
+    assert "AFTER you bought" in text and "every hour" in text
+
+
+def test_before_buy_prompt_asks_if_already_true():
+    rows = [("SNDK", "Price falls below its 50-day average.", 0.0, None)]
+    text = mm.sell_if_prompt({"SNDK": "vs 50d -22.3%"}, rows, market="ok", before_buy=True)
+    assert "about to BUY" in text and "ALREADY TRUE" in text and "P/L" not in text
+    answer = {"holdings": [{"symbol": "SNDK", "met": "yes", "quotes": ["vs 50d -22.3%"]}]}
+    assert mm.sell_if_sells(answer, {"SNDK": rows[0][1]}, {"SNDK": "vs 50d -22.3%"}) == [
+        ("SNDK", "vs 50d -22.3%")]

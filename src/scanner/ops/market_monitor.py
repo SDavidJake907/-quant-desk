@@ -20,6 +20,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from scanner.models import Frozen
 
@@ -27,6 +28,7 @@ MARKET_DROP_PCT = -1.5
 POSITION_DROP_PCT = -3.0
 NEAR_STOP_ATR = 1.0
 MET = ("yes", "no", "unclear")
+ET = ZoneInfo("America/New_York")
 
 
 def market_alarm(day_change_pct: Mapping[str, float | None]) -> str | None:
@@ -67,23 +69,47 @@ def picks_to_sell(holdings: Sequence[Holding], *, alarm_started: datetime | None
     return out
 
 
-def sell_if_prompt(facts: Mapping[str, str], rows: Iterable[tuple[str, str, float, float | None]],
-                   *, market: str, alerts: Sequence[str] = (), peak: str = "") -> str:
-    """rows: (symbol, her sell-if, P/L %, today %). `alerts`: the monitor's alarms that
-    woke her (operator 2026-10-22: "lets have the alert go to Gemma")."""
+def bought_today(entered: datetime | None, now: datetime) -> bool:
+    """Bought on today's ET calendar date: no sell-if sale yet (Gemma's choice, 2026-10-23;
+    stops, the 3% loss limit and the profit lock still protect it)."""
+    return entered is not None and entered.astimezone(ET).date() == now.astimezone(ET).date()
+
+
+def sell_if_prompt(facts: Mapping[str, str], rows: Iterable[tuple],
+                   *, market: str, alerts: Sequence[str] = (), peak: str = "",
+                   before_buy: bool = False) -> str:
+    """rows: (symbol, her sell-if, P/L %, today %[, "bought <when> at <price>"]). `alerts`: the
+    monitor's alarms that woke her (operator 2026-10-22: "lets have the alert go to Gemma").
+    `before_buy`: the same check on stocks she is ABOUT to buy (2026-10-23: four buys were sold
+    28 minutes later because "falls below its 50-day average" was already true at the buy)."""
     rows = list(rows)
-    lines = [f"- {s}: P/L {pl:+.1f}%, today {('n/a' if d is None else f'{d:+.1f}%')}; YOUR sell-if: {si}"
-             for s, si, pl, d in rows]
+    lines = []
+    for s, si, pl, d, *rest in rows:
+        bought = f"; {rest[0]}" if rest and rest[0] else ""
+        state = ("" if before_buy else
+                 f"P/L {pl:+.1f}%, today {('n/a' if d is None else f'{d:+.1f}%')}{bought}; ")
+        lines.append(f"- {s}: {state}YOUR sell-if: {si}")
+    if before_buy:
+        head = ("You are Gemma. You are about to BUY the stocks below. For each you wrote a SELL-IF: the",
+                "event that would make you sell. Check whether that event is ALREADY TRUE right now, judged",
+                "from the facts below (e.g. 'falls below its 50-day average' when the stock is already below",
+                "it). If it is, the buy is refused: a sell-if must describe something that has not happened.",
+                "")
+    else:
+        head = ("You are Gemma. The desk checks your sell-ifs every hour, around the clock. For each stock",
+                "you hold you wrote a SELL-IF: the observable event that would make you sell. Check ONLY",
+                "whether that event has happened, judged from the facts below. Do not invent a new reason",
+                "to sell. It counts ONLY if it happened AFTER you bought (your buy time and price are shown):",
+                "if it was already true when you bought -- e.g. the stock was already below the average at",
+                "your buy price -- answer no.",
+                "")
     return "\n".join((
-        "You are Gemma. It is during market hours. For each stock you hold you wrote a SELL-IF:",
-        "the observable event that would make you sell. Check ONLY whether that event has",
-        "happened, judged from the facts below. Do not invent a new reason to sell.",
-        "",
+        *head,
         f"Market: {market}",
         "",
         *(("ALERTS from the desk monitor (why you were woken now):", *(f"- {a}" for a in alerts),
            "An alert is a reason to look closely, not a reason to sell by itself.", "") if alerts else ()),
-        "Your holdings:",
+        "Stocks you are about to buy:" if before_buy else "Your holdings:",
         *lines,
         *(("", "PEAK-SELL status (the desk's take-profit rule, run every 5 minutes -- information for you;",
            "it sells a READY position on its own when the 5-minute trend turns down while in profit):", peak)
@@ -91,8 +117,10 @@ def sell_if_prompt(facts: Mapping[str, str], rows: Iterable[tuple[str, str, floa
         "",
         "Facts per stock:",
         *(f"[{s}]\n{facts[s]}\n" for s, *_ in rows if s in facts),
-        "For EACH holding answer:",
-        "- met: yes (your sell-if has clearly happened), no, or unclear (the facts do not say)",
+        "For EACH " + ("stock" if before_buy else "holding") + " answer:",
+        "- met: yes (" + ("it is already true now" if before_buy
+                          else "your sell-if has clearly happened since your buy")
+        + "), no, or unclear (the facts do not say)",
         "- quotes: if yes, the exact words from the facts that show it -- ONE QUOTE FOR EACH",
         "  PART of a sell-if joined by 'and', 'on' or 'with' (e.g. 'below its 50-day average",
         "  on high volume' needs a quote for the 50-day AND one for the volume); otherwise empty",
