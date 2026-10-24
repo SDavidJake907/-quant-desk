@@ -71,3 +71,18 @@ def test_schema_adds_outlooks():
     s = ol.with_schema({"type": "object", "properties": {"journal": {}}, "required": ["journal"]}, ["MU"])
     assert "outlooks" in s["required"] and s["properties"]["outlooks"]["items"]["properties"]["symbol"]["enum"] == ["MU"]
     assert "every holding" in ol.rules(True) and "EVERY new buy (none" in ol.rules(False)
+
+
+def test_followup_asks_only_for_the_missing():
+    o = ol.Outlook(day="2026-10-26", symbol="MU", kind="buy", price=1, p_up=0.6, low_pct=-5, high_pct=5, lean="news")
+    assert ol.missing([o], ["MU", "OKTA", "NOW"]) == ["NOW", "OKTA"]
+    s = ol.followup_schema(["NOW", "OKTA"])
+    assert s["properties"]["outlooks"]["minItems"] == 2 and s["required"] == ["outlooks"]
+    assert "NOW, OKTA" in ol.followup_prompt(["NOW", "OKTA"], {"NOW": "f"}, {"NOW": "r"}, False)
+
+
+def test_p_up_as_a_fraction_or_a_percent():
+    for given in (65, 0.65):
+        got = ol.parse(answer(("MU", given, -4, 8, "news", "")), day=DAY, buys=["MU"], kept=[],
+                       holdings_due=False, prices={"MU": 100})
+        assert got[0].p_up == 0.65

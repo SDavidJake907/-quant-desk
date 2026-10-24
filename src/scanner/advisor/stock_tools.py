@@ -23,6 +23,7 @@ from scanner.sources import alpaca_bars
 from scanner.sources import calendar as event_calendar
 
 MAX_CHARS = 1800
+STORY_CHARS = 3 * MAX_CHARS
 
 
 def _fn(name: str, description: str, props: Mapping[str, Any] | None = None,
@@ -39,6 +40,9 @@ TOOLS = [
     _fn("get_chart", "Daily chart summary: returns over 1 week / 1 / 3 / 6 months and 12-1 momentum, price vs "
         "its 20/50/200-day averages, RSI(14), daily ATR %, distance from the 52-week high, volume trend.",
         SYMBOL, ("symbol",)),
+    _fn("stock_story", "One stock's whole story in ONE lookup: the chart summary (as get_chart, plus RSI and the "
+        "20-day distance 3 sessions ago and the distance from the 20-day in daily ATRs), its headlines from the "
+        "last 7 days, and its next earnings date.", SYMBOL, ("symbol",)),
     _fn("market_map", "Where money moved in the S&P 500 today: breadth (stocks up / down), rotation or broad "
         "selling, each sector's dollar gain or loss, the biggest dollar losers and gainers."),
     _fn("sector_movers", "Today's biggest movers inside one S&P 500 sector.",
@@ -78,9 +82,13 @@ async def get_chart(client, broker, symbol: str) -> str:
         return f"Not enough history for {symbol}."
     k = {**ind.compute(b), **ind.more(b)}
     i = len(c) - 1
-    def v(name: str, fmt: str = "{:+.1f}") -> str:
-        x = k[name][i]
+    def v(name: str, fmt: str = "{:+.1f}", at: int = i) -> str:
+        x = k[name][at]
         return "n/a" if x is None else fmt.format(x)
+    gap, atr = k["price_vs_sma20_pct"][i], k["atr_pct"][i]
+    # Raw, not labelled (Gemma 2026-10-25: she judges overbought / oversold / "crossed the middle" herself).
+    then = (f"; 3 sessions ago: RSI(14) {v('rsi14', '{:.0f}', i - 3)}, vs its 20-day {v('price_vs_sma20_pct', at=i - 3)}%"
+            f"; distance from the 20-day {'n/a' if gap is None or not atr else f'{gap / atr:+.1f}'} daily ATRs")
     return _cap(
         f"{symbol.upper()} close {c[-1]:,.2f}: 1 week {_pct(c[-1], c[-6])}, 1 month {_pct(c[-1], c[-22])}, "
         f"3 months {_pct(c[-1], c[-64])}, 6 months {_pct(c[-1], c[-127] if len(c) > 127 else None)}, 12-1 momentum "
@@ -88,7 +96,20 @@ async def get_chart(client, broker, symbol: str) -> str:
         f"200-day {v('price_vs_sma200_pct')}%; RSI(14) {v('rsi14', '{:.0f}')}; ATR {v('atr_pct', '{:.1f}')}% a day; "
         f"{v('pct_below_52w_high', '{:.1f}')}% under its 52-week high; ADX {v('adx14', '{:.0f}')}; volume 20/60-day "
         f"{v('volume_trend', '{:.2f}')}x; up/down volume {v('up_volume_ratio', '{:.2f}')}; SuperTrend "
-        f"{'up' if k['supertrend_up'][i] == 1.0 else 'down'}")
+        f"{'up' if k['supertrend_up'][i] == 1.0 else 'down'}{then}")
+
+
+async def stock_story(client, broker, symbol: str) -> str:
+    """The chart, the week's headlines and the next report in ONE lookup (Gemma 2026-10-25: "synthesize
+    the 'Why' behind the 'What' in one pass"). Facts only -- no lab notes (her choice). Each part that
+    fails says so; the others still come back."""
+    parts = []
+    for name, fn in (("chart", get_chart), ("news", get_news), ("earnings", get_earnings)):
+        try:
+            parts.append(await fn(client, broker, symbol))
+        except Exception as exc:                               # noqa: BLE001
+            parts.append(f"{name} unavailable ({type(exc).__name__})")
+    return "\n".join(parts)[:STORY_CHARS]
 
 
 async def get_market_map(client, broker) -> str:
@@ -138,7 +159,7 @@ async def my_positions(client, broker) -> str:
 HANDLERS: dict[str, Callable[..., Awaitable[str]]] = {
     "get_quote": get_quote, "get_chart": get_chart, "market_map": get_market_map,
     "sector_movers": sector_movers, "get_news": get_news, "get_earnings": get_earnings,
-    "my_positions": my_positions,
+    "my_positions": my_positions, "stock_story": stock_story,
 }
 
 

@@ -398,7 +398,7 @@ async def think_then_answer(text: str, answer_schema: dict, client,
     return await chat_json(gt.with_notes(text, notes), answer_schema, client), notes
 
 
-async def outlooks_now(client, answer, buys, kept, weekly: bool, mine) -> list[outlook.Outlook]:
+async def outlooks_now(client, answer, buys, kept, weekly: bool, mine, facts, reasons) -> list[outlook.Outlook]:
     """Her outlooks with the price now (Alpaca snapshot; a held stock falls back to its position
     price). An outlook without a price is not recorded. Never raises."""
     wanted = sorted(set(buys) | (set(kept) if weekly else set()))
@@ -410,9 +410,17 @@ async def outlooks_now(client, answer, buys, kept, weekly: bool, mine) -> list[o
         prices |= {s: float(v["latestTrade"]["p"]) for s, v in snaps.items() if (v or {}).get("latestTrade")}
     except Exception as exc:                             # noqa: BLE001
         print(f"  {YELLOW}outlook prices: snapshots unavailable ({type(exc).__name__}){RESET}")
+    day = datetime.now(sat.ET).date()
     try:
-        return outlook.parse(answer, day=datetime.now(sat.ET).date(), buys=buys, kept=kept,
-                             holdings_due=weekly, prices=prices)
+        made = outlook.parse(answer, day=day, buys=buys, kept=kept, holdings_due=weekly, prices=prices)
+        gap = outlook.missing(made, [s for s in wanted if prices.get(s)])
+        if gap:
+            print(f"  {DIM}outlooks missing for {gap} -- asking her for them{RESET}")
+            extra = await chat_json(outlook.followup_prompt(gap, facts, reasons, weekly),
+                                    outlook.followup_schema(gap), client)
+            made += outlook.parse(extra, day=day, buys=[s for s in buys if s in gap],
+                                  kept=[s for s in kept if s in gap], holdings_due=weekly, prices=prices)
+        return made
     except Exception as exc:                             # noqa: BLE001
         print(f"  {YELLOW}outlooks not recorded ({type(exc).__name__}: {exc}){RESET}")
         return []
@@ -709,7 +717,7 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
         decision = gt.validate(answer, facts, held=set(mine),
                                max_positions=POLICY.gemma_max_positions, menu=MENU)
         buys, sells = gt.diff(decision.keep, mine)
-        outlooks = await outlooks_now(client, answer, buys, decision.keep, weekly, mine)
+        outlooks = await outlooks_now(client, answer, buys, decision.keep, weekly, mine, facts, dict(decision.reasons))
         bookorders.log("gemma_decision", "", json.dumps({
             "keep": decision.keep, "buys": buys, "sells": sells,
             "reasons": dict(decision.reasons), "rejected": dict(decision.rejected),

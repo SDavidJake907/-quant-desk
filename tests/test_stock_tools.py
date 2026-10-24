@@ -70,3 +70,19 @@ def test_market_map_reads_rotation_and_dollars():
     text = mm.text(m, held=["BIG"])
     assert "ROTATION" in text and "BIG -5.0% (-$200B" in text and "Your holdings: BIG" in text
     assert "Consumer Staples" in mm.sector_text(m, "consumer staples")
+
+
+def test_stock_story_joins_chart_news_and_earnings_and_survives_a_failure(monkeypatch):
+    async def chart(client, broker, symbol):
+        return f"{symbol} chart"
+
+    async def news(client, broker, symbol):
+        raise RuntimeError("down")
+
+    async def earnings(client, broker, symbol):
+        return f"{symbol} reports soon"
+    monkeypatch.setattr(stock_tools, "get_chart", chart)
+    monkeypatch.setattr(stock_tools, "get_news", news)
+    monkeypatch.setattr(stock_tools, "get_earnings", earnings)
+    out = run(stock_tools.execute("stock_story", {"symbol": "MU"}, client=None, broker=None))
+    assert out == "MU chart\nnews unavailable (RuntimeError)\nMU reports soon"

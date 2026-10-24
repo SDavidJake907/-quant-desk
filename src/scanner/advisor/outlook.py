@@ -96,11 +96,13 @@ def parse(answer: Any, *, day: date, buys: Iterable[str], kept: Iterable[str], h
         if s not in wanted or s in out or not prices.get(s):
             continue
         try:
-            p, lo, hi = float(o["p_up"]) / 100, float(o["low_pct"]), float(o["high_pct"])
+            p, lo, hi = float(o["p_up"]), float(o["low_pct"]), float(o["high_pct"])
         except (KeyError, TypeError, ValueError):
             continue
         if p != p or lo != lo or hi != hi:
             continue
+        # She is asked for 0-100 but sometimes writes 0.65 (10-25 dry run read as 1%): 0-1 is a fraction.
+        p = p if p <= 1 else p / 100
         lo, hi = sorted((max(-MAX_RANGE_PCT, lo), min(MAX_RANGE_PCT, hi)))
         out[s] = Outlook(day=day.isoformat(), symbol=s, kind="buy" if s in buys else "holding",
                          price=float(prices[s]), p_up=min(P_CEIL, max(P_FLOOR, p)), low_pct=lo,
@@ -215,3 +217,26 @@ def text(sc: Mapping[str, Any]) -> str:
         lines.append(f"- leaning on {k}: {p['n']} graded, Brier {p['brier']:.3f}, inside the range "
                      f"{p['inside'] * 100:.0f}%")
     return "\n".join(lines)
+
+
+def missing(made: Iterable[Outlook], wanted: Iterable[str]) -> list[str]:
+    have = {o.symbol for o in made}
+    return sorted(s for s in wanted if s not in have)
+
+
+def followup_prompt(symbols: Sequence[str], facts: Mapping[str, str], reasons: Mapping[str, str],
+                    holdings_due: bool) -> str:
+    """When her decision left outlooks out (10-25 dry run: four buys, an empty list): one short ask for
+    the missing ones, with each stock's facts and her own reason."""
+    return "\n".join((
+        "You are Gemma. Your decision just now did not include the outlooks the desk records. Write them now for: "
+        + ", ".join(symbols) + ".", "",
+        rules(holdings_due), "",
+        *(f"[{s}] your reason: {reasons.get(s, '(kept holding)')}\n{facts.get(s, '')}\n" for s in symbols),
+    ))
+
+
+def followup_schema(symbols: Sequence[str]) -> dict[str, Any]:
+    s = with_schema({"type": "object", "properties": {}, "required": []}, symbols)
+    s["properties"]["outlooks"] = {**s["properties"]["outlooks"], "minItems": len(symbols)}
+    return s
