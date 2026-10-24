@@ -54,6 +54,12 @@ NUMERIC: dict[str, tuple[tuple[float, ...], str]] = {
     "day_of_week": ((1, 2, 3, 4, 5), "decision day: 1 Monday ... 5 Friday (the buy is the next trading day)"),
     "month": ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), "decision month: 1 January ... 12 December"),
     "day_of_month": ((1, 5, 10, 15, 20, 25, 28), "calendar day of the month"),
+    # Volume in detail (operator 2026-10-23: "backtest even with volume. and time").
+    "volume_trend": ((0.7, 0.9, 1.1, 1.3, 1.5), "20-day average volume / 60-day (above 1 = volume rising)"),
+    "up_volume_ratio": ((0.5, 0.8, 1, 1.25, 1.5, 2),
+                        "volume on up days / volume on down days, last 20 days (above 1 = accumulation)"),
+    "close_vs_vwap20_pct": ((-5, -2, 0, 2, 5), "close vs the 20-day volume-weighted average price %"),
+    "dollar_volume_m": ((10, 25, 50, 100, 250), "average daily dollar volume, $ millions (liquidity)"),
 }
 #: Calendar filters also take op "is" (exactly that day / month).
 CALENDAR = ("day_of_week", "month", "day_of_month")
@@ -76,10 +82,23 @@ MAX_PER_SECTOR = (0, 1, 2, 3)
 MAX_FILTERS = 6
 
 
+#: SELL RULES (operator 2026-10-23: "buy/sell indicators in details"): up to this many
+#: indicator conditions; a close where ANY one is true sells.
+MAX_EXIT_FILTERS = 3
+TRAIL_ATR = (0.0, 2.0, 3.0, 4.0)
+#: When the buy fills after the decision close: the next day's open or its close.
+ENTRY_AT = ("next_close", "next_open")
+
+
 class Filter(Frozen):
     name: str
-    op: str = "is"          # above / below for NUMERIC; "is" for FLAGS
+    op: str = "is"          # above / below (/ is for CALENDAR) for NUMERIC; is / not for FLAGS
     value: float = 1.0
+
+    def describe(self) -> str:
+        if self.name in FLAGS:
+            return self.name if self.op != "not" else f"NOT {self.name}"
+        return f"{self.name} {self.op} {self.value:g}"
 
 
 class Recipe(Frozen):
@@ -92,47 +111,69 @@ class Recipe(Frozen):
     target_r: float
     max_hold_days: int
     max_per_sector: int = 0
+    exit_filters: tuple[Filter, ...] = ()
+    trail_atr: float = 0.0
+    entry_at: str = "next_close"
 
     @property
     def key(self) -> str:
-        """Stable id: the same recipe is the same trial, however it is worded."""
-        blob = json.dumps(self.model_dump(mode="json"), sort_keys=True)
+        """Stable id: the same recipe is the same trial, however it is worded. Fields at
+        their defaults are left out, so recipes from before the sell rules keep their key."""
+        dump = self.model_dump(mode="json")
+        for name, default in (("exit_filters", []), ("trail_atr", 0.0), ("entry_at", "next_close")):
+            if dump.get(name) == default:
+                dump.pop(name)
+        blob = json.dumps(dump, sort_keys=True)
         return hashlib.sha256(blob.encode()).hexdigest()[:10]
 
     def describe(self) -> str:
-        conds = "; ".join(f.name if f.name in FLAGS else f"{f.name} {f.op} {f.value:g}"
-                          for f in self.filters) or "no filters"
+        conds = "; ".join(f.describe() for f in self.filters) or "no filters"
         exits = ", ".join(x for x in (
             f"stop {self.stop_atr:g} ATR" if self.stop_atr else "no stop",
             f"target {self.target_r:g}R" if self.target_r else "no target",
-            f"max {self.max_hold_days}d"))
+            f"trail {self.trail_atr:g} ATR under the highest close" if self.trail_atr else "",
+            ("sell at a close when " + " OR ".join(f.describe() for f in self.exit_filters))
+            if self.exit_filters else "",
+            f"max {self.max_hold_days}d") if x)
         sector = f", max {self.max_per_sector}/sector" if self.max_per_sector else ""
+        entry = ", buy at the next open" if self.entry_at == "next_open" else ""
         return (f"[{conds}] rank {self.rank_by} {self.rank_order}, top {self.top_n} every "
-                f"{self.rebalance_days}d; {exits}{sector}")
+                f"{self.rebalance_days}d{entry}; {exits}{sector}")
+
+
+def _filters(items: Any, label: str) -> list[Filter]:
+    """Menu conditions; an off-menu number snaps to the nearest allowed value."""
+    out = []
+    for f in items or []:
+        name = str(f.get("name", ""))
+        if name in FLAGS:
+            op = str(f.get("op", "is"))
+            out.append(Filter(name=name, op="not" if op == "not" else "is"))
+        elif name in NUMERIC:
+            op, value = str(f.get("op", "")), f.get("value")
+            if op not in ("above", "below") and not (op == "is" and name in CALENDAR):
+                raise ValueError(f"{label} {name}: op must be 'above' or 'below'"
+                                 + (" or 'is'" if name in CALENDAR else ""))
+            allowed = NUMERIC[name][0]
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ValueError(f"{label} {name}: value must be a number from {list(allowed)}")
+            # Off the menu (RSI 35): the nearest allowed value, not a lost try (2026-10-23: a third
+            # of her first session was refused this way). describe() shows what actually ran.
+            value = min(allowed, key=lambda a: (abs(a - float(value)), a))
+            out.append(Filter(name=name, op=op, value=float(value)))
+        else:
+            raise ValueError(f"unknown {label} {name!r}")
+    return sorted(out, key=lambda f: (f.name, f.op, f.value))
 
 
 def parse(raw: Any) -> Recipe:
     """A Recipe, or ValueError naming exactly what is off the menu."""
     if not isinstance(raw, dict):
         raise ValueError("the recipe must be a JSON object")
-    filters = []
-    for f in raw.get("filters") or []:
-        name = str(f.get("name", ""))
-        if name in FLAGS:
-            filters.append(Filter(name=name))
-        elif name in NUMERIC:
-            op, value = str(f.get("op", "")), f.get("value")
-            if op not in ("above", "below") and not (op == "is" and name in CALENDAR):
-                raise ValueError(f"filter {name}: op must be 'above' or 'below'" + (" or 'is'" if name in CALENDAR else ""))
-            allowed = NUMERIC[name][0]
-            if not isinstance(value, (int, float)) or isinstance(value, bool):
-                raise ValueError(f"filter {name}: value must be a number from {list(allowed)}")
-            # Off the menu (RSI 35): the nearest allowed value, not a lost try (2026-10-23: a third
-            # of her first session was refused this way). describe() shows what actually ran.
-            value = min(allowed, key=lambda a: (abs(a - float(value)), a))
-            filters.append(Filter(name=name, op=op, value=float(value)))
-        else:
-            raise ValueError(f"unknown filter {name!r}")
+    filters = _filters(raw.get("filters"), "filter")
+    exits = _filters(raw.get("exit_filters"), "sell rule")
+    if len(exits) > MAX_EXIT_FILTERS:
+        raise ValueError(f"at most {MAX_EXIT_FILTERS} sell rules")
     if len(filters) > MAX_FILTERS:
         raise ValueError(f"at most {MAX_FILTERS} filters")
     rank_by = str(raw.get("rank_by", ""))
@@ -148,12 +189,17 @@ def parse(raw: Any) -> Recipe:
             raise ValueError(f"{key} must be one of {list(allowed)}")
         return value
 
-    recipe = Recipe(filters=tuple(sorted(filters, key=lambda f: (f.name, f.op, f.value))),
+    recipe = Recipe(filters=tuple(filters),
                     rank_by=rank_by, rank_order=order,
                     top_n=int(pick("top_n", TOP_N)), rebalance_days=int(pick("rebalance_days", REBALANCE)),
                     stop_atr=float(pick("stop_atr", STOP_ATR)), target_r=float(pick("target_r", TARGET_R)),
                     max_hold_days=int(pick("max_hold_days", MAX_HOLD)),
-                    max_per_sector=int(pick("max_per_sector", MAX_PER_SECTOR)))
+                    max_per_sector=int(pick("max_per_sector", MAX_PER_SECTOR)),
+                    exit_filters=tuple(exits),
+                    trail_atr=float(pick("trail_atr", TRAIL_ATR)) if "trail_atr" in raw else 0.0,
+                    entry_at=str(raw.get("entry_at") or "next_close"))
+    if recipe.entry_at not in ENTRY_AT:
+        raise ValueError(f"entry_at must be one of {list(ENTRY_AT)}")
     if recipe.target_r and not recipe.stop_atr:
         raise ValueError("a target in R needs a stop (R is the stop distance)")
     return recipe
@@ -169,7 +215,14 @@ def menu_text() -> str:
               f"top_n {list(TOP_N)}; rebalance_days {list(REBALANCE)} (trading days between buys);",
               f"stop_atr {list(STOP_ATR)} daily ATRs under the buy (0 = none); target_r {list(TARGET_R)} "
               "x the stop distance (0 = none; needs a stop);",
-              f"max_hold_days {list(MAX_HOLD)}; max_per_sector {list(MAX_PER_SECTOR)} (0 = no cap)."]
+              f"max_hold_days {list(MAX_HOLD)}; max_per_sector {list(MAX_PER_SECTOR)} (0 = no cap).",
+              f"SELL RULES: exit_filters, up to {MAX_EXIT_FILTERS} conditions from the same menu (yes/no ones may "
+              "use op 'not', e.g. NOT supertrend_up); a CLOSE where ANY one is true sells. trail_atr "
+              f"{list(TRAIL_ATR)}: a close more than that many daily ATRs under the highest close since the "
+              "buy sells (0 = off). Stops and targets act during the day; sell rules, the trail and the "
+              "time limit at the close.",
+              f"TIMING: entry_at {list(ENTRY_AT)} -- buy at the next day's open (holds the overnight move "
+              "from the decision) or its close."]
     return "\n".join(lines)
 
 
@@ -182,7 +235,7 @@ def schema() -> dict[str, Any]:
             "filters": {"type": "array", "maxItems": MAX_FILTERS, "items": {
                 "type": "object", "properties": {
                     "name": {"type": "string", "enum": names},
-                    "op": {"type": "string", "enum": ["above", "below", "is"]},
+                    "op": {"type": "string", "enum": ["above", "below", "is", "not"]},
                     "value": {"type": "number"}},
                 "required": ["name", "op", "value"]}},
             "rank_by": {"type": "string", "enum": sorted(NUMERIC)},
@@ -192,7 +245,16 @@ def schema() -> dict[str, Any]:
             "stop_atr": {"type": "number", "enum": list(STOP_ATR)},
             "target_r": {"type": "number", "enum": list(TARGET_R)},
             "max_hold_days": {"type": "integer", "enum": list(MAX_HOLD)},
-            "max_per_sector": {"type": "integer", "enum": list(MAX_PER_SECTOR)}},
+            "max_per_sector": {"type": "integer", "enum": list(MAX_PER_SECTOR)},
+            "exit_filters": {"type": "array", "maxItems": MAX_EXIT_FILTERS, "items": {
+                "type": "object", "properties": {
+                    "name": {"type": "string", "enum": names},
+                    "op": {"type": "string", "enum": ["above", "below", "is", "not"]},
+                    "value": {"type": "number"}},
+                "required": ["name", "op", "value"]}},
+            "trail_atr": {"type": "number", "enum": list(TRAIL_ATR)},
+            "entry_at": {"type": "string", "enum": list(ENTRY_AT)}},
             "required": ["filters", "rank_by", "rank_order", "top_n", "rebalance_days",
-                         "stop_atr", "target_r", "max_hold_days", "max_per_sector"]}},
+                         "stop_atr", "target_r", "max_hold_days", "max_per_sector",
+                         "exit_filters", "trail_atr", "entry_at"]}},
         "required": ["idea", "recipe"]}

@@ -282,6 +282,19 @@ def more(bars: Bars, market: Mapping[date, float] | None = None) -> dict[str, Se
     out["intraday_pct"] = intraday
     out["intraday_5d_pct"] = _rolling_sum(intraday, 5)
     out["overnight_5d_pct"] = _rolling_sum(gaps, 5)
+    v20, v60 = sma(v, 20), sma(v, 60)
+    out["volume_trend"] = [None if v20[i] is None or v60[i] is None or not v60[i] else v20[i] / v60[i]
+                           for i in range(n)]
+    upv = [0.0] + [v[i] if c[i] > c[i - 1] else 0.0 for i in range(1, n)]
+    dnv = [0.0] + [v[i] if c[i] < c[i - 1] else 0.0 for i in range(1, n)]
+    us, ds = _rolling_sum(upv, 20), _rolling_sum(dnv, 20)
+    out["up_volume_ratio"] = [None if us[i] is None or ds[i] is None or ds[i] <= 1e-9 else max(us[i], 0.0) / ds[i]
+                              for i in range(n)]
+    pv = _rolling_sum([c[i] * v[i] for i in range(n)], 20)
+    vs = _rolling_sum(list(v), 20)
+    out["close_vs_vwap20_pct"] = [None if pv[i] is None or not vs[i] or vs[i] <= 1e-9 else _pct(c[i], pv[i] / vs[i])
+                                  for i in range(n)]
+    out["dollar_volume_m"] = [None if pv[i] is None else pv[i] / 20 / 1e6 for i in range(n)]
     out["day_of_week"] = [float(x.weekday() + 1) for x in d]
     out["month"] = [float(x.month) for x in d]
     out["day_of_month"] = [float(x.day) for x in d]

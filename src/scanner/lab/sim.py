@@ -10,8 +10,11 @@ that moment; cash earns nothing.
 EXITS, checked from the day after the buy: a bar that OPENS through the stop
 fills at the open; one that trades through it fills at the stop; the target
 the same way; a bar touching both is a STOP (the order inside a daily bar is
-unknown, so it is settled against the trade). The time limit sells at the
-close. Costs (backtest.costs, 5 bp spread + 2 bp slippage) on every fill.
+unknown, so it is settled against the trade). At the close, in this order: the
+trailing exit (a close more than trail_atr ATRs under the highest close), the sell
+rules (any one true sells), the time limit. A buy at the NEXT OPEN (entry_at) fills at
+the open; that day's range can still reach its levels. Costs (backtest.costs, 5 bp
+spread + 2 bp slippage) on every fill.
 
 THE RANDOM CONTROL: the same book, slots, dates and exits, filled with random
 members instead of the recipe's picks. A recipe that cannot beat it is the
@@ -103,22 +106,30 @@ def _has(v: float | None) -> bool:
     return v is not None and v == v
 
 
-def _ok(stock: Stock, i: int, recipe: Recipe, uptrend: bool) -> bool:
-    for f in recipe.filters:
-        if f.name == "market_uptrend":
-            if not uptrend:
-                return False
-            continue
+def _holds(stock: Stock, i: int, f, uptrend: bool) -> bool | None:
+    """Whether one condition holds on bar i; None when its value is missing."""
+    if f.name == "market_uptrend":
+        v = 1.0 if uptrend else 0.0
+    else:
         v = stock.ind[f.name][i]
         if not _has(v):
-            return False
-        if f.name in FLAGS:
-            if v < 0.5:
-                return False
-        elif ((f.op == "above" and v <= f.value) or (f.op == "below" and v >= f.value)
-              or (f.op == "is" and v != f.value)):
-            return False
+            return None
+    if f.name in FLAGS:
+        return (v >= 0.5) != (f.op == "not")
+    return ((f.op == "above" and v > f.value) or (f.op == "below" and v < f.value)
+            or (f.op == "is" and v == f.value))
+
+
+def _ok(stock: Stock, i: int, recipe: Recipe, uptrend: bool) -> bool:
+    """Every buy filter holds (a missing value is a miss)."""
+    if not all(_holds(stock, i, f, uptrend) for f in recipe.filters):
+        return False
     return _has(stock.ind[recipe.rank_by][i]) and _has(stock.ind["atr"][i])
+
+
+def _sell_rule(stock: Stock, i: int, recipe: Recipe, uptrend: bool):
+    """The first sell rule true at this close, or None (a missing value never sells)."""
+    return next((f for f in recipe.exit_filters if _holds(stock, i, f, uptrend)), None)
 
 
 class _Pos(NamedTuple):
@@ -128,21 +139,42 @@ class _Pos(NamedTuple):
     stop: float | None
     target: float | None
     held: int
+    atr: float = 0.0
+    high_close: float = 0.0
+    #: Bought at today's open: today's bar after the open can still hit the levels,
+    #: but the open itself was the fill, so no gap rule applies to it.
+    at_open: bool = False
 
 
 def _exit(p: _Pos, i: int) -> float | None:
     s = p.stock
     if p.stop is not None:
-        if s.opens[i] <= p.stop:
+        if not p.at_open and s.opens[i] <= p.stop:
             return s.opens[i]
         if s.lows[i] <= p.stop:
             return p.stop
     if p.target is not None:
-        if s.opens[i] >= p.target:
+        if not p.at_open and s.opens[i] >= p.target:
             return s.opens[i]
         if s.highs[i] >= p.target:
             return p.target
     return None
+
+
+def _open(stock: Stock, i: int, price_now: float, spend: float, recipe: Recipe, at_open: bool) -> _Pos | None:
+    price = COSTS.buy_price(price_now)
+    if spend <= 0 or price <= 0:
+        return None
+    atr = stock.ind["atr"][i - 1 if at_open and i else i]       # at the open only yesterday's ATR is known
+    atr = atr if _has(atr) else 0.0
+    stop = price_now - recipe.stop_atr * atr if recipe.stop_atr and atr else None
+    target = (price_now + recipe.target_r * recipe.stop_atr * atr
+              if recipe.target_r and stop is not None else None)
+    return _Pos(stock, spend / price, spend, stop, target, 0, atr, price_now, at_open)
+
+
+def _value(cash: float, held, d) -> float:
+    return cash + sum(p.shares * p.stock.closes[p.stock.at[d]] if d in p.stock.at else p.cost for p in held)
 
 
 def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[date],
@@ -153,42 +185,55 @@ def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[dat
     days = [d for d in calendar if start <= d <= end]
     cash, held, pending = 1.0, [], []
     curve, invested, trades = [], [], []
+    last_value = 1.0
     for k, d in enumerate(days):
+        up = bool(uptrend.get(d))
+        if recipe.entry_at == "next_open":               # yesterday's decisions fill at today's open
+            for stock in pending:
+                i = stock.at.get(d)
+                if i is None or len(held) >= recipe.top_n:
+                    continue
+                pos = _open(stock, i, stock.opens[i], min(cash, last_value / recipe.top_n), recipe, True)
+                if pos:
+                    held.append(pos)
+                    cash -= pos.cost
+            pending = []
         still = []
         for p in held:                                   # exits on today's bar
             i = p.stock.at.get(d)
             if i is None:
                 still.append(p)
                 continue
+            close = p.stock.closes[i]
             fill = _exit(p, i)
-            if fill is None and p.held + 1 >= recipe.max_hold_days:
-                fill = p.stock.closes[i]
             if fill is None:
-                still.append(p._replace(held=p.held + 1))
+                high = max(p.high_close, close)
+                if recipe.trail_atr and p.atr and close < high - recipe.trail_atr * p.atr:
+                    fill = close
+                elif _sell_rule(p.stock, i, recipe, up) is not None:
+                    fill = close
+                elif p.held + 1 >= recipe.max_hold_days:
+                    fill = close
+            if fill is None:
+                still.append(p._replace(held=p.held + 1, high_close=max(p.high_close, close), at_open=False))
                 continue
             got = p.shares * COSTS.sell_price(fill)
             cash += got
             trades.append(got / p.cost - 1)
         held = still
-        equity = cash + sum(p.shares * p.stock.closes[p.stock.at[d]] if d in p.stock.at else p.cost
-                            for p in held)
-        for stock in pending:                            # yesterday's decisions fill at today's close
-            i = stock.at.get(d)
-            if i is None or len(held) >= recipe.top_n:
-                continue
-            spend = min(cash, equity / recipe.top_n)
-            price = COSTS.buy_price(stock.closes[i])
-            if spend <= 0 or price <= 0:
-                continue
-            atr = stock.ind["atr"][i] if _has(stock.ind["atr"][i]) else 0.0
-            stop = stock.closes[i] - recipe.stop_atr * atr if recipe.stop_atr and atr else None
-            target = (stock.closes[i] + recipe.target_r * recipe.stop_atr * atr
-                      if recipe.target_r and stop is not None else None)
-            held.append(_Pos(stock, spend / price, spend, stop, target, 0))
-            cash -= spend
-        pending = []
-        value = cash + sum(p.shares * p.stock.closes[p.stock.at[d]] if d in p.stock.at else p.cost
-                           for p in held)
+        if recipe.entry_at == "next_close":              # yesterday's decisions fill at today's close
+            equity = _value(cash, held, d)
+            for stock in pending:
+                i = stock.at.get(d)
+                if i is None or len(held) >= recipe.top_n:
+                    continue
+                pos = _open(stock, i, stock.closes[i], min(cash, equity / recipe.top_n), recipe, False)
+                if pos:
+                    held.append(pos)
+                    cash -= pos.cost
+            pending = []
+        value = _value(cash, held, d)
+        last_value = value
         curve.append(value)
         invested.append(1 - cash / value if value > 0 else 0.0)
         free = recipe.top_n - len(held)
@@ -196,7 +241,6 @@ def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[dat
             continue
         owned = {p.stock.symbol for p in held}
         pool = [stocks[s] for s in sorted(members(d)) if s in stocks and s not in owned]
-        up = bool(uptrend.get(d))
         if rng is not None:
             ready = [s for s in pool if (i := s.at.get(d)) is not None and _has(s.ind["atr"][i])]
             pending = rng.sample(ready, min(free, len(ready)))

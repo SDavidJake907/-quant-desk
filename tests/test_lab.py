@@ -247,3 +247,46 @@ def test_off_menu_values_snap_to_the_nearest_allowed():
     r = rc.parse({**BASE, "filters": [{"name": "rsi14", "op": "below", "value": 33},
                                       {"name": "price_vs_sma20_pct", "op": "below", "value": -3}]})
     assert "rsi14 below 30" in r.describe() and "price_vs_sma20_pct below -2" in r.describe()
+
+
+# --- sell rules, trailing exit, buy timing (operator 2026-10-23: "buy/sell indicators in details") ---
+
+def test_a_sell_rule_sells_at_the_first_close_it_is_true():
+    s = stock("A", [100.0] * 40)
+    s.ind["rsi14"][:] = [50.0] * 5 + [75.0] + [50.0] * 34           # true on day 5 only
+    r = book({"top_n": 3, "rebalance_days": 21, "max_hold_days": 63,
+              "exit_filters": [{"name": "rsi14", "op": "above", "value": 70}]}, [s])
+    assert r.trades >= 1                                            # sold on day 5, not held 63 days
+
+
+def test_flag_not_and_keys_unchanged_for_old_recipes():
+    old = rc.parse(BASE)
+    assert old.key == rc.parse({**BASE, "exit_filters": [], "trail_atr": 0.0, "entry_at": "next_close"}).key
+    r = rc.parse({**BASE, "exit_filters": [{"name": "supertrend_up", "op": "not", "value": 1}]})
+    assert "NOT supertrend_up" in r.describe() and r.key != old.key
+
+
+def test_trailing_exit_sells_after_the_top():
+    closes = [100.0, 100.0] + [100.0 + 2 * k for k in range(1, 11)] + [110.0] * 28   # up to 120, then 110
+    s = stock("T", closes)
+    trailing = book({"top_n": 3, "rebalance_days": 21, "max_hold_days": 63, "trail_atr": 3.0}, [s])
+    holding = book({"top_n": 3, "rebalance_days": 21, "max_hold_days": 63}, [s])
+    assert trailing.trades >= 1 and holding.trades == 0
+
+
+def test_buying_at_the_next_open_uses_the_open():
+    closes = [100.0] * 40
+    opens = [100.0, 90.0] + [100.0] * 38
+    s = stock("O", closes, opens=opens, lows=[min(o, c) for o, c in zip(opens, closes)])
+    at_open = book({"top_n": 3, "rebalance_days": 21, "max_hold_days": 5, "entry_at": "next_open"}, [s])
+    at_close = book({"top_n": 3, "rebalance_days": 21, "max_hold_days": 5}, [s])
+    assert at_open.avg_trade_pct > 5 > at_close.avg_trade_pct      # bought at 90, sold at 100
+
+
+def test_new_volume_indicators():
+    bars = _bars(80)
+    m = ind.more(bars)
+    for name in ("volume_trend", "up_volume_ratio", "close_vs_vwap20_pct", "dollar_volume_m"):
+        assert any(v is not None for v in m[name]), name
+    assert m["dollar_volume_m"][79] == pytest.approx(
+        sum(c * v for c, v in zip(bars.closes[60:80], bars.volumes[60:80])) / 20 / 1e6)
