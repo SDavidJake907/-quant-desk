@@ -77,7 +77,7 @@ TRIES = 15                     # Gemma asked for 15 (2026-10-23)
 CHUNK = 100
 #: --weekend: a session starts every SESSION_EVERY, rotating the universes, until
 #: Sunday WEEKEND_END (local time) -- leaving Ollama free before her Sunday decision.
-SESSION_EVERY = timedelta(hours=2)
+SESSION_EVERY = timedelta(minutes=30)        # operator: "all weekend" -- a session takes ~2-10 min
 WEEKEND_END_HOUR = 14
 
 CHECK_RECIPE = {"filters": [{"name": "price_vs_sma200_pct", "op": "above", "value": 0},
@@ -102,7 +102,9 @@ not adding anything.
 Search years: {s0} to {s1}. The years after are HIDDEN from you. {nominate}Your bar on the hidden
 years: beat the index by {pts:g} points a year, Sharpe above {sh:g}, worst drawdown {dd:g}% or less -- and
 beat random picks with at least {mt} trades. With enough tries one recipe looks good by luck; every
-try is counted, so make each one a real idea, not a small tweak of a lucky number.
+try is counted, so make each one a real idea, not a small tweak of a lucky number. Explore DIFFERENT
+families across a session -- trend following, buying dips, breakouts, volume, volatility squeezes,
+calendar (weekday, month), overnight vs regular-session moves -- instead of re-tuning one family.
 
 THE MENU
 {menu}"""

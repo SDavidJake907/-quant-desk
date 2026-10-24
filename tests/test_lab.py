@@ -50,7 +50,7 @@ def test_parse_accepts_the_menu_and_keys_ignore_filter_order():
 
 
 @pytest.mark.parametrize("bad, words", [
-    ({"filters": [{"name": "rsi14", "op": "below", "value": 33}]}, "value must be one of"),
+    ({"filters": [{"name": "rsi14", "op": "below", "value": "low"}]}, "must be a number"),
     ({"filters": [{"name": "magic", "op": "above", "value": 1}]}, "unknown filter"),
     ({"top_n": 7}, "top_n"),
     ({"target_r": 2.0}, "needs a stop"),
@@ -241,3 +241,9 @@ def test_a_restarted_weekend_does_not_nominate_twice():
     assert ledger.nominated_since(rows, "mid", now - timedelta(days=3))
     assert not ledger.nominated_since(rows, "small", now - timedelta(days=3))
     assert not ledger.nominated_since(rows, "mid", now + timedelta(days=1))
+
+
+def test_off_menu_values_snap_to_the_nearest_allowed():
+    r = rc.parse({**BASE, "filters": [{"name": "rsi14", "op": "below", "value": 33},
+                                      {"name": "price_vs_sma20_pct", "op": "below", "value": -3}]})
+    assert "rsi14 below 30" in r.describe() and "price_vs_sma20_pct below -2" in r.describe()

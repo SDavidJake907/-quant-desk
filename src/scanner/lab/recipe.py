@@ -125,8 +125,11 @@ def parse(raw: Any) -> Recipe:
             if op not in ("above", "below") and not (op == "is" and name in CALENDAR):
                 raise ValueError(f"filter {name}: op must be 'above' or 'below'" + (" or 'is'" if name in CALENDAR else ""))
             allowed = NUMERIC[name][0]
-            if not isinstance(value, (int, float)) or float(value) not in allowed:
-                raise ValueError(f"filter {name}: value must be one of {list(allowed)}")
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ValueError(f"filter {name}: value must be a number from {list(allowed)}")
+            # Off the menu (RSI 35): the nearest allowed value, not a lost try (2026-10-23: a third
+            # of her first session was refused this way). describe() shows what actually ran.
+            value = min(allowed, key=lambda a: (abs(a - float(value)), a))
             filters.append(Filter(name=name, op=op, value=float(value)))
         else:
             raise ValueError(f"unknown filter {name!r}")
