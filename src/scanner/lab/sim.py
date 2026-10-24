@@ -2,7 +2,7 @@
 
 THE BOOK: `top_n` equal slots. Every `rebalance_days` trading days, on the
 close, the recipe fills its EMPTY slots with the best-ranked members that pass
-its filters (point-in-time S&P 500 membership; the sector cap counts held
+its filters (the index's point-in-time membership; the sector cap counts held
 names). The buy is at the NEXT day's close (Gemma's choice, 2026-10-23: no
 same-day fill, no open-auction slippage). A slot is 1/top_n of the equity at
 that moment; cash earns nothing.
@@ -34,7 +34,7 @@ from scanner.models import Frozen
 
 COSTS = CostModel()
 RANDOM_SEEDS = 5
-#: Gemma's bar (2026-10-23), for EACH hidden stage: beat the S&P 500 by 15 points a
+#: Gemma's bar (2026-10-23), for EACH hidden stage: beat its index by 15 points a
 #: year, Sharpe above 1.2, worst drawdown 20% or less. Ours on top: beat the random
 #: control, and at least MIN_TRADES trades (fewer cannot show anything).
 BAR_EXCESS_PTS = 15.0
@@ -75,8 +75,8 @@ class Result(Frozen):
     def line(self) -> str:
         rnd = (f", random picks {self.random_annual_pct:+.1f}%/yr (you {self.annual_pct - self.random_annual_pct:+.1f} "
                "pts vs random)" if self.random_annual_pct is not None else "")
-        return (f"{self.annual_pct:+.1f}%/yr vs S&P {self.spx_annual_pct:+.1f}%/yr (you {self.excess_pts:+.1f} "
-                f"pts vs the S&P){rnd}; Sharpe "
+        return (f"{self.annual_pct:+.1f}%/yr vs the index {self.spx_annual_pct:+.1f}%/yr (you {self.excess_pts:+.1f} "
+                f"pts vs the index){rnd}; Sharpe "
                 f"{self.sharpe:.2f}, worst drawdown {self.max_drawdown_pct:.0f}%, {self.trades} trades, "
                 f"{self.win_rate_pct:.0f}% won, avg trade {self.avg_trade_pct:+.2f}%, "
                 f"invested {self.exposure_pct:.0f}% of the time")
@@ -86,7 +86,7 @@ def passes(r: Result) -> tuple[bool, str]:
     """Gemma's promotion bar plus the random control and a minimum sample."""
     misses = []
     if r.excess_pts < BAR_EXCESS_PTS:
-        misses.append(f"beat the S&P by {r.excess_pts:+.1f} pts/yr (needs +{BAR_EXCESS_PTS:g})")
+        misses.append(f"beat the index by {r.excess_pts:+.1f} pts/yr (needs +{BAR_EXCESS_PTS:g})")
     if r.sharpe <= BAR_SHARPE:
         misses.append(f"Sharpe {r.sharpe:.2f} (needs > {BAR_SHARPE:g})")
     if r.max_drawdown_pct > BAR_MAX_DRAWDOWN:
@@ -98,6 +98,11 @@ def passes(r: Result) -> tuple[bool, str]:
     return (not misses, "passed" if not misses else "; ".join(misses))
 
 
+def _has(v: float | None) -> bool:
+    """A usable indicator value: not missing (None in lists, NaN in compact arrays)."""
+    return v is not None and v == v
+
+
 def _ok(stock: Stock, i: int, recipe: Recipe, uptrend: bool) -> bool:
     for f in recipe.filters:
         if f.name == "market_uptrend":
@@ -105,14 +110,14 @@ def _ok(stock: Stock, i: int, recipe: Recipe, uptrend: bool) -> bool:
                 return False
             continue
         v = stock.ind[f.name][i]
-        if v is None:
+        if not _has(v):
             return False
         if f.name in FLAGS:
             if v < 0.5:
                 return False
         elif (f.op == "above" and v <= f.value) or (f.op == "below" and v >= f.value):
             return False
-    return stock.ind[recipe.rank_by][i] is not None and stock.ind["atr"][i] is not None
+    return _has(stock.ind[recipe.rank_by][i]) and _has(stock.ind["atr"][i])
 
 
 class _Pos(NamedTuple):
@@ -174,7 +179,7 @@ def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[dat
             price = COSTS.buy_price(stock.closes[i])
             if spend <= 0 or price <= 0:
                 continue
-            atr = stock.ind["atr"][i] or 0.0
+            atr = stock.ind["atr"][i] if _has(stock.ind["atr"][i]) else 0.0
             stop = stock.closes[i] - recipe.stop_atr * atr if recipe.stop_atr and atr else None
             target = (stock.closes[i] + recipe.target_r * recipe.stop_atr * atr
                       if recipe.target_r and stop is not None else None)
@@ -192,7 +197,7 @@ def simulate(recipe: Recipe, stocks: Mapping[str, Stock], calendar: Sequence[dat
         pool = [stocks[s] for s in sorted(members(d)) if s in stocks and s not in owned]
         up = bool(uptrend.get(d))
         if rng is not None:
-            ready = [s for s in pool if (i := s.at.get(d)) is not None and s.ind["atr"][i] is not None]
+            ready = [s for s in pool if (i := s.at.get(d)) is not None and _has(s.ind["atr"][i])]
             pending = rng.sample(ready, min(free, len(ready)))
             continue
         ready = [(s, s.ind[recipe.rank_by][s.at[d]]) for s in pool

@@ -39,30 +39,48 @@ def append(entry: Mapping[str, Any], path: Path | None = None) -> None:
         fh.write(json.dumps(entry) + "\n")
 
 
-def tried(entries: Iterable[Mapping[str, Any]], stage: str) -> set[str]:
-    return {e["key"] for e in entries if e.get("stage") == stage}
+def universe_of(e: Mapping[str, Any]) -> str:
+    """Which stocks a run used; runs from before the size groups were big caps."""
+    return str(e.get("universe") or "large")
+
+
+def tried(entries: Iterable[Mapping[str, Any]], stage: str, *, universe: str | None = None) -> set[str]:
+    return {e["key"] for e in entries if e.get("stage") == stage
+            and (universe is None or universe_of(e) == universe)}
 
 
 def _line(e: Mapping[str, Any]) -> str:
     r = e["result"]
     rnd = r.get("random_annual_pct") or 0.0
     return (f"#{e['n']} {e['session']} [{e['key']}] {e['describe']} => {r['annual_pct']:+.1f}%/yr "
-            f"({r['annual_pct'] - r['spx_annual_pct']:+.1f} pts vs S&P, {r['annual_pct'] - rnd:+.1f} vs random), "
+            f"({r['annual_pct'] - r['spx_annual_pct']:+.1f} pts vs index, {r['annual_pct'] - rnd:+.1f} vs random), "
             f"Sharpe {r['sharpe']:.2f}, DD {r['max_drawdown_pct']:.0f}%, {r['trades']} trades")
 
 
-def summary(entries: list[Mapping[str, Any]], *, best: int = 10, recent: int = 15) -> str:
-    """Her log for the prompt: the hidden-years runs, her best searches, her latest."""
+def summary(entries: list[Mapping[str, Any]], *, universe: str | None = None, best: int = 10,
+            recent: int = 15) -> str:
+    """Her log for the prompt: the hidden-years runs, her best searches, her latest --
+    for one stock group when `universe` is given (other groups are counted in one line)."""
+    others = ""
+    if universe is not None:
+        elsewhere = [e for e in entries if e.get("stage") == SEARCH and universe_of(e) != universe]
+        if elsewhere:
+            counts: dict[str, int] = {}
+            for e in elsewhere:
+                counts[universe_of(e)] = counts.get(universe_of(e), 0) + 1
+            others = " Other stock groups: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) + "."
+        entries = [e for e in entries if universe_of(e) == universe]
     search = [e for e in entries if e.get("stage") == SEARCH]
     if not search:
-        return "Your lab log is empty: this is your first session."
+        return "Your lab log for these stocks is empty: this is your first session on them." + others
     hidden = [e for e in entries if e.get("stage") in (HIDDEN_A, HIDDEN_B)]
     top = sorted(search, key=lambda e: -(e["result"]["annual_pct"] - e["result"]["spx_annual_pct"]))[:best]
     latest = search[-recent:]
-    parts = [f"Your lab so far: {len(search)} recipes searched, {len(hidden)} hidden-years runs."]
+    parts = [f"Your lab so far on these stocks: {len(search)} recipes searched, {len(hidden)} "
+             f"hidden-years runs.{others}"]
     if hidden:
         parts += ["Hidden-years runs (each recipe runs there once, ever):"]
         parts += [f"- {e['stage']} [{e['key']}] {e['verdict']}" for e in hidden]
-    parts += ["Your best searches by excess over the S&P 500:", *(f"- {_line(e)}" for e in top)]
+    parts += ["Your best searches by excess over the index:", *(f"- {_line(e)}" for e in top)]
     parts += ["Your latest searches:", *(f"- {_line(e)}" for e in latest if e not in top)]
     return "\n".join(parts)

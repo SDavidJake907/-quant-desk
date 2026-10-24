@@ -146,3 +146,39 @@ def test_ledger_round_trip_and_summary(tmp_path):
     assert ledger.tried(rows, ledger.SEARCH) == {r.key}
     assert "1 recipes searched" in ledger.summary(rows)
     assert "empty" in ledger.summary([])
+
+
+# --- the weekend (operator 2026-10-23: "backtest all weekend. big caps, med caps, small caps") ---
+
+def test_compact_missing_values_are_not_usable():
+    assert not sim._has(None) and not sim._has(float("nan")) and sim._has(0.0)
+
+
+def test_summary_is_per_universe_and_counts_the_others(tmp_path):
+    r = rc.parse(BASE)
+    res = book({}, [stock("A", [100.0] * 40)]).model_dump(mode="json")
+    rows = [{"n": 1, "session": "s", "stage": ledger.SEARCH, "key": r.key, "describe": "x", "result": res},
+            {"n": 2, "session": "s", "stage": ledger.SEARCH, "key": r.key, "describe": "x", "result": res,
+             "universe": "small"}]
+    text = ledger.summary(rows, universe="large")
+    assert "1 recipes searched" in text and "Other stock groups: small 1" in text
+    assert ledger.tried(rows, ledger.SEARCH, universe="small") == {r.key}
+    assert "empty" in ledger.summary(rows, universe="mid")
+
+
+def test_weekend_plan_rotates_and_only_the_last_session_per_group_nominates():
+    import importlib.util
+    import sys
+    from datetime import datetime
+    from pathlib import Path
+    sys.path.insert(0, str(Path("scripts").resolve()))
+    lab = importlib.import_module("gemma_lab")
+    plan = lab.weekend_plan(datetime(2026, 10, 23, 18, 30))           # Friday evening
+    groups = [u for _, u, _ in plan]
+    assert groups[:3] == ["large", "mid", "small"]
+    assert plan[-1][0] < datetime(2026, 10, 25, lab.WEEKEND_END_HOUR)
+    nominating = [u for _, u, n in plan if n]
+    assert sorted(nominating) == ["large", "mid", "small"]
+    for u in ("large", "mid", "small"):
+        last = max(i for i, (_, x, _) in enumerate(plan) if x == u)
+        assert plan[last][2]
