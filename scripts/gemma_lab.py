@@ -425,6 +425,66 @@ async def run_entry_study(client) -> None:
     say(f"\nreport: {ENTRY_REPORT}")
 
 
+MOMENTUM_REPORT = "logs/lab/momentum_study.md"
+#: Operator 2026-10-23: "lets try different momentum.. 12-2 12-3 12-4 ... 11-1 11-2 11-3. all
+#: the way down". Return from L months ago to S months ago (21 trading days a month).
+MOMENTUM_WINDOWS = tuple((lb, sk) for lb in range(12, 0, -1) for sk in range(0, lb))
+
+
+def momentum_series(closes, lb: int, sk: int) -> array:
+    n, a, b = len(closes), 21 * lb, 21 * sk
+    return array("d", (closes[i - b] / closes[i - a] - 1 if i >= a and closes[i - a] else math.nan
+                       for i in range(n)))
+
+
+async def run_momentum_study(client) -> None:
+    """Every momentum window L-S on every gate, the same 3-week rotation book (top 10, refilled
+    weekly, no filters), so only the window changes. Counted (stage momentum_study)."""
+    entries = ledger.read()
+    grid: dict[str, dict[tuple[int, int], sim.Result]] = {}
+    for u in UNIVERSES.values():
+        say(f"\n## Momentum study -- {u.label}")
+        data = await load(client, u)
+        stocks, calendar, bench, members, uptrend, _ = data
+        control = None
+        for lb, sk in MOMENTUM_WINDOWS:
+            for st in stocks.values():
+                st.ind["mom_window"] = momentum_series(st.closes, lb, sk)
+            recipe = rc.Recipe(filters=(), rank_by="mom_window", rank_order="high_first", top_n=10,
+                               rebalance_days=5, stop_atr=0.0, target_r=0.0, max_hold_days=15)
+            if control is None:
+                result = sim.with_control(recipe, stocks, calendar, bench, members, uptrend, start=u.search[0],
+                                          end=u.search[1])
+                control = result.random_annual_pct
+            else:
+                result = sim.simulate(recipe, stocks, calendar, bench, members, uptrend, start=u.search[0],
+                                      end=u.search[1]).model_copy(update={"random_annual_pct": control})
+            entry(entries, u, "momentum_study", recipe, result, name=f"momentum {lb}-{sk}",
+                  verdict=sim.passes(result)[1])
+            grid.setdefault(u.key, {})[(lb, sk)] = result
+            say(f"- momentum {lb}-{sk}: {result.line()}")
+    gate = {"large": "gate 1, big caps", "mid": "gate 2, mid caps", "small": "gate 3, small caps"}
+    lines = ["# Momentum windows L-S (return from L months ago to S months ago)", "",
+             "Book: top 10 by the window, held 3 weeks, refilled weekly, no filters; search years; idle cash in "
+             "the index; costs. Cells: points a year vs the group's index; * = passes Gemma's bar. A real effect "
+             "is a smooth REGION of good cells; one bright cell among dull neighbours is luck.", ""]
+    for uk, cells in grid.items():
+        lines += [f"## {gate[uk]}", "", "| L \\ S | " + " | ".join(str(s) for s in range(12)) + " |",
+                  "|---|" + "---|" * 12]
+        for lb in range(12, 0, -1):
+            row = []
+            for sk in range(12):
+                r = cells.get((lb, sk))
+                row.append("" if r is None else f"{r.excess_pts:+.1f}{'*' if sim.passes(r)[0] else ''}")
+            lines.append(f"| {lb} | " + " | ".join(row) + " |")
+        best = max(cells, key=lambda k: cells[k].excess_pts)
+        lines += ["", f"Best: momentum {best[0]}-{best[1]}: {cells[best].line()}",
+                  f"Classic 12-1: {cells[(12, 1)].line()}", ""]
+    Path(MOMENTUM_REPORT).parent.mkdir(parents=True, exist_ok=True)
+    Path(MOMENTUM_REPORT).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    say(f"\nreport: {MOMENTUM_REPORT}")
+
+
 ROTATION_REPORT = "logs/lab/rotation_study.md"
 
 
@@ -466,8 +526,12 @@ async def run_rotation_study(client) -> None:
 
 
 async def main(universe: str, tries: int, check: bool, weekend: bool, baseline: bool = False,
-               exits: bool = False, entries_study: bool = False, rotation: bool = False) -> int:
+               exits: bool = False, entries_study: bool = False, rotation: bool = False,
+               momentum: bool = False) -> int:
     async with httpx.AsyncClient(timeout=600) as client:
+        if momentum:
+            await run_momentum_study(client)
+            return 0
         if rotation:
             await run_rotation_study(client)
             return 0
@@ -515,6 +579,7 @@ if __name__ == "__main__":
     p.add_argument("--exit-study", action="store_true", help="where to sell: every exit x entry x group")
     p.add_argument("--entry-study", action="store_true", help="the best entry with the exit study's best exits, per gate")
     p.add_argument("--rotation-study", action="store_true", help="hold 2-4 weeks then replace, per gate")
+    p.add_argument("--momentum-study", action="store_true", help="every momentum window L-S, per gate")
     a = p.parse_args()
     sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline, a.exit_study,
-                              a.entry_study, a.rotation_study)))
+                              a.entry_study, a.rotation_study, a.momentum_study)))
