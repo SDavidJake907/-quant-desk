@@ -33,7 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from scanner.features.bars import fetch_bars, fetch_many
-from scanner.lab import baselines, entry_study, exit_study, indicators, ledger, recipe as rc, sim
+from scanner.lab import baselines, entry_study, exit_study, indicators, ledger, recipe as rc, rotation_study, sim
 from scanner.llm.ollama import LLMError, chat_json
 from scanner.models import Frozen
 from scanner.sources import composite, index_history
@@ -399,9 +399,52 @@ async def run_entry_study(client) -> None:
     say(f"\nreport: {ENTRY_REPORT}")
 
 
+ROTATION_REPORT = "logs/lab/rotation_study.md"
+
+
+async def run_rotation_study(client) -> None:
+    """Hold ~3 weeks then rotate (lab/rotation_study.py), per gate; report in ROTATION_REPORT."""
+    entries = ledger.read()
+    table: dict[str, dict[tuple[str, str], sim.Result]] = {}
+    for u in UNIVERSES.values():
+        say(f"\n## Rotation study -- {u.label}")
+        data = await load(client, u)
+        for en, shape, raw in rotation_study.grid():
+            recipe = rc.parse(raw)
+            result = run(recipe, data, *u.search)
+            entry(entries, u, "rotation_study", recipe, result, name=f"{en} / {shape}",
+                  verdict=sim.passes(result)[1])
+            table.setdefault(u.key, {})[(en, shape)] = result
+            say(f"- {en} / {shape}: {result.line()}")
+    gate = {"large": "gate 1, big caps", "mid": "gate 2, mid caps", "small": "gate 3, small caps"}
+    shapes = [s for s, *_ in rotation_study.SHAPES]
+    lines = ["# Rotation study: hold 2-4 weeks, then replace (search years; idle cash in the index; costs)", "",
+             "Points a year vs the group's index (vs random in brackets); MET = passes Gemma's bar.", ""]
+    for uk, cells in table.items():
+        lines += [f"## {gate[uk]}", "", "| entry | " + " | ".join(shapes) + " |", "|---|" + "---|" * len(shapes)]
+        for en in rotation_study.ROTATION_ENTRIES:
+            row = []
+            for sh in shapes:
+                r = cells[(en, sh)]
+                rnd = r.annual_pct - (r.random_annual_pct or 0.0)
+                row.append(f"{r.excess_pts:+.1f} ({rnd:+.1f}){' MET' if sim.passes(r)[0] else ''}")
+            lines.append(f"| {en} | " + " | ".join(row) + " |")
+        avg = {sh: sum(cells[(en, sh)].excess_pts for en in rotation_study.ROTATION_ENTRIES)
+               / len(rotation_study.ROTATION_ENTRIES) for sh in shapes}
+        lines.append("| **average** | " + " | ".join(f"{avg[sh]:+.1f}" for sh in shapes) + " |")
+        best = max(cells, key=lambda k: cells[k].excess_pts)
+        lines += ["", f"Best for {gate[uk]}: **{best[0]} -- {best[1]}**: {cells[best].line()}", ""]
+    Path(ROTATION_REPORT).parent.mkdir(parents=True, exist_ok=True)
+    Path(ROTATION_REPORT).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    say(f"\nreport: {ROTATION_REPORT}")
+
+
 async def main(universe: str, tries: int, check: bool, weekend: bool, baseline: bool = False,
-               exits: bool = False, entries_study: bool = False) -> int:
+               exits: bool = False, entries_study: bool = False, rotation: bool = False) -> int:
     async with httpx.AsyncClient(timeout=600) as client:
+        if rotation:
+            await run_rotation_study(client)
+            return 0
         if exits:
             await run_exit_study(client)
             return 0
@@ -445,6 +488,7 @@ if __name__ == "__main__":
     p.add_argument("--baseline", action="store_true", help="run the classic-strategy library on all groups")
     p.add_argument("--exit-study", action="store_true", help="where to sell: every exit x entry x group")
     p.add_argument("--entry-study", action="store_true", help="the best entry with the exit study's best exits, per gate")
+    p.add_argument("--rotation-study", action="store_true", help="hold 2-4 weeks then replace, per gate")
     a = p.parse_args()
     sys.exit(asyncio.run(main(a.universe, a.tries, a.check, a.weekend, a.baseline, a.exit_study,
-                              a.entry_study)))
+                              a.entry_study, a.rotation_study)))
