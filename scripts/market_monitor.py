@@ -50,7 +50,7 @@ from scanner.config import settings
 from scanner.execution import ownership, sell_queue, sessions
 from scanner.execution.alpaca import Alpaca
 from scanner.execution import satellite as sat
-from scanner.execution.ownership import GEMMA, PICKS
+from scanner.execution.ownership import CORE, GEMMA, ORB, PICKS
 from scanner.execution.scorecard import read_rows
 from scanner.features.bars import fetch_bars, fetch_many
 from scanner.features.intraday import EXCHANGE_TZ
@@ -446,7 +446,9 @@ async def main(dry: bool) -> int:
         if books["picks"] and hourly:
             await peak_status(client, positions, owner_map, stops, lines, PICKS)
         for a in [x for x in books["other"]]:
-            log(lines, f"  note: {a.symbol} is held outside both books (hand trade) -- alerts only")
+            who = ownership.owner(a.symbol, owner_map)
+            log(lines, f"  note: {a.symbol} is held by the {who} book -- alerts only"
+                if who in (CORE, ORB) else f"  note: {a.symbol} is held outside both books (hand trade) -- alerts only")
         if alerts and not dry:
             body = "; ".join(alerts)
             await notify.send(client, server=settings.ntfy_server, topic=settings.ntfy_topic,

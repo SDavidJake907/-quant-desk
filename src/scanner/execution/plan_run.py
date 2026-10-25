@@ -201,19 +201,24 @@ async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open
     room = max(0.0, min(float(raw.get("buying_power") or 0), sleeve - deployed))
     slots = policy.gemma_max_positions - len(mine) - len(pending)
     alerts, done = [], []
+
+    def refused(s: str, reason: str) -> None:
+        if not dry:    # a dry run never writes the audit log Gemma reads
+            bookorders.log("gemma_refused", s, reason, policy)
+
     for s, plan in due.items():
         done.append(s)
         if s in skipped:
             log(f"  QUEUED BUY {s} skipped at 10:00 -- {skipped[s]}")
-            bookorders.log("gemma_refused", s, f"10:00 recheck: {skipped[s]}", policy)
+            refused(s, f"10:00 recheck: {skipped[s]}")
             continue
         if not gate:
             log(f"  QUEUED BUY {s} not sent -- {gate.reason}")
-            bookorders.log("gemma_refused", s, gate.reason, policy)
+            refused(s, gate.reason)
             continue
         if slots <= 0:
             log(f"  QUEUED BUY {s} not sent -- all {policy.gemma_max_positions} slots in use")
-            bookorders.log("gemma_refused", s, "no free slot at 10:00", policy)
+            refused(s, "no free slot at 10:00")
             continue
         if dry:
             log(f"  WOULD BUY (queued) {s}")
