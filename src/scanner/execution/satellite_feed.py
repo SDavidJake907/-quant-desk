@@ -49,33 +49,6 @@ async def gates(client: httpx.AsyncClient) -> Gates:
     return Gates(open=is_open, vs_average=vs)
 
 
-def gate_tag(seg: str, g: Gates) -> str | None:
-    """The line under a candidate whose size-group gate is shut (Gemma 2026-10-25, choice A: "show each
-    candidate's gate in my briefing" -- flagged so it is "immediately obvious"); None when it is open."""
-    state = g.open.get(seg)
-    if state:
-        return None
-    pct = g.vs_average.get(seg)
-    where = f"{pct:+.1f}% vs its 200-day" if pct is not None else "no data"
-    return (f"*** GATE CLOSED *** {SEGMENT_LABEL[seg]}: {where} -- the plan refuses this buy today "
-            "(a name you already hold is not affected)")
-
-
-async def gate_tags(client: httpx.AsyncClient, symbols: Iterable[str], g: Gates) -> dict[str, str]:
-    """{symbol: gate-closed line} for the candidates refusals() would stop at the gate. Information only;
-    an unreadable index list returns {} -- the buy-time check still applies."""
-    if all(g.open.get(seg) for seg in sat.GATES):
-        return {}
-    members = await composite.load_universe(client)
-    segment = {m.symbol: INDEX_SEGMENT.get(m.index, "large") for m in members}
-    out = {}
-    for s in symbols:
-        tag = gate_tag(sat.segment_of(s, segment), g)
-        if tag:
-            out[s] = tag
-    return out
-
-
 def sold_recently(rows: Iterable[dict], since: datetime) -> set[str]:
     """Names Gemma's book closed since `since` (audit gemma_exit events)."""
     out = set()
@@ -91,9 +64,11 @@ def sold_recently(rows: Iterable[dict], since: datetime) -> set[str]:
 
 
 async def refusals(client: httpx.AsyncClient, buys: Sequence[str], held: Iterable[str],
-                   g: Gates, audit_path: str, today: date | None = None) -> dict[str, str]:
+                   g: Gates, audit_path: str, today: date | None = None,
+                   cumulative: bool = True) -> dict[str, str]:
     """{symbol: why refused} for the new buys; a name absent from the result may be bought.
-    Each accepted buy counts toward the sector cap for the next."""
+    Each accepted buy counts toward the sector cap for the next (`cumulative`; off for check_lines,
+    where each candidate is judged against the holdings alone)."""
     today = today or date.today()
     if not buys:
         return {}
@@ -128,7 +103,17 @@ async def refusals(client: httpx.AsyncClient, buys: Sequence[str], held: Iterabl
             held_sectors=held_sectors, sold_recently=s in sold, new_20d_high=sat.new_closing_high(c))
         if why:
             out[s] = why
-        else:
+        elif cumulative:
             sec = sectors.get(s, "unknown")
             held_sectors = {**held_sectors, sec: held_sectors.get(sec, 0) + 1}
     return out
+
+
+async def check_lines(client: httpx.AsyncClient, candidates: Sequence[str], held: Iterable[str],
+                      g: Gates, audit_path: str, today: date | None = None) -> dict[str, str]:
+    """{symbol: 'BUY CHECKS: PASS' | '*** BUY CHECKS: FAIL - why ***'} under each candidate in her 9:45
+    facts (Gemma 2026-10-25, choice A2: "pick only names that pass"). The same checks as refusals(),
+    each name against her holdings alone. Information; the buy-time refusal still decides."""
+    refused = await refusals(client, candidates, held, g, audit_path, today, cumulative=False)
+    return {s: f"*** BUY CHECKS: FAIL - {refused[s]} ***" if s in refused else "BUY CHECKS: PASS"
+            for s in candidates}

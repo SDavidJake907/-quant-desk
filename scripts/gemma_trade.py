@@ -675,18 +675,19 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
                     facts[s] += "\n" + "\n".join(lines)
         elif POLICY.gemma_sees_brief:
             print(f"  {YELLOW}no daily brief within 12 h -- deciding without it{RESET}")
-        # The plan's three gates (big / mid / small caps) and its rules (execution/satellite.py). A candidate
-        # whose gate is shut says so under its facts (Gemma 2026-10-25, choice A).
+        # The plan's three gates (big / mid / small caps) and its rules (execution/satellite.py). Every
+        # candidate shows its buy checks, PASS or FAIL - why (Gemma 2026-10-25, choices A then A2).
         gates = await satellite_feed.gates(client)
         try:
-            shut = await satellite_feed.gate_tags(client, [s for s in facts if s not in mine], gates)
+            checks = await satellite_feed.check_lines(client, [s for s in facts if s not in mine], list(mine),
+                                                      gates, settings.audit_log_path)
         except Exception as exc:                          # noqa: BLE001 -- the buy-time check still applies
-            shut = {}
-            print(f"  {YELLOW}gate tags unavailable ({type(exc).__name__}){RESET}")
-        for s, tag in shut.items():
-            facts[s] += "\n" + tag
-        if shut:
-            print(f"  {DIM}gate closed for: {sorted(shut)}{RESET}")
+            checks = {}
+            print(f"  {YELLOW}buy checks unavailable ({type(exc).__name__}){RESET}")
+        for s, line in checks.items():
+            facts[s] += "\n" + line
+        if checks:
+            print(f"  {DIM}buy checks pass: {sorted(s for s, v in checks.items() if v.endswith('PASS'))}{RESET}")
         held_status ={s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
                        for s, p in mine.items()}
         sleeve_dollars = account.equity * POLICY.gemma_allocation_pct / 100
