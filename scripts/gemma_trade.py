@@ -675,6 +675,18 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
                     facts[s] += "\n" + "\n".join(lines)
         elif POLICY.gemma_sees_brief:
             print(f"  {YELLOW}no daily brief within 12 h -- deciding without it{RESET}")
+        # The plan's three gates (big / mid / small caps) and its rules (execution/satellite.py). A candidate
+        # whose gate is shut says so under its facts (Gemma 2026-10-25, choice A).
+        gates = await satellite_feed.gates(client)
+        try:
+            shut = await satellite_feed.gate_tags(client, [s for s in facts if s not in mine], gates)
+        except Exception as exc:                          # noqa: BLE001 -- the buy-time check still applies
+            shut = {}
+            print(f"  {YELLOW}gate tags unavailable ({type(exc).__name__}){RESET}")
+        for s, tag in shut.items():
+            facts[s] += "\n" + tag
+        if shut:
+            print(f"  {DIM}gate closed for: {sorted(shut)}{RESET}")
         held_status ={s: f"{float(p.get('unrealized_plpc') or 0) * 100:+.1f}% since entry"
                        for s, p in mine.items()}
         sleeve_dollars = account.equity * POLICY.gemma_allocation_pct / 100
@@ -709,8 +721,6 @@ async def main(submit: bool, only_when_tradable: bool = False) -> int:
             text = clock.now_line(now_et, rows, session) + "\n\n" + text
         except Exception as exc:                          # noqa: BLE001
             print(f"  {YELLOW}no 'Now:' line ({type(exc).__name__}: {exc}){RESET}")
-        # The plan's three gates (big / mid / small caps) and its rules (execution/satellite.py).
-        gates = await satellite_feed.gates(client)
         # Crash / shock alerts from the market monitor (ops/shock_alert.py; 10-23): information for her.
         alerts_now = sa.active(shock_feed.read(), datetime.now(sat.ET).date())
         # Her 10-day outlooks, where and how far (operator + Gemma 2026-10-25; advisor/outlook.py):

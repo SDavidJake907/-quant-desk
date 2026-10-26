@@ -49,6 +49,33 @@ async def gates(client: httpx.AsyncClient) -> Gates:
     return Gates(open=is_open, vs_average=vs)
 
 
+def gate_tag(seg: str, g: Gates) -> str | None:
+    """The line under a candidate whose size-group gate is shut (Gemma 2026-10-25, choice A: "show each
+    candidate's gate in my briefing" -- flagged so it is "immediately obvious"); None when it is open."""
+    state = g.open.get(seg)
+    if state:
+        return None
+    pct = g.vs_average.get(seg)
+    where = f"{pct:+.1f}% vs its 200-day" if pct is not None else "no data"
+    return (f"*** GATE CLOSED *** {SEGMENT_LABEL[seg]}: {where} -- the plan refuses this buy today "
+            "(a name you already hold is not affected)")
+
+
+async def gate_tags(client: httpx.AsyncClient, symbols: Iterable[str], g: Gates) -> dict[str, str]:
+    """{symbol: gate-closed line} for the candidates refusals() would stop at the gate. Information only;
+    an unreadable index list returns {} -- the buy-time check still applies."""
+    if all(g.open.get(seg) for seg in sat.GATES):
+        return {}
+    members = await composite.load_universe(client)
+    segment = {m.symbol: INDEX_SEGMENT.get(m.index, "large") for m in members}
+    out = {}
+    for s in symbols:
+        tag = gate_tag(sat.segment_of(s, segment), g)
+        if tag:
+            out[s] = tag
+    return out
+
+
 def sold_recently(rows: Iterable[dict], since: datetime) -> set[str]:
     """Names Gemma's book closed since `since` (audit gemma_exit events)."""
     out = set()
