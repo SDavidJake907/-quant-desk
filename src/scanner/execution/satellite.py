@@ -13,7 +13,8 @@ trend gates, one per size group (operator: "gate1 big, gate2 mid, gate3 small").
              third of her pool by 12-1 momentum, 6-month return up, above the 50-day,
              no earnings within 5 days; regular session only, from 10:00 ET; a name
              sold in the last 30 days only on a new 20-day closing high
-  EXIT       stop 2.5 ATR under the buy (never more than 3% -- profit_lock.loss_floor);
+  EXIT       stop 2.5 ATR under the buy (bought before WIDE_STOP_FROM: never more than 3% --
+             profit_lock.loss_floor; from it, no cap and a smaller size, see same_risk_pct);
              from +1 ATR the stop is at least break-even; then a CLOSE under the
              highest close less 3 ATR sells; no fixed target; nothing reporting
              earnings is held into the report; no progress in 10 days sells; once a close
@@ -51,6 +52,11 @@ MOMENTUM_TOP_FRACTION = 1 / 3
 EARNINGS_BUFFER_DAYS = 5
 REBUY_LOOKBACK_DAYS = 30
 NEW_HIGH_DAYS = 20
+#: WIDE STOP (Gemma 2026-10-26, choice B2): the 3% cap sat inside one normal day's move for her
+#: buys (ATR 3.2-5.3%; MRNA, ATR 11.7%, stopped at -3% overnight), so the 2.5 ATR stop never
+#: applied. Her buys from this day keep the full 2.5 ATR stop and are sized so the dollars lost
+#: at it equal a 3% stop on a full-size position; positions bought before it keep the 3% cap.
+WIDE_STOP_FROM = date(2026, 10, 27)
 BUY_FROM = time(10, 0)
 #: Last minutes of the session: the close-based exits are decided here.
 CLOSE_WINDOW = (time(15, 50), time(16, 0))
@@ -113,10 +119,24 @@ def new_closing_high(closes: Sequence[float], days: int = NEW_HIGH_DAYS) -> bool
     return len(closes) > days and closes[-1] > max(closes[-days - 1:-1])
 
 
-def hard_stop(*, entry: float, atr: float, high_close: float) -> float:
+def wide_stop(entered: date | None) -> bool:
+    """A Gemma position bought on or after WIDE_STOP_FROM (unknown buy date: the 3% cap)."""
+    return entered is not None and entered >= WIDE_STOP_FROM
+
+
+def same_risk_pct(cap_pct: float) -> float:
+    """Risk per buy (% of the sleeve) equal to a full-size position (`cap_pct` of the sleeve)
+    stopped at profit_lock's 3%: wider stops then buy fewer shares, never more dollars at risk."""
+    return cap_pct * profit_lock.MAX_LOSS_PCT / 100
+
+
+def hard_stop(*, entry: float, atr: float, high_close: float, floor: bool = True) -> float:
     """The broker's stop (it acts intraday and at a gap): 2.5 ATR under the buy, never
-    more than profit_lock's 3% under it; from +1 ATR at least break-even."""
-    stop = max(entry - INITIAL_ATR * atr, profit_lock.loss_floor(entry))
+    more than profit_lock's 3% under it unless `floor` is off (wide_stop); from +1 ATR
+    at least break-even."""
+    stop = entry - INITIAL_ATR * atr
+    if floor:
+        stop = max(stop, profit_lock.loss_floor(entry))
     if high_close >= entry + BREAKEVEN_ATR * atr:
         stop = max(stop, entry)
     return stop

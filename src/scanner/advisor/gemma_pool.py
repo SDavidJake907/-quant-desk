@@ -52,6 +52,8 @@ MIDCAP_MAX = 120
 #: day wins). The breakout book (execution/orb.py) trades from it, so it never
 #: builds a second universe (operator 2026-10-23: "tie this in" with her pool).
 POOL_DIR = Path("data/gemma/pool")
+#: How far ahead the step-1 lines look for a report date.
+EARNINGS_SHOWN_DAYS = 30
 
 
 class PoolRow(Frozen):
@@ -62,6 +64,10 @@ class PoolRow(Frozen):
     mom_12_1: float | None
     atr_pct: float | None
     momentum_rank: int | None = None
+    #: Filled only for the rows she is shown after the buy-rule filter (Gemma 2026-10-26, A1):
+    #: % above the 50-day, and the next report ("YYYY-MM-DD", "none" or "unknown").
+    vs_50d: float | None = None
+    earnings: str | None = None
 
 
 def tradeable(closes: Sequence[float], highs: Sequence[float], lows: Sequence[float],
@@ -102,8 +108,12 @@ def _pct(x: float | None) -> str:
 def line(r: PoolRow) -> str:
     atr = f"{r.atr_pct:.1f}%" if r.atr_pct is not None else "n/a"
     mom = f" | momentum rule #{r.momentum_rank}" if r.momentum_rank else ""
+    above = f" | vs 50d {r.vs_50d:+.1f}%" if r.vs_50d is not None else ""
+    report = ("" if r.earnings is None
+              else f" | earnings none in {EARNINGS_SHOWN_DAYS}d" if r.earnings == "none"
+              else f" | earnings {r.earnings}")
     return (f"{r.symbol} ({r.sector}) 1m {_pct(r.r1m)} 3m {_pct(r.r3m)} "
-            f"12-1 {_pct(r.mom_12_1)} ATR {atr}{mom}")
+            f"12-1 {_pct(r.mom_12_1)} ATR {atr}{mom}{above}{report}")
 
 
 def prompt(rows: Iterable[PoolRow], *, held: Iterable[str], market: str,

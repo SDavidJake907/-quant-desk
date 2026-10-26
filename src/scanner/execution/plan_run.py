@@ -104,7 +104,8 @@ async def exit_pass(broker, client, positions, book_of: Mapping[str, str], order
             continue
         start = entered.get(s)
         after = [c for d, c in zip(bars.dates, bars.closes) if start and start < d < today]
-        hard = sat.hard_stop(entry=entry, atr=atr, high_close=max([*after, entry]))
+        hard = sat.hard_stop(entry=entry, atr=atr, high_close=max([*after, entry]),
+                             floor=not (book == GEMMA and sat.wide_stop(start)))
         why = None
         if price <= hard:
             why = (f"plan stop: {price:,.2f} at/under {hard:,.2f} "
@@ -223,13 +224,16 @@ async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open
         if dry:
             log(f"  WOULD BUY (queued) {s}")
             continue
+        cap = 100.0 / policy.gemma_max_positions
+        # Gemma's B2 (satellite.WIDE_STOP_FROM): the full 2.5 ATR stop, sized to a 3% stop's dollars.
         result = await bookorders.buy_with_stop(
             broker, client, s, strategy=GEMMA, sleeve=sleeve, room=room,
-            cap_pct=100.0 / policy.gemma_max_positions, policy=policy,
+            cap_pct=cap, policy=policy,
             reason=f"Gemma (the plan, 10:00 ET): {plan.get('reason', '')}",
-            risk_pct=policy.gemma_menu_value("size", plan.get("size", "normal")),
+            risk_pct=min(policy.gemma_menu_value("size", plan.get("size", "normal")), sat.same_risk_pct(cap)),
             atr_multiple=policy.gemma_menu_value("stop", plan.get("stop", "normal")),
-            reward_risk=policy.gemma_menu_value("target", plan.get("target", "none")), session=REGULAR)
+            reward_risk=policy.gemma_menu_value("target", plan.get("target", "none")), session=REGULAR,
+            loss_floor=False)
         log(f"  {'BOUGHT' if result.ok else 'NOT BOUGHT'} (queued) {s}: {result.message}")
         if result.ok:
             slots -= 1

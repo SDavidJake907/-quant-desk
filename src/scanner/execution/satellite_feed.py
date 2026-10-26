@@ -109,6 +109,47 @@ async def refusals(client: httpx.AsyncClient, buys: Sequence[str], held: Iterabl
     return out
 
 
+def price_refusal(symbol: str, closes: Sequence[float], *, mom: dict[str, float | None],
+                  segment: dict[str, str], g: Gates, earnings_in_days: int | None) -> str | None:
+    """The buy rules that do not depend on her holdings or recent sales: gate, top-third momentum,
+    6-month return, 50-day, earnings. Same rule function as refusals()."""
+    if len(closes) < 130:
+        return "no year of daily bars to check the rules"
+    seg = sat.segment_of(symbol, segment)
+    return sat.buy_refusal(
+        gate=g.open.get(seg), gate_name=SEGMENT_LABEL[seg], top_momentum=sat.momentum_top(symbol, mom),
+        ret_6m=(closes[-1] / closes[-127] - 1) * 100, above_50d=closes[-1] > sum(closes[-50:]) / 50,
+        earnings_in_days=earnings_in_days, sector="unknown", held_sectors={}, sold_recently=False,
+        new_20d_high=True)
+
+
+async def buyable_pool(client: httpx.AsyncClient, rows: Sequence[gp.PoolRow], g: Gates,
+                       today: date) -> tuple[list[gp.PoolRow], tuple[str, ...]]:
+    """Her step-1 pool cut to the names that pass price_refusal (Gemma 2026-10-26, choice A1: "every
+    name I shortlist is actually actionable"), each with its 50-day distance and next report.
+    Momentum ranks against all `rows` -- the saved pool refusals() ranks against. Returns (rows, names
+    whose earnings could not be read: kept, the buy-time check fails closed on them)."""
+    members = await composite.load_universe(client)
+    segment = {m.symbol: INDEX_SEGMENT.get(m.index, "large") for m in members}
+    mom = {r.symbol: r.mom_12_1 for r in rows}
+    bars, _ = await fetch_many(tuple(r.symbol for r in rows), client, range_="2y")
+    closes = {s: b.closes for s, b in bars.items() if b is not None}
+    pre = [r for r in rows if r.symbol in closes and price_refusal(
+        r.symbol, closes[r.symbol], mom=mom, segment=segment, g=g, earnings_in_days=None) is None]
+    found, failed = await event_calendar.upcoming_earnings(
+        frozenset(r.symbol for r in pre), client, horizon=gp.EARNINGS_SHOWN_DAYS, today=today)
+    out = []
+    for r in pre:
+        e = found.get(r.symbol)
+        if e is not None and (e.on - today).days <= sat.EARNINGS_BUFFER_DAYS:
+            continue
+        c = closes[r.symbol]
+        report = e.on.isoformat() if e is not None else "unknown" if r.symbol in failed else "none"
+        out.append(r.model_copy(update={"vs_50d": (c[-1] / (sum(c[-50:]) / 50) - 1) * 100,
+                                        "earnings": report}))
+    return out, tuple(failed)
+
+
 async def check_lines(client: httpx.AsyncClient, candidates: Sequence[str], held: Iterable[str],
                       g: Gates, audit_path: str, today: date | None = None) -> dict[str, str]:
     """{symbol: 'BUY CHECKS: PASS' | '*** BUY CHECKS: FAIL - why ***'} under each candidate in her 9:45

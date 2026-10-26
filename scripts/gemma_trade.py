@@ -547,17 +547,35 @@ async def pool_shortlist(client, taken: set[str], mine: Iterable[str],
         gp.save(rows, date.today())                      # the breakout book trades from it
     except OSError as exc:
         print(f"  {YELLOW}pool not saved for the breakout book: {exc}{RESET}")
-    text = gp.prompt(rows, held=mine, market=market, universe=universe)
+    # Her A1 (2026-10-26): only names that pass the buy rules, so every shortlisted name is buyable.
+    # The full pool stays saved above (the breakout book and the momentum ranking use it).
+    shown = rows
+    try:
+        buyable, unread = await satellite_feed.buyable_pool(client, rows, await satellite_feed.gates(client),
+                                                            date.today())
+        print(f"  {DIM}buy rules: {len(buyable)} of {len(rows)} pool names pass (gate, top-third 12-1, "
+              f"6-month up, above the 50-day, no earnings within {sat.EARNINGS_BUFFER_DAYS} days){RESET}")
+        if unread:
+            print(f"  {YELLOW}earnings unreadable for {len(unread)}: shown as 'unknown', checked again "
+                  f"at the buy{RESET}")
+        if buyable:
+            shown = buyable
+            universe = (f"stocks that pass your buy rules today (size-group gate open, top third of the "
+                        f"pool by 12-1 momentum, 6-month return up, above the 50-day, no earnings within "
+                        f"{sat.EARNINGS_BUFFER_DAYS} days) out of {len(rows)} {universe}")
+    except Exception as exc:                             # noqa: BLE001 -- the buy-time check still applies
+        print(f"  {YELLOW}buy-rule filter unavailable ({type(exc).__name__}: {exc}) -- full pool shown{RESET}")
+    text = gp.prompt(shown, held=mine, market=market, universe=universe)
     try:
         # Full thinking budget (operator 2026-10-20, "enable thinking"): at half
         # (750) her pool notes were cut off mid-thought.
-        answer, _ = await think_then_answer(text, gp.schema([r.symbol for r in rows]),
+        answer, _ = await think_then_answer(text, gp.schema([r.symbol for r in shown]),
                                             client, max_tokens=gt.THINK_TOKENS)
     except LLMError as exc:
         print(f"  {YELLOW}pool shortlist failed ({exc}) -- using the hand lists{RESET}")
         return [], len(rows)
-    picked = gp.validate(answer, [r.symbol for r in rows], held=mine)
-    print(f"  {BOLD}pool{RESET}: {len(rows)} tradeable {universe}; she shortlisted "
+    picked = gp.validate(answer, [r.symbol for r in shown], held=mine)
+    print(f"  {BOLD}pool{RESET}: {len(shown)} tradeable {universe}; she shortlisted "
           f"{list(picked)}")
     if isinstance(answer, dict) and answer.get("looking_for"):
         print(f"  {DIM}looking for: {str(answer['looking_for'])[:300]}{RESET}")
@@ -575,7 +593,8 @@ MENU_TEXT = "\n".join((
                             for k, v in POLICY.gemma_target_r_menu),
     "- size: " + ", ".join(f"{k} = risk {v:g}% of your book if stopped"
                           for k, v in POLICY.gemma_size_risk_menu)
-    + " (every name is an equal sixth of your book under the plan)",
+    + " (at most an equal sixth of your book; your B2: the stop is the full 2.5 ATR, and a name that "
+      "moves more than 1.2% a day is bought smaller so a stop loses no more than a 3% stop on a full sixth)",
 ))
 
 

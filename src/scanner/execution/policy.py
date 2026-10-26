@@ -460,9 +460,10 @@ class TradingPolicy(Frozen):
     #: (the picks ceiling). Size: risk as % of its sleeve; "normal" is
     #: `gemma_risk_pct`. CHOSEN, not measured: every choice is logged so it
     #: can be graded. The 20% per-name cap still binds a large size.
-    #: One choice each from 2026-10-26 (the plan): stop 2.5 ATR (the 3% floor usually binds),
-    #: no fixed target (a trailing exit sells), equal size (the 1/6 cap binds at any risk
-    #: with a stop of 3% or less). She chooses WHICH names; the rules size and exit them.
+    #: One choice each from 2026-10-26 (the plan): stop 2.5 ATR, no fixed target (a trailing
+    #: exit sells), size capped at an equal sixth. From satellite.WIDE_STOP_FROM (her B2) the
+    #: 3% floor is off and the risk is a 3% stop's dollars on a full sixth, so a name moving more
+    #: than 1.2% a day is bought smaller. She chooses WHICH names; the rules size and exit them.
     gemma_stop_atr_menu: tuple[tuple[str, float], ...] = (("normal", 2.5),)
     gemma_target_r_menu: tuple[tuple[str, float], ...] = (("none", 0.0),)
     gemma_size_risk_menu: tuple[tuple[str, float], ...] = (("normal", 1.0),)
