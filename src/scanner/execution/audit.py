@@ -8,6 +8,11 @@ from pathlib import Path
 from scanner.config import settings
 from scanner.models import AuditEvent
 
+#: Gemma's "target none": Alpaca's bracket still needs a take-profit leg, so it sits at this many
+#: times the buy -- never reached in practice; the plan's exits sell. Was 1000x until 2026-10-26
+#: (operator: a $261,080 sell limit on CRWD "doesnt seem right").
+NO_TARGET_MULTIPLE = 3.0
+
 
 def append_event(path: str | Path, event: AuditEvent) -> None:
     """Append one JSON object, creating the log directory if needed.
@@ -53,10 +58,10 @@ def submitted_levels(path: str | Path) -> dict[str, tuple[float, float]]:
         intent = row.get("intent") or {}
         symbol = str(row.get("symbol", ""))
         stop, target = intent.get("stop_price"), intent.get("target_price")
-        # Gemma's "target none" logs target 0.0; its bracket used a ceiling of
-        # entry x 1000 (bookorders). Skipping it re-armed an OLDER trade's levels
+        # Gemma's "target none" logs target 0.0; its bracket uses a ceiling of
+        # entry x NO_TARGET_MULTIPLE (bookorders). Skipping it re-armed an OLDER trade's levels
         # (2026-10-23: RNG got the 10-22 pick's 79.13 stop, not Gemma's 85.40).
         if symbol and stop:
             entry = float(intent.get("entry_price") or 0)
-            levels[symbol] = (float(stop), float(target) if target else round(entry * 1000.0, 2))
+            levels[symbol] = (float(stop), float(target) if target else round(entry * NO_TARGET_MULTIPLE, 2))
     return levels

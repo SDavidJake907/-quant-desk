@@ -18,7 +18,7 @@ import asyncio
 
 from scanner.execution import extended, manual, picks, profit_lock
 from scanner.execution.alpaca import BrokerError, round_tick
-from scanner.execution.audit import append_event
+from scanner.execution.audit import NO_TARGET_MULTIPLE, append_event
 from scanner.execution.flatten_run import close_when_released
 from scanner.execution.ownership import prefix_for
 from scanner.execution.policy import TradingPolicy
@@ -113,8 +113,8 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
     coid = f"{prefix_for(strategy)}{symbol}-{int(now.timestamp())}"
     # Gemma may choose target "none" (reward_risk == 0): ride it, no ceiling
     # target. The bracket still needs a take_profit leg, so use a ceiling so
-    # high it is effectively never hit — she decides when to sell. Record the
-    # true choice (0.0 target, 0.0 R:R) in the audit intent.
+    # high it is effectively never hit (NO_TARGET_MULTIPLE x the buy) — the
+    # plan's exits sell. Record the true choice (0.0 target, 0.0 R:R) in the audit intent.
     if effective_rr > 0:
         # Gemma chose 2R/3R/5R: target is limit + R:R * risk
         order_target = target
@@ -127,7 +127,7 @@ async def buy_with_stop(broker, client, symbol: str, *, strategy: str, sleeve: f
         intent_rr = round((target - limit) / (limit - stop), 3)
     else:
         # Gemma chose "none": effectively no target
-        order_target = limit * 1000.0
+        order_target = round_tick(limit * NO_TARGET_MULTIPLE)
         intent_target = 0.0
         intent_rr = 0.0
     if session == REGULAR:

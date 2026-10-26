@@ -55,6 +55,8 @@ def test_wide_buy_is_smaller_with_the_same_dollar_risk(monkeypatch, tmp_path):
     wide, sent = _buy(monkeypatch, tmp_path, atr_pct=4.0, risk_pct=0.5, loss_floor=False)
     stop = float(sent[0]["stop_loss"]["stop_price"])
     limit = float(sent[0]["limit_price"])
+    # "target none": a take-profit leg at 3x the buy (was 1000x -- $261,080 on CRWD, operator 10-26)
+    assert float(sent[0]["take_profit"]["limit_price"]) == pytest.approx(limit * 3, abs=0.01)
     assert (limit - stop) / limit == pytest.approx(0.10, abs=0.002)                # 2.5 x 4%
     assert full.sizing.limited_by == "position cap"
     assert wide.sizing.limited_by == "risk budget"

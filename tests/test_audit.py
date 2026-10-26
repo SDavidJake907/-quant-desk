@@ -141,4 +141,4 @@ def test_target_none_still_counts_and_beats_an_older_trade(tmp_path):
     _submitted(path, "RNG", 79.13, 179.44, at_hour=9)
     _submitted(path, "RNG", 85.40, 0.0, at_hour=10)
     stop, target = submitted_levels(path)["RNG"]
-    assert stop == 85.40 and target > 1000
+    assert stop == 85.40 and target == 300.0          # entry 100 x the no-target ceiling (3x)
