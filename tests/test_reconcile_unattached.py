@@ -161,3 +161,27 @@ class TestParentCancelledLegFilled:
         }
         ours = _for("IP", reconcile(INTENTS, [_entry(), closer]))[0]
         assert ours.state == FILLED_OPEN
+
+
+class TestExtendedHoursBookCloses:
+    """MRNA, 2026-10-25: the plan stop sold it overnight with a LIMIT order (the
+    only kind accepted outside regular hours) and the outcome read "target" at a
+    -0.99R loss. A book's own close (bookorders._sell_extended, coid
+    "<prefix><SYMBOL>-x<ts>") is a rule or decision exit, not a profit target --
+    the same sale in regular hours goes at market and reads "flattened"."""
+
+    def test_an_extended_hours_book_close_is_not_a_target(self):
+        closer = _unattached_sell(type_="limit", filled="40.10")
+        closer["client_order_id"] = "smc-IP-x1792540800"
+        ours = _for("IP", reconcile(INTENTS, [_entry(), closer]))[0]
+        assert ours.state == CLOSED_FLAT
+        assert ours.exit_fill == 40.10
+
+    def test_a_dotted_symbol_close_is_recognised_too(self):
+        intents = {"gem-BRK.B-1": {"symbol": "BRK.B", "entry_price": 500.0,
+                                   "stop_price": 490.0, "target_price": 0.0, "shares": 2}}
+        closer = _unattached_sell(symbol="BRK.B", type_="limit", filled="489.0")
+        closer["client_order_id"] = "gem-BRK.B-x1792540800"
+        entry = _entry(coid="gem-BRK.B-1", symbol="BRK.B", filled="500.0")
+        ours = _for("BRK.B", reconcile(intents, [entry, closer]))[0]
+        assert ours.state == CLOSED_FLAT

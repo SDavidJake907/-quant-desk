@@ -21,6 +21,7 @@ fill a few cents away changes the numerator, as it does in a real account.
 
 from __future__ import annotations
 
+import re
 import statistics
 from typing import Any, Iterable
 
@@ -36,6 +37,9 @@ CLOSED_OTHER = "closed"
 CLOSED_FLAT = "flattened"
 EXPIRED = "expired"
 REJECTED = "rejected"
+
+#: bookorders._sell_extended's client_order_id: "<prefix><SYMBOL>-x<timestamp>".
+_EXTENDED_CLOSE = re.compile(r"^[a-z]{3}-[A-Z0-9.]+-x\d+$")
 
 #: Order statuses that mean the entry never happened.
 _DEAD = {"canceled", "expired", "rejected", "done_for_day", "replaced"}
@@ -206,6 +210,10 @@ def _closing_kind(order: dict) -> tuple[str, float | None]:
         if "limit" in leg_type:
             return CLOSED_TARGET, fill
     fill = _number(order.get("filled_avg_price"))
+    if _EXTENDED_CLOSE.match(str(order.get("client_order_id") or "")):
+        # A book's own close outside regular hours: a limit only because market
+        # orders are refused then (MRNA 2026-10-25 read "target" at -0.99R).
+        return CLOSED_FLAT, fill
     order_type = str(order.get("type") or "").lower()
     if "stop" in order_type:
         return CLOSED_STOP, fill
