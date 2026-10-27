@@ -26,7 +26,9 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from scanner.advisor import hindsight_memory  # noqa: E402
 from scanner.config import settings  # noqa: E402
+from scanner.execution import ownership  # noqa: E402
 from scanner.execution.alpaca import Alpaca  # noqa: E402
+from scanner.execution.policy import TradingPolicy  # noqa: E402
 from scanner.execution.scorecard import read_rows  # noqa: E402
 from scanner.ops import deskcheck, notify  # noqa: E402
 from scanner.ops import health as h  # noqa: E402
@@ -73,6 +75,11 @@ async def broker_findings(c: httpx.AsyncClient, today: date) -> tuple[list[h.Fin
     positions = await b._get("/v2/positions")
     after = (today - timedelta(days=120)).isoformat() + "T00:00:00Z"
     orders = await b._get("/v2/orders", status="all", limit=500, nested="true", after=after)
+    # Momentum and the SPY core carry no stop by design (policy.stopless_strategies),
+    # as in protect.py / hub.py / desk_journal.py; flagging them daily buries a real gap.
+    owner_map = ownership.owners(orders)
+    stopless = TradingPolicy().stopless_strategies
+    positions = [p for p in positions if ownership.owner(p["symbol"], owner_map) not in stopless]
     found = h.stop_gaps(positions, orders)
     if len(orders) >= 500:
         found.append(h.Finding(level="watch", text="stops: 500+ orders in 120 days -- older stops not read"))
