@@ -56,5 +56,7 @@ REM event no identifier in FREEZE captures, the same blind spot as the
 REM 23x5 market change on 2026-12-06.
 REM
 REM Dated snapshots, never overwritten, exit code ignored.
+REM The penny watch-list shadow (operator 2026-10-27): records would-buys, grades vs IWM, never orders.
+".venv\Scripts\python.exe" "scripts\penny_shadow.py" >> "%LOG%" 2>&1
 ".venv\Scripts\python.exe" "scripts\archive_broker.py" >> "%LOG%" 2>&1
 exit /b %errorlevel%
