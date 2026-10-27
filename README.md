@@ -115,6 +115,7 @@ news, briefs and reports retired on 2026-10-26 are disabled, not deleted; their 
 ## Everyday commands
 
 ```powershell
+scripts\run_command_center.bat                          # the desk on one HTML page, opened in the browser
 .venv\Scripts\python.exe scripts\hub.py                 # one page: what ran, the account, what needs you
 .venv\Scripts\python.exe scripts\health_check.py        # the health check, any time (read-only)
 .venv\Scripts\python.exe scripts\rules_pick.py          # what the rules book would queue now (dry run)
