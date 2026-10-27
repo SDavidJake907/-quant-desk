@@ -47,6 +47,9 @@ MIN_MARKET_CAP = 2_000_000_000.0
 #: (operator 2026-10-22, "widen Gemma stock pool" -> "add 120 mid/small now"):
 #: the 120 strongest across both indexes, same floors, same $2B cap floor.
 MIDCAP_FROM = date(2026, 10, 22)
+#: Off from 2026-10-26 (operator: "change back to that" -- the S&P 500-only pool of Wed
+#: 10-21): her 4 mid/small trades since 10-22 lost $977, 1 winner. Back on = True.
+MIDCAP_ENABLED = False
 MIDCAP_MAX = 120
 #: Each round 1 saves the pool it showed her, one file a day (the last run that
 #: day wins). The breakout book (execution/orb.py) trades from it, so it never
@@ -91,8 +94,8 @@ def large_enough(symbol: str, caps: Mapping[str, float], *,
     return cap is None or cap >= floor
 
 
-def midcap_on(today: date, *, start: date = MIDCAP_FROM) -> bool:
-    return today >= start
+def midcap_on(today: date, *, start: date = MIDCAP_FROM, enabled: bool | None = None) -> bool:
+    return (MIDCAP_ENABLED if enabled is None else enabled) and today >= start
 
 
 def strongest(rows: Iterable[PoolRow], limit: int = MIDCAP_MAX) -> list[PoolRow]:

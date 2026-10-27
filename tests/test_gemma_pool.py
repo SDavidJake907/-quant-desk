@@ -72,9 +72,16 @@ def test_market_cap_floor_drops_small_and_keeps_unknown():
 def test_midcap_switches_on_from_10_22():
     """Brought forward from 11-02 (operator 2026-10-22: widen her pool with mid/small caps now)."""
     from datetime import date
-    assert not gp.midcap_on(date(2026, 10, 21))
-    assert gp.midcap_on(date(2026, 10, 22))
+    assert not gp.midcap_on(date(2026, 10, 21), enabled=True)
+    assert gp.midcap_on(date(2026, 10, 22), enabled=True)
     assert gp.MIDCAP_MAX == 120
+
+
+def test_midcap_off_from_10_26_back_to_sp500_only():
+    """Operator 2026-10-26: back to Wednesday's S&P 500-only pool."""
+    from datetime import date
+    assert gp.MIDCAP_ENABLED is False
+    assert not gp.midcap_on(date(2026, 10, 27))
 
 
 def test_strongest_keeps_positive_momentum_capped():
