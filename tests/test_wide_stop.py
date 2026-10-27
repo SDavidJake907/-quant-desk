@@ -93,4 +93,5 @@ def test_the_10am_buy_pass_sends_wide_stops_at_same_dollar_risk(tmp_path, monkey
     now = datetime(2026, 10, 27, 10, 5, tzinfo=sat.ET)
     asyncio.run(plan_run.buy_pass(FakeBroker(), None, [], {}, [], now, False, lambda s: None, TradingPolicy()))
     assert calls and calls[0]["loss_floor"] is False
-    assert calls[0]["risk_pct"] == pytest.approx(0.5)
+    # A 3% stop's dollars on a full fifth (5 slots from 2026-10-27; a sixth, 0.5%, before).
+    assert calls[0]["risk_pct"] == pytest.approx(0.6)

@@ -36,14 +36,16 @@ GEMMA = "gemma"
 ORB = "orb"
 #: The SPY core (execution/satellite.py): half the account, held, no stop.
 CORE = "core"
+#: The small-cap book (execution/small_book.py, scripts/small_pick.py): S&P 600, 10%, from 2026-10-27.
+SMALL = "small"
 UNKNOWN = "unknown"
 
 #: client_order_id prefix -> strategy. The prefix is the whole contract.
 PREFIXES: dict[str, str] = {"smc-": SMC, "man-": MANUAL, "mom-": MOMENTUM,
                              "pck-": PICKS, "gem-": GEMMA, "orb-": ORB,
-                             "cor-": CORE}
+                             "cor-": CORE, "sml-": SMALL}
 
-STRATEGIES = (SMC, MANUAL, MOMENTUM, PICKS, GEMMA, ORB, CORE)
+STRATEGIES = (SMC, MANUAL, MOMENTUM, PICKS, GEMMA, ORB, CORE, SMALL)
 
 
 def prefix_for(strategy: str) -> str:

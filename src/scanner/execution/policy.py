@@ -444,8 +444,10 @@ class TradingPolicy(Frozen):
     #: in"; Gemma asked and agreed: "the 10% capital reduction is negligible").
     #: 40.0 / 6 names from 2026-10-26: the core-and-satellite plan (execution/satellite.py;
     #: operator + Gemma 10-23): 50% SPY core, Gemma 40% in 6 equal names, breakout 10%.
-    gemma_allocation_pct: float = 40.0
-    gemma_max_positions: int = 6
+    #: From 2026-10-26 the rules book (scripts/rules_pick.py) picks these names, not Gemma.
+    #: 30.0 / 5 names from 2026-10-27: 10% to the small-cap book (operator: "from the rules book").
+    gemma_allocation_pct: float = 30.0
+    gemma_max_positions: int = 5
     #: Risk per Gemma trade, as % of ITS sleeve. 2.0 from 2026-10-07 (operator:
     #: "push Gemma to max out profit"): at 1% with ~10% stops its five positions
     #: used ~$17.6k of a ~$61k sleeve. 2% lets it near-fully deploy (the 20%
@@ -516,6 +518,17 @@ class TradingPolicy(Frozen):
     core_allocation_pct: float = 50.0
     core_symbol: str = "SPY"
 
+    # --- the small-cap book (execution/small_book.py, scripts/small_pick.py) --------
+    #: Operator 2026-10-27 ("penny stocks .. low caps .. a gate for it, 10% of the account"):
+    #: S&P SmallCap 600 members, $5+, $2M+ traded a day, while IWM is above its 200-day;
+    #: the rules book's checks and exits. 4 equal names. CHOSEN, not measured: S&P 600
+    #: momentum was +0.83 pts a hold over random, t 1.28 (WORKLIST §31).
+    small_allocation_pct: float = 10.0
+    small_max_positions: int = 4
+    small_min_price: float = 5.0
+    small_min_dollar_volume: float = 2_000_000.0
+    small_gate_symbol: str = "IWM"
+
     def gemma_menu_value(self, kind: str, label: str) -> float:
         """The number behind one of Gemma's menu names. KeyError if unknown."""
         menu = {"stop": self.gemma_stop_atr_menu, "target": self.gemma_target_r_menu,
@@ -526,7 +539,7 @@ class TradingPolicy(Frozen):
     def own_sleeves_pct(self) -> float:
         """Equity claimed by the books with their own sleeve."""
         return (self.momentum_allocation_pct + self.gemma_allocation_pct + self.orb_allocation_pct
-                + self.core_allocation_pct)
+                + self.core_allocation_pct + self.small_allocation_pct)
 
     # --- recorded, never enforced ------------------------------------------
     #: Each of these improved the holdout and none has forward evidence. They

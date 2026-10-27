@@ -12,4 +12,9 @@ echo. >> "%LOG%"
 echo ===== RULES PICK %DATE% %TIME% ===== >> "%LOG%"
 
 ".venv\Scripts\python.exe" "scripts\rules_pick.py" --submit >> "%LOG%" 2>&1
+set RC=%errorlevel%
+REM The small-cap book (operator 2026-10-27): S&P 600, IWM gate, 10%. Same log, after the rules pick.
+echo ===== SMALL PICK %DATE% %TIME% ===== >> "%LOG%"
+".venv\Scripts\python.exe" "scripts\small_pick.py" --submit >> "%LOG%" 2>&1
+if %RC% neq 0 exit /b %RC%
 exit /b %errorlevel%

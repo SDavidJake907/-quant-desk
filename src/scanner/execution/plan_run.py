@@ -26,7 +26,8 @@ from scanner.execution import bookorders, buy_queue, ownership, picks, profit_lo
 from scanner.execution import satellite as sat
 from scanner.execution.alpaca import BrokerError, round_tick
 from scanner.execution.guards import RiskLimits, check_account
-from scanner.execution.ownership import CORE, GEMMA, PICKS
+from scanner.execution import small_book
+from scanner.execution.ownership import CORE, GEMMA, PICKS, SMALL
 from scanner.execution.policy import TradingPolicy
 from scanner.execution.sessions import REGULAR
 from scanner.features.bars import fetch_bars
@@ -80,7 +81,7 @@ async def exit_pass(broker, client, positions, book_of: Mapping[str, str], order
                     session: str, now: datetime, dry: bool, log: Log,
                     sell: Callable[..., Any]) -> list[str]:
     today = now.astimezone(sat.ET).date()
-    entered = entry_dates(orders, (GEMMA, PICKS))
+    entered = entry_dates(orders, (GEMMA, PICKS, SMALL))
     stops = profit_lock.stop_orders(orders)
     closing = session == REGULAR and sat.in_close_window(now)
     reporting: set[str] = set()
@@ -105,7 +106,7 @@ async def exit_pass(broker, client, positions, book_of: Mapping[str, str], order
         start = entered.get(s)
         after = [c for d, c in zip(bars.dates, bars.closes) if start and start < d < today]
         hard = sat.hard_stop(entry=entry, atr=atr, high_close=max([*after, entry]),
-                             floor=not (book == GEMMA and sat.wide_stop(start)))
+                             floor=not (book == SMALL or (book == GEMMA and sat.wide_stop(start))))
         why = None
         if price <= hard:
             why = (f"plan stop: {price:,.2f} at/under {hard:,.2f} "
@@ -132,7 +133,7 @@ async def exit_pass(broker, client, positions, book_of: Mapping[str, str], order
         try:
             await broker.replace_stop(order_id, round_tick(hard))
             log(f"  RAISED {s} stop {broker_stop:,.2f} -> {hard:,.2f} (plan; entry {entry:,.2f})")
-            bookorders.log(f"{'picks' if book == PICKS else 'gemma'}_stop_raised", s,
+            bookorders.log(f"{book}_stop_raised", s,
                            f"plan stop {broker_stop:,.2f} -> {hard:,.2f}", TradingPolicy())
         except BrokerError as exc:
             log(f"  RAISE FAILED {s} ({exc}) -- this pass still sells at {hard:,.2f}")
@@ -172,18 +173,34 @@ async def _rechecks(client, due: Mapping[str, Mapping[str, Any]], today: date, l
     return out
 
 
+#: The books whose 9:45 picks buy_pass sends: (sleeve % field, slots field, label). The queue
+#: file is read at call time (_queue_path). The small-cap book (2026-10-27) buys with cash only --
+#: never on margin while the rules book is still above its new 30% after the change.
+QUEUED_BOOKS: dict[str, tuple[str, str, str]] = {
+    GEMMA: ("gemma_allocation_pct", "gemma_max_positions", "Rules book"),
+    SMALL: ("small_allocation_pct", "small_max_positions", "Small caps"),
+}
+
+
+def _queue_path(strategy: str) -> str:
+    return small_book.QUEUE_PATH if strategy == SMALL else buy_queue.PATH
+
+
 async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open_orders,
-                   now: datetime, dry: bool, log: Log, policy: TradingPolicy) -> list[str]:
+                   now: datetime, dry: bool, log: Log, policy: TradingPolicy,
+                   strategy: str = GEMMA) -> list[str]:
     if not _buying_hours(now):
         return []
-    path = Path(buy_queue.PATH)
+    alloc_field, slots_field, label = QUEUED_BOOKS[strategy]
+    max_positions = int(getattr(policy, slots_field))
+    path = Path(_queue_path(strategy))
     try:
         queue = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
-    mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == GEMMA]
+    mine = [p for p in positions if ownership.owner(p["symbol"], owner_map) == strategy]
     pending = [o for o in open_orders if o.get("side") == "buy"
-               and ownership.strategy_of(o.get("client_order_id")) == GEMMA]
+               and ownership.strategy_of(o.get("client_order_id")) == strategy]
     due = buy_queue.due(queue, today=now.astimezone(sat.ET).date(), held=[p["symbol"] for p in mine],
                         pending=[o["symbol"] for o in pending])
     if not due:
@@ -192,20 +209,22 @@ async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open
     raw = await broker._get("/v2/account")
     equity = float(raw["equity"])
     gate = check_account(equity, float(raw.get("last_equity") or equity), len(mine),
-                         RiskLimits(max_positions=policy.gemma_max_positions,
+                         RiskLimits(max_positions=max_positions,
                                     max_daily_loss_pct=policy.max_daily_loss_pct, min_equity=policy.min_equity),
                          market_open=True, account_status=str(raw.get("status")),
                          account_blocked=bool(raw.get("trading_blocked")))
-    sleeve = equity * policy.gemma_allocation_pct / 100
+    sleeve = equity * float(getattr(policy, alloc_field)) / 100
     deployed = sum(abs(float(p.get("market_value") or 0)) for p in mine) + sum(
         float(o.get("qty") or 0) * float(o.get("limit_price") or 0) for o in pending)
     room = max(0.0, min(float(raw.get("buying_power") or 0), sleeve - deployed))
-    slots = policy.gemma_max_positions - len(mine) - len(pending)
+    if strategy == SMALL:
+        room = max(0.0, min(room, float(raw.get("cash") or 0)))
+    slots = max_positions - len(mine) - len(pending)
     alerts, done = [], []
 
     def refused(s: str, reason: str) -> None:
-        if not dry:    # a dry run never writes the audit log Gemma reads
-            bookorders.log("gemma_refused", s, reason, policy)
+        if not dry:    # a dry run never writes the audit log
+            bookorders.log(f"{strategy}_refused", s, reason, policy)
 
     for s, plan in due.items():
         done.append(s)
@@ -218,18 +237,18 @@ async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open
             refused(s, gate.reason)
             continue
         if slots <= 0:
-            log(f"  QUEUED BUY {s} not sent -- all {policy.gemma_max_positions} slots in use")
+            log(f"  QUEUED BUY {s} not sent -- all {max_positions} slots in use")
             refused(s, "no free slot at 10:00")
             continue
         if dry:
             log(f"  WOULD BUY (queued) {s}")
             continue
-        cap = 100.0 / policy.gemma_max_positions
+        cap = 100.0 / max_positions
         # Gemma's B2 (satellite.WIDE_STOP_FROM): the full 2.5 ATR stop, sized to a 3% stop's dollars.
         result = await bookorders.buy_with_stop(
-            broker, client, s, strategy=GEMMA, sleeve=sleeve, room=room,
+            broker, client, s, strategy=strategy, sleeve=sleeve, room=room,
             cap_pct=cap, policy=policy,
-            reason=f"Gemma (the plan, 10:00 ET): {plan.get('reason', '')}",
+            reason=f"{label} (the plan, 10:00 ET): {plan.get('reason', '')}",
             risk_pct=min(policy.gemma_menu_value("size", plan.get("size", "normal")), sat.same_risk_pct(cap)),
             atr_multiple=policy.gemma_menu_value("stop", plan.get("stop", "normal")),
             reward_risk=policy.gemma_menu_value("target", plan.get("target", "none")), session=REGULAR,
@@ -238,11 +257,11 @@ async def buy_pass(broker, client, positions, owner_map: Mapping[str, str], open
         if result.ok:
             slots -= 1
             room -= result.sizing.position_dollars
-            alerts.append(f"Gemma bought {s} (10:00 queue)")
+            alerts.append(f"{label} bought {s} (10:00 queue)")
     if not dry:
         path.write_text(json.dumps(buy_queue.without(queue, done), indent=1), encoding="utf-8")
-    # Unfilled queued buys older than the picks rule are cancelled; tomorrow's decision re-chooses.
-    for o in picks.stale_entries(open_orders, now, minutes=policy.picks_stale_entry_minutes, strategy=GEMMA):
+    # Unfilled queued buys older than the picks rule are cancelled; tomorrow's pick re-chooses.
+    for o in picks.stale_entries(open_orders, now, minutes=policy.picks_stale_entry_minutes, strategy=strategy):
         if not dry:
             try:
                 await broker.cancel_order(str(o["id"]))

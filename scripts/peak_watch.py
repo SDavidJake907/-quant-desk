@@ -44,7 +44,7 @@ import gemma_trade as gtr
 from scanner.config import settings
 from scanner.execution import bookorders, ownership, plan_run, profit_lock, sell_queue, sessions
 from scanner.execution.alpaca import Alpaca, BrokerError
-from scanner.execution.ownership import GEMMA, PICKS
+from scanner.execution.ownership import GEMMA, PICKS, SMALL
 from scanner.features.bars import fetch_many
 from scanner.features.intraday import EXCHANGE_TZ
 from scanner.features.technicals import average_true_range_pct
@@ -116,7 +116,7 @@ async def sell_position(broker, client, symbol: str, book: str, why: str, open_o
             return None
         subprocess.run([sys.executable, "scripts/picks_sync.py", "--submit"], check=False)
         return True
-    return await bookorders.sell(broker, symbol, open_orders, strategy=GEMMA, reason=why,
+    return await bookorders.sell(broker, symbol, open_orders, strategy=book, reason=why,
                                  policy=gtr.POLICY, session=session, client=client)
 
 
@@ -176,7 +176,7 @@ async def main(dry: bool) -> int:
         owner_map = ownership.owners(orders)
         stops = grv.live_stops(orders)
         book_of = {p["symbol"]: ownership.owner(p["symbol"], owner_map) for p in positions}
-        watched = [p for p in positions if book_of[p["symbol"]] in (GEMMA, PICKS)]
+        watched = [p for p in positions if book_of[p["symbol"]] in (GEMMA, PICKS, SMALL)]
         rs = await readings_for(client, watched, stops, log, session)
         prices = {p["symbol"]: float(p["current_price"]) for p in watched}
         marks, ready, sell = ps.update_marks(load_marks(), rs, now=f"{now:%m-%d %H:%M} ET", prices=prices)
@@ -209,6 +209,8 @@ async def main(dry: bool) -> int:
         if session == sessions.REGULAR:
             alerts += await plan_run.buy_pass(broker, client, positions, owner_map, open_orders, now,
                                               dry, log, gtr.POLICY)
+            alerts += await plan_run.buy_pass(broker, client, positions, owner_map, open_orders, now,
+                                              dry, log, gtr.POLICY, strategy=SMALL)
             alerts += await plan_run.core_pass(broker, client, positions, owner_map, open_orders, now,
                                                dry, log, gtr.POLICY)
         if alerts and not dry:
