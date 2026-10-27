@@ -15,6 +15,8 @@ on purpose: every task and path points at them.)*
 system. That scanner tested at −0.041R a trade on data it had never seen and its
 entries are paused. Its sections are kept below as history and marked so.)*
 
+*(2026-10-26: **Gemma no longer picks.** The account is SPY core 50% / a rules book 40% (scripts/rules_pick.py: S&P 500 names passing the buy checks, strongest 12-1 momentum first, 6 names) / ORB 10%. Every Gemma / LLM task is retired and its scripts are in scripts/archive/. Sections below that describe Gemma's book are history; FREEZE.md has the current state.)*
+
 ## Read this first
 
 **Paper money, and nothing here is proven.** The books opened 2026-10-07. The

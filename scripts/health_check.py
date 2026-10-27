@@ -1,9 +1,8 @@
 """The health check, 06:00 and 14:15 AK weekdays (advisor: scanner/ops/health.py).
 
 READ-ONLY: it sends no order and changes nothing. Checks every position has a
-live stop, every enabled task's last run, Ollama for orphan runners, this
-morning's task logs for errors, and -- on a market day -- Hindsight's lessons,
-Gemma's submitted decision and the evening review. Writes
+live stop, every enabled task's last run, Ollama for orphan runners and this
+morning's task logs for errors (the 9:45 rules pick and the scan). Writes
 logs/health/YYYY-MM-DD.md; on a problem it pushes to the phone (ntfy, when
 SCANNER_NTFY_TOPIC is set) and shows a Windows notification on this PC.
 
@@ -24,21 +23,17 @@ import httpx
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from scanner.advisor import hindsight_memory  # noqa: E402
 from scanner.config import settings  # noqa: E402
 from scanner.execution import ownership  # noqa: E402
 from scanner.execution.alpaca import Alpaca  # noqa: E402
 from scanner.execution.policy import TradingPolicy  # noqa: E402
-from scanner.execution.scorecard import read_rows  # noqa: E402
 from scanner.ops import deskcheck, notify  # noqa: E402
 from scanner.ops import health as h  # noqa: E402
 
 OUT = Path("logs/health")
-REVIEWS = Path("data/gemma/reviews")
 #: Morning tasks whose logs are scanned for errors in today's runs.
-MORNING_LOGS = ("weekahead", "ideas", "leaders", "hindsight", "scan", "gemma", "gemma_review")
-#: From this hour the day's own 12:30 review should exist; before it, the last session's.
-REVIEW_HOUR = 13
+#: Gemma's decision, review, Hindsight, ideas, leaders and week-ahead retired 2026-10-26.
+MORNING_LOGS = ("scan", "rules_pick")
 
 TASKS_PS = (
     "Get-ScheduledTask -TaskName 'stock-scanner*' | ForEach-Object { $i = $_ | Get-ScheduledTaskInfo; "
@@ -111,15 +106,6 @@ async def main() -> int:
         findings += guarded("tasks", lambda: h.task_problems(powershell_json(TASKS_PS)))
         findings += guarded("ollama", lambda: h.orphan_runners(powershell_json(PROCS_PS)))
         findings += guarded("logs", lambda: deskcheck.trouble_lines(today, log_texts()))
-        if today in sessions:
-            findings += guarded("hindsight", lambda: h.lessons_finding(hindsight_memory.read_lessons(), now=now))
-            findings += guarded("gemma", lambda: h.decision_finding(read_rows(settings.audit_log_path), today))
-            past = [d for d in sessions if d < today]
-            review_day = today if now.hour >= REVIEW_HOUR else (past[-1] if past else None)
-            if review_day:
-                findings += guarded("review", lambda: h.review_finding(REVIEWS, review_day))
-        else:
-            findings.append(h.Finding(level="watch", text="market closed today: session checks skipped"))
 
         text = h.render(findings, now=now)
         print(text)
